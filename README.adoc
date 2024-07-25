@@ -2,9 +2,9 @@
 
 This repository contains the source code for the Choir, a compiler project primarily for the Laye programming language.
 
-The Choir compiler project depends on [LLVM](https://github.com/nashiora/llvm-project).
+The Choir compiler project depends on https://github.com/nashiora/llvm-project[LLVM].
 For the time being, you'll need to set up and build a copy yourself for Choir's build process to reference.
 
 ## Getting and Building Choir
 
-First, follow the Getting Started instructions provided with [LLVM](https://github.com/nashiora/llvm-project) and ensure you can build it in your environment.
+First, follow the Getting Started instructions provided with https://github.com/nashiora/llvm-project[LLVM] and ensure you can build it in your environment.
