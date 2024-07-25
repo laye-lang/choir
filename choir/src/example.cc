@@ -17,16 +17,6 @@
 #include <llvm/TargetParser/Host.h>
 
 int example_main(int argc, char** argv) {
-    llvm::SmallVector<const char*, 256> Args(argv, argv + argc);
-    if (argc > 2 && std::string_view(argv[1]) == "cc") {
-        llvm::SmallVector<llvm::StringRef, 256> clang_args{};
-        for (auto arg : llvm::ArrayRef(Args).drop_front(2)) {
-            clang_args.push_back(arg);
-        }
-
-        return invoke_clang_driver(clang_args);
-    }
-
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::LLVMContext context;

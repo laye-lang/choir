@@ -19,6 +19,7 @@ int choir_main(int argc, char** argv) {
     llvm::SmallVector<const char*, 256> Args(argv, argv + argc);
     if (argc > 2 && std::string_view(argv[1]) == "cc") {
         llvm::SmallVector<llvm::StringRef, 256> clang_args{};
+        clang_args.push_back(CHOIR_CLANG_EXE_PATH);
         for (auto arg : llvm::ArrayRef(Args).drop_front(2)) {
             clang_args.push_back(arg);
         }
