@@ -1,7 +1,10 @@
 ---
-## C, latest standard.
+## C++, latest standard.
 Language: Cpp
 Standard: Latest
+
+## How far `public:`, `private:`, and `protected:` are indented.
+AccessModifierOffset: -4
 
 ## If a function decl or call's opening paren is at the end of a line,
 ## format its arguments like so:
@@ -109,6 +112,11 @@ AlwaysBreakAfterReturnType: None
 ##         "multiline string.";
 AlwaysBreakBeforeMultilineStrings: true
 
+## Don’t force break template declarations (i.e. the template
+## param list and the rest of the signature/definition may be
+## on the same line).
+AlwaysBreakTemplateDeclarations: No
+
 ## Identifiers that should be interpreted as attributes.
 AttributeMacros: ['__forceinline']
 
@@ -129,12 +137,28 @@ BreakBeforeBinaryOperators: None
 ## NEVER put opening braces on a new line.
 BreakBeforeBraces: Attach
 
+## This is AlwaysBreakTemplateDeclarations, but for concept decls.
+BreakBeforeConceptDeclarations: Allowed
+
+## Put the colons of multiline inline ASM on new lines.
+BreakBeforeInlineASMColon: OnlyMultiline
+
 ## Format ternaries like so:
 ##
 ##     auto foo = bar
 ##         ? baz
 ##         : qux;
 BreakBeforeTernaryOperators: true
+
+## Format ctors like so:
+##
+##     Constructor()
+##         : bar(42)
+##         , baz(23)
+#BreakConstructorInitializers: BeforeComma
+
+## Same thing, but for class declarations.
+BreakInheritanceList: BeforeComma
 
 ## Allow breaking long string literals across multiple lines.
 BreakStringLiterals: true
@@ -144,6 +168,23 @@ BreakStringLiterals: true
 ## inserted line breaks.
 ColumnLimit: 0
 
+## Nested namespace declarations are on different lines. If they
+## should be on the same line, just write `namespace foo::bar` instead.
+CompactNamespaces: false
+
+## Set to the same value as IndentWidth.
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+
+## Format braced init lists appropriately.
+##
+## > Fundamentally, C++11 braced lists are formatted exactly like
+## > function calls would be formatted in their place. If the braced
+## > list follows a name (e.g. a type or variable name), clang-format
+## > formats as if the {} were the parentheses of a function call with
+## > that name.
+Cpp11BracedListStyle: true
+
 ## Do NOT attempt to infer pointer alignment. Format it to what I want
 ## it to be.
 DerivePointerAlignment: false
@@ -151,14 +192,29 @@ DerivePointerAlignment: false
 ## Duh.
 DisableFormat: false
 
+## Never put empty lines after `private:` etc.
+EmptyLineAfterAccessModifier: Never
+
+## Empty lines before access modifiers should be left alone.
+EmptyLineBeforeAccessModifier: Leave
+
+## Insert a `// namespace foo` comment after the closing brace of a
+## namespace.
+FixNamespaceComments: true
+
 ## Macros that should be formatted like the `for` keyword.
-ForEachMacros: ['arr_foreach', 'arr_foreach_ptr', 'lca_da_foreach', 'lca_da_foreach_ptr']
+ForEachMacros: ["repeat", "until"]
 
 ## Same thing, but for `if`.
 IfMacros: []
 
 ## Merge include blocks, sort them, and resplit.
 IncludeBlocks: Regroup
+
+## Enable outdenting `private:`.
+# NOTE: This setting currently causes the content of structs
+# to be indented twice.
+#IndentAccessModifiers: true
 
 ## Don’t indent case blocks. Note, this is not about case *labels*,
 ## but the actual blocks of code. The labels *will* be indented, so
@@ -176,11 +232,20 @@ IndentCaseBlocks: false
 ##     }
 IndentCaseLabels: true
 
+## We disable indenting the contents of `extern "C" {}` blocks, simply
+## because indentation in such blocks is pretty useless as they tend to
+## be rather long and often enough, an entire file would just end up
+## being indented more than it needs to be.
+IndentExternBlock: NoIndent
+
 ## We want goto labels to be indented relative to the current scope.
 IndentGotoLabels: true
 
 ## Indent CPP directives after the `#` sign.
 IndentPPDirectives: AfterHash
+
+## Do NOT indent requires clauses.
+IndentRequiresClause: false
 
 ## Four spaces. This is the only correct value.
 IndentWidth: 4
@@ -197,13 +262,17 @@ InsertBraces: false
 InsertNewlineAtEOF: true
 
 ## Format integer literals:
-#IntegerLiteralSeparator:
-#  Binary: 4
-#  Decimal: 3
-#  Hex: 4
+IntegerLiteralSeparator:
+  Binary: 4
+  Decimal: 3
+  Hex: 4
 
 ## This one is pretty self-explanatory.
 KeepEmptyLinesAtTheStartOfBlocks: false
+
+## Indent lambda bodies relative to the outer scope, and not
+## relative to the indentation of the signature.
+LambdaBodyIndentation: OuterScope
 
 ## Use LF, never CRLF.
 LineEnding: LF
@@ -211,36 +280,66 @@ LineEnding: LF
 ## Don’t allow multiple consecutive empty lines.
 MaxEmptyLinesToKeep: 1
 
+## Don’t indent namespaces. See the `extern "C"` option above,
+## for more information as to why we disable this.
+NamespaceIndentation: None
+
 ## Reuse IndentWidth.
 PPIndentWidth: -1
+
+## Format ctor initialisers sensibly. Put all of them on the same line if
+## they fit, and put them on separate lines if they don’t.
+#PackConstructorInitializers: CurrentLine
 
 ## We don’t want this to happen. Ever.
 PenaltyReturnTypeOnItsOwnLine: 4294967295
 
-## Where to place the pointer character in a declaration.
+## Left for C++, Right for C.
 PointerAlignment: Left
 
 ## Leave qualifiers where they are as the docs state that this option
 ## may lead to incorrect code.
 QualifierAlignment: Leave
 
-## Should always be left.
+## I suck at being consistent about this, so therefore:
+## TODO: Figure out why CLion’s clang-format is rejecting this...
+#QualifierOrder: ['friend', 'static', 'inline', 'constexpr', 'const', 'volatile', 'restrict', 'type']
+
+## Should always be left, unless C decides to add references some day.
 ReferenceAlignment: Left
 
 ## Allow reflowing comments. Not sure if this does anything since we’ve disabled the col limit.
 ReflowComments: true
 
+## Requires clauses go on a separate line.
+RequiresClausePosition: OwnLine
+
+## Thank goodness they finally added this. The default formatting used to be
+## absolutely atrocious, because no, I don’t want all of my concept declarations
+## to be indented 10 spaces or whatnot.
+RequiresExpressionIndentation: OuterScope
+
 ## I know better when to separate stuff than clang-format.
 SeparateDefinitionBlocks: Leave
+
+## Five lines is short, I guess.
+ShortNamespaceLines: 5
 
 ## Sort include directives.
 SortIncludes: CaseInsensitive
 
+## Sort using decls alphabetically.
+# TODO: Set to Lexicographic
+SortUsingDeclarations: true
+
 ## Space after C-style cast.
-SpaceAfterCStyleCast: false
+SpaceAfterCStyleCast: true
 
 ## No space after `!`.
 SpaceAfterLogicalNot: false
+
+## Put a space after `template`
+SpaceAfterTemplateKeyword: true
 
 ## Ignore this option and use PointerAlignment instead.
 SpaceAroundPointerQualifiers: Default
@@ -251,6 +350,14 @@ SpaceBeforeAssignmentOperators: true
 ## We *definitely* don’t want spaces before a case colon.
 SpaceBeforeCaseColon: false
 
+## We want to treat init lists like function calls, so no space.
+SpaceBeforeCpp11BracedList: false
+
+## Funnily enough, we *do* want spaces before these colons
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeRangeBasedForLoopColon: true
+
 ## Spaces before parens:
 SpaceBeforeParens: Custom
 SpaceBeforeParensOptions:
@@ -259,6 +366,9 @@ SpaceBeforeParensOptions:
   AfterFunctionDeclarationName: false
   AfterFunctionDefinitionName: false
   AfterIfMacros: true
+  AfterOverloadedOperator: false
+  AfterRequiresInClause: true
+  AfterRequiresInExpression: true
   BeforeNonEmptyParentheses: false
 
 ## No space before subscripts.
@@ -272,6 +382,9 @@ SpaceInEmptyParentheses: false
 
 ## At least one space before trailing comments.
 SpacesBeforeTrailingComments: 1
+
+## Never put spaces in angle brackets.
+SpacesInAngles: Never
 
 ## We definitely don’t want this.
 SpacesInCStyleCastParentheses: false
@@ -308,6 +421,6 @@ TypenameMacros: []
 UseTab: Never
 
 ## Some macros care about whitespace.
-WhitespaceSensitiveMacros: []
+WhitespaceSensitiveMacros: ['STR', 'STR_']
 
 ...

@@ -1,5 +1,8 @@
 #include "driver.hh"
 
+#include <format>
+#include <stddef.h>
+#include <clang/Tooling/Tooling.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/LLVMContext.h>
@@ -15,17 +18,11 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/TargetParser/Host.h>
 
-int choir_main(int argc, char** argv) {
-    llvm::SmallVector<const char*, 256> Args(argv, argv + argc);
-    if (argc > 2 && std::string_view(argv[1]) == "cc") {
-        llvm::SmallVector<llvm::StringRef, 256> clang_args{};
-        clang_args.push_back(CHOIR_CLANG_EXE_PATH);
-        for (auto arg : llvm::ArrayRef(Args).drop_front(2)) {
-            clang_args.push_back(arg);
-        }
-
-        return invoke_clang_driver(clang_args);
-    }
+int example_main(int argc, char** argv) {
+    auto ast_unit = clang::tooling::buildASTFromCodeWithArgs("#include <stddef.h>\nint main() {}", {});
+    auto& ast_context = ast_unit->getASTContext();
+    auto tu_decl = ast_context.getTranslationUnitDecl();
+    tu_decl->dump();
 
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
@@ -54,9 +51,4 @@ int choir_main(int argc, char** argv) {
     Args2.push_back(object_file_path);
 
     return invoke_clang_driver(Args2);
-}
-
-int main(int argc, char** argv) {
-    llvm::InitLLVM X(argc, argv);
-    return choir_main(argc, argv);
 }

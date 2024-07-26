@@ -19,8 +19,8 @@
 /*/CMakeUserPresets.json
 
 # Common nested build directories
-/build*
-/out*
+/build*/
+/out*/
 
 #==============================================================================#
 # Explicit files to ignore (only matches one).

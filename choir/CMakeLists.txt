@@ -1,3 +1,7 @@
+if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "This project must be built with Clang (or, on Windows, clang-cl)")
+endif()
+
 ## ============================================================================
 ##  Global CMake Variables.
 ## ============================================================================
@@ -154,20 +158,30 @@ endif()
 ## ============================================================================
 ##  Submodules and include dirs.
 ## ============================================================================
-## Find clopts.
-include(CheckIncludeFileCXX)
-check_include_file_cxx(clopts.hh HAVE_CLOPTS_HH)
-if (NOT HAVE_CLOPTS_HH)
-    include(FetchContent)
-	message(STATUS "Clopts not found, downloading ...")
-	FetchContent_Declare(clopts
-		GIT_REPOSITORY https://github.com/Sirraide/clopts.git
-		GIT_TAG v2.0.2
-		SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/libs/clopts"
-    )
-	FetchContent_MakeAvailable(clopts)
-    target_include_directories(options INTERFACE "${CMAKE_CURRENT_BINARY_DIR}/libs/clopts/include")
-endif()
+include(FetchContent)
+
+add_definitions(-DLIBASSERT_STATIC_DEFINE)
+FetchContent_Declare(
+    libassert
+    GIT_REPOSITORY https://github.com/jeremy-rifkin/libassert.git
+    GIT_TAG        v2.1.0
+)
+
+FetchContent_Declare(
+    clopts
+    GIT_REPOSITORY https://github.com/Sirraide/clopts.git
+    GIT_TAG        master
+    SOURCE_DIR     "${CMAKE_CURRENT_BINARY_DIR}/clopts"
+)
+
+FetchContent_MakeAvailable(libassert clopts)
+
+target_include_directories(options INTERFACE "${cpptrace_SOURCE_DIR}/include")
+target_include_directories(options INTERFACE "${libassert_SOURCE_DIR}/include")
+target_include_directories(options INTERFACE "${clopts_SOURCE_DIR}/include")
+target_include_directories(options INTERFACE "${PROJECT_SOURCE_DIR}/choir/include")
+
+target_link_libraries(options INTERFACE libassert::assert)
 
 ## ============================================================================
 ##  LLVM.
@@ -201,7 +215,11 @@ include(AddClang)
 include(HandleLLVMOptions)
 
 if (NOT DEFINED CHOIR_CLANG_EXE_PATH)
-    set(CHOIR_CLANG_EXE_PATH "${CHOIR_LLVM_BIN_DIR}/clang")
+    if (NOT WIN32)
+        set(CHOIR_CLANG_EXE_PATH "${CHOIR_LLVM_BIN_DIR}/clang")
+    else()
+        set(CHOIR_CLANG_EXE_PATH "${CHOIR_LLVM_BIN_DIR}/clang.exe")
+    endif()
 endif()
 
 ## FIXME: This is a hack.
@@ -229,17 +247,16 @@ add_definitions(
 #separate_arguments(CHOIR_LLVM_LIBS)
 target_link_libraries(options INTERFACE
 #    ${CHOIR_LLVM_LIBS}
-    clangBasic clangDriver clangFrontend
+    clangBasic clangDriver clangFrontend clangTooling
     LLVMCore LLVMSupport LLVMTarget
     LLVMX86AsmParser LLVMX86CodeGen LLVMX86Desc LLVMX86Info
 )
 
-file(GLOB_RECURSE _driver_sources src/*.cc lib/*.cc)
+file(GLOB _driver_sources src/*.cc)
+file(GLOB_RECURSE _driver_sources_lib lib/*.cc)
 
 ## Add the executable.
-add_clang_executable(choir ${_driver_sources})
-target_include_directories(choir PUBLIC "${PROJECT_SOURCE_DIR}/choir/include")
-target_include_directories(choir PRIVATE "${PROJECT_SOURCE_DIR}/choir/lib")
+add_clang_executable(choir ${_driver_sources} ${_driver_sources_lib})
 target_compile_definitions(choir PRIVATE "CHOIR_CLANG_EXE_PATH=\"${CHOIR_CLANG_EXE_PATH}\"")
 
 ## Link everything together.
