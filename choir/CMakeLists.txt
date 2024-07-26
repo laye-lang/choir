@@ -1,5 +1,5 @@
 if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    message(FATAL_ERROR "This project must be built with Clang (or, on Windows, clang-cl)")
+    # message(FATAL_ERROR "This project must be built with Clang (or, on Windows, clang-cl)")
 endif()
 
 ## ============================================================================
@@ -31,10 +31,10 @@ endif()
 ## ============================================================================
 add_library(options INTERFACE)
 
-add_compile_options(-fdeclspec -fms-extensions -Wno-ctad-maybe-unsupported)
-
 ## Flags for Clang and GCC.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options(-fdeclspec -fms-extensions -Wno-ctad-maybe-unsupported)
+
     target_compile_options(options INTERFACE
         -fno-exceptions
         -fno-rtti
@@ -252,12 +252,25 @@ target_link_libraries(options INTERFACE
     LLVMX86AsmParser LLVMX86CodeGen LLVMX86Desc LLVMX86Info
 )
 
-file(GLOB _driver_sources src/*.cc)
-file(GLOB_RECURSE _driver_sources_lib lib/*.cc)
+file(GLOB_RECURSE _sources_driver src/*.cpp)
+file(GLOB_RECURSE _modules_driver lib/*.ixx)
 
 ## Add the executable.
-add_clang_executable(choir ${_driver_sources} ${_driver_sources_lib})
+add_clang_executable(choir ${_sources_driver})
+target_sources(choir PUBLIC FILE_SET CXX_MODULES FILES ${_modules_driver})
 target_compile_definitions(choir PRIVATE "CHOIR_CLANG_EXE_PATH=\"${CHOIR_CLANG_EXE_PATH}\"")
 
 ## Link everything together.
 target_link_libraries(choir PRIVATE options)
+
+if (NOT WIN32)
+    set(CHOIR_CHOIR_EXE_NAME "choir")
+else()
+    set(CHOIR_CHOIR_EXE_NAME "choir.exe")
+endif()
+
+add_custom_target(choir_exe_copy ALL
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:choir>" "${PROJECT_SOURCE_DIR}/${CHOIR_CHOIR_EXE_NAME}"
+    DEPENDS choir
+    COMMENT "Copy $<TARGET_FILE:choir> executable to ${PROJECT_SOURCE_DIR}/${CHOIR_CHOIR_EXE_NAME}"
+)
