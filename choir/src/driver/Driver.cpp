@@ -7,8 +7,9 @@ module;
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/ThreadPool.h>
 #include <mutex>
+#include <vector>
 
-module driver;
+module choir.driver;
 
 using llvm::StringRef;
 
@@ -24,12 +25,66 @@ llvm::StringMap<SourceFileKind> file_kinds_by_extension{
     {".ccm", SourceFileKind::CXX},
 };
 
+// ============================================================================
+//  Internal API
+// ============================================================================
+
+namespace choir {
+
+enum struct DriverJobKind {
+    BuildLaye,
+    BuildC,
+    BuildCXX,
+};
+
+class DriverJob {
+    CHOIR_IMMOVABLE(DriverJob);
+
+    DriverJobKind _kind;
+
+protected:
+    DriverJob(DriverJobKind kind) : _kind(kind) {}
+
+public:
+    DriverJobKind kind() const { return _kind; }
+
+    virtual void run() = 0;
+};
+
+class BuildLayeDriverJob : public DriverJob {
+    std::vector<StringRef> laye_source_file_paths{};
+
+public:
+    BuildLayeDriverJob() : DriverJob(DriverJobKind::BuildLaye) {}
+
+    void add_laye_source_file(StringRef laye_source_file_path);
+    void run() override;
+};
+
+}; // namespace choir
+
+// ============================================================================
+//  Implementation
+// ============================================================================
+
+void BuildLayeDriverJob::add_laye_source_file(StringRef laye_source_file_path) {
+    laye_source_file_paths.push_back(laye_source_file_path);
+}
+
+void BuildLayeDriverJob::run() {
+}
+
 struct Driver::Impl {
+    DriverOptions options;
+
+    BuildLayeDriverJob* build_laye_job{};
+    std::vector<DriverJob*> jobs{};
     std::mutex mutex;
 
-    DriverOptions _options;
-
-    Impl(DriverOptions options) : _options(options){};
+    Impl(DriverOptions options) : options(options) {
+        build_laye_job = new BuildLayeDriverJob{};
+        jobs.push_back(build_laye_job);
+    }
 
     void add_file(StringRef file_path, SourceFileKind file_kind);
 };
@@ -62,7 +117,7 @@ void Driver::Impl::add_file(StringRef file_path, SourceFileKind file_kind) {
         } break;
 
         case SourceFileKind::Laye: {
-            CHOIR_TODO("Add this file to the Laye job please");
+            build_laye_job->add_laye_source_file(file_path);
         } break;
 
         case SourceFileKind::C: {
@@ -76,11 +131,15 @@ void Driver::Impl::add_file(StringRef file_path, SourceFileKind file_kind) {
 }
 
 // ============================================================================
-//  API
+//  Public API
 // ============================================================================
 
 CHOIR_DEFINE_HIDDEN_IMPL(Driver);
 Driver::Driver(DriverOptions options) : impl(new Impl{options}) {}
+
+void Driver::execute() {
+    std::unique_lock _{impl->mutex};
+}
 
 void Driver::add_file(std::string_view file_path, SourceFileKind file_kind) {
     std::unique_lock _{impl->mutex};

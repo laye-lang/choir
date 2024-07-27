@@ -4,7 +4,7 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/Support/LLVMDriver.h>
 
-import driver;
+import choir.driver;
 
 using namespace choir;
 

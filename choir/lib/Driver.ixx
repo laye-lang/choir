@@ -3,7 +3,7 @@ module;
 #include <choir/macros.hh>
 #include <string_view>
 
-export module driver;
+export module choir.driver;
 
 export namespace choir {
 
@@ -25,6 +25,7 @@ class Driver {
 public:
     Driver(DriverOptions options);
 
+    void execute();
     void add_file(std::string_view file_path, SourceFileKind file_kind = SourceFileKind::Default);
 };
 
