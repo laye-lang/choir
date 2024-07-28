@@ -25,7 +25,7 @@ class Driver {
 public:
     Driver(DriverOptions options);
 
-    void execute();
+    int execute();
     void add_file(std::string_view file_path, SourceFileKind file_kind = SourceFileKind::Default);
 };
 

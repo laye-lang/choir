@@ -137,8 +137,9 @@ void Driver::Impl::add_file(StringRef file_path, SourceFileKind file_kind) {
 CHOIR_DEFINE_HIDDEN_IMPL(Driver);
 Driver::Driver(DriverOptions options) : impl(new Impl{options}) {}
 
-void Driver::execute() {
+int Driver::execute() {
     std::unique_lock _{impl->mutex};
+    return 0;
 }
 
 void Driver::add_file(std::string_view file_path, SourceFileKind file_kind) {

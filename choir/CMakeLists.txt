@@ -5,7 +5,7 @@ endif()
 ## ============================================================================
 ##  Global CMake Variables.
 ## ============================================================================
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ## ============================================================================
@@ -186,8 +186,6 @@ target_link_libraries(options INTERFACE libassert::assert)
 ## ============================================================================
 ##  LLVM.
 ## ============================================================================
-# set(SOURCE_LLVM_BUILD_DIR "${PROJECT_SOURCE_DIR}/../llvm-project/build_win32_ninja/")
-# set(CHOIR_LLVM_CMAKE_DIR "${CHOIR_LLVM_BUILD_DIR}/lib/cmake")
 set(CHOIR_LLVM_BUILD_DIR "${PROJECT_SOURCE_DIR}/../llvm-project/build_win32/Debug/")
 set(CHOIR_LLVM_CMAKE_DIR "${CHOIR_LLVM_BUILD_DIR}/../lib/cmake")
 set(CHOIR_LLVM_BIN_DIR "${CHOIR_LLVM_BUILD_DIR}/bin")
@@ -253,7 +251,7 @@ target_link_libraries(options INTERFACE
 )
 
 file(GLOB_RECURSE _sources_driver src/*.cpp)
-file(GLOB_RECURSE _modules_driver lib/*.ixx)
+file(GLOB_RECURSE _modules_driver lib/*.ixx lib/*.cpp)
 
 ## Add the executable.
 add_clang_executable(choir ${_sources_driver})
@@ -270,7 +268,7 @@ else()
 endif()
 
 add_custom_target(choir_exe_copy ALL
-    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:choir>" "${PROJECT_SOURCE_DIR}/${CHOIR_CHOIR_EXE_NAME}"
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:choir>" "${PROJECT_SOURCE_DIR}/out/${CHOIR_CHOIR_EXE_NAME}"
     DEPENDS choir
-    COMMENT "Copy $<TARGET_FILE:choir> executable to ${PROJECT_SOURCE_DIR}/${CHOIR_CHOIR_EXE_NAME}"
+    COMMENT "Copy $<TARGET_FILE:choir> executable to ${PROJECT_SOURCE_DIR}/out/${CHOIR_CHOIR_EXE_NAME}"
 )

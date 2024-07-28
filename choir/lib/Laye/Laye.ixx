@@ -2,6 +2,9 @@ module;
 
 #include <choir/macros.hh>
 
-export module choir.frontend.laye;
-export import :syntax;
+export module choir.laye;
 export import :sema;
+
+export namespace choir::laye {
+
+};

@@ -4,7 +4,7 @@ module;
 #include <llvm/ADT/SmallVector.h>
 #include <memory>
 
-export module choir.frontend.laye:sema;
+export module choir.laye:sema;
 import choir;
 import choir.frontend;
 

@@ -2,4 +2,4 @@ module;
 
 #include <choir/macros.hh>
 
-module choir.frontend.laye;
+module choir.laye;

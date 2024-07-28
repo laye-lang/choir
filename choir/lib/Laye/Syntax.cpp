@@ -4,11 +4,11 @@ module;
 #include <llvm/ADT/SmallVector.h>
 #include <memory>
 
-export module choir.frontend.laye:syntax;
+module choir.laye:syntax;
 import choir;
 import choir.frontend;
 
-export namespace choir::laye {
+namespace choir::laye {
 
 class SyntaxModule {
     CHOIR_IMMOVABLE(SyntaxModule);
@@ -36,6 +36,10 @@ private:
 
 public:
     SyntaxNode(Kind kind) : _kind(kind) {}
+};
+
+class Parser : DiagsProducer<std::nullptr_t> {
+
 };
 
 }; // namespace choir::laye
