@@ -1,7 +1,3 @@
-if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    # message(FATAL_ERROR "This project must be built with Clang (or, on Windows, clang-cl)")
-endif()
-
 ## ============================================================================
 ##  Global CMake Variables.
 ## ============================================================================
@@ -186,9 +182,20 @@ target_link_libraries(options INTERFACE libassert::assert)
 ## ============================================================================
 ##  LLVM.
 ## ============================================================================
-set(CHOIR_LLVM_BUILD_DIR "${PROJECT_SOURCE_DIR}/../llvm-project/build_win32/Debug/")
-set(CHOIR_LLVM_CMAKE_DIR "${CHOIR_LLVM_BUILD_DIR}/../lib/cmake")
-set(CHOIR_LLVM_BIN_DIR "${CHOIR_LLVM_BUILD_DIR}/bin")
+# set(CHOIR_LLVM_REDIST_DIR "${PROJECT_SOURCE_DIR}/../llvm-project/build_win32/Debug/")
+if(NOT DEFINED CHOIR_LLVM_REDIST_DIR)
+    message(FATAL_ERROR "Must provide -DCHOIR_LLVM_REDIST_DIR=<Path to LLVM redistributable binaries>")
+endif()
+
+# set(CHOIR_LLVM_CMAKE_DIR "${CHOIR_LLVM_REDIST_DIR}/../lib/cmake")
+if(NOT DEFINED CHOIR_LLVM_CMAKE_DIR)
+    set(CHOIR_LLVM_CMAKE_DIR "${CHOIR_LLVM_REDIST_DIR}/../lib/cmake/")
+    if(NOT EXISTS "${CHOIR_LLVM_CMAKE_DIR}" OR NOT IS_DIRECTORY "${CHOIR_LLVM_CMAKE_DIR}")
+        message(FATAL_ERROR "Could not find LLVM CMake directory at '${CHOIR_LLVM_CMAKE_DIR}'. Must provide -DCHOIR_LLVM_CMAKE_DIR=<Path to LLVM CMake files>")
+    endif()
+endif()
+
+set(CHOIR_LLVM_BIN_DIR "${CHOIR_LLVM_REDIST_DIR}/bin")
 set(LLVM_DIR "${CHOIR_LLVM_CMAKE_DIR}/llvm")
 set(Clang_DIR "${CHOIR_LLVM_CMAKE_DIR}/clang")
 
