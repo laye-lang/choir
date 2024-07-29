@@ -1,11 +1,7 @@
-if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    message(FATAL_ERROR "This project must be built with Clang (or, on Windows, clang-cl)")
-endif()
-
 ## ============================================================================
 ##  Global CMake Variables.
 ## ============================================================================
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ## ============================================================================
@@ -31,10 +27,10 @@ endif()
 ## ============================================================================
 add_library(options INTERFACE)
 
-add_compile_options(-fdeclspec -fms-extensions -Wno-ctad-maybe-unsupported)
-
 ## Flags for Clang and GCC.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options(-fdeclspec -fms-extensions -Wno-ctad-maybe-unsupported)
+
     target_compile_options(options INTERFACE
         -fno-exceptions
         -fno-rtti
@@ -186,11 +182,20 @@ target_link_libraries(options INTERFACE libassert::assert)
 ## ============================================================================
 ##  LLVM.
 ## ============================================================================
-# set(SOURCE_LLVM_BUILD_DIR "${PROJECT_SOURCE_DIR}/../llvm-project/build_win32_ninja/")
-# set(CHOIR_LLVM_CMAKE_DIR "${CHOIR_LLVM_BUILD_DIR}/lib/cmake")
-set(CHOIR_LLVM_BUILD_DIR "${PROJECT_SOURCE_DIR}/../llvm-project/build_win32/Debug/")
-set(CHOIR_LLVM_CMAKE_DIR "${CHOIR_LLVM_BUILD_DIR}/../lib/cmake")
-set(CHOIR_LLVM_BIN_DIR "${CHOIR_LLVM_BUILD_DIR}/bin")
+# set(CHOIR_LLVM_REDIST_DIR "${PROJECT_SOURCE_DIR}/../llvm-project/build_win32/Debug/")
+if(NOT DEFINED CHOIR_LLVM_REDIST_DIR)
+    message(FATAL_ERROR "Must provide -DCHOIR_LLVM_REDIST_DIR=<Path to LLVM redistributable binaries>")
+endif()
+
+# set(CHOIR_LLVM_CMAKE_DIR "${CHOIR_LLVM_REDIST_DIR}/../lib/cmake")
+if(NOT DEFINED CHOIR_LLVM_CMAKE_DIR)
+    set(CHOIR_LLVM_CMAKE_DIR "${CHOIR_LLVM_REDIST_DIR}/../lib/cmake/")
+    if(NOT EXISTS "${CHOIR_LLVM_CMAKE_DIR}" OR NOT IS_DIRECTORY "${CHOIR_LLVM_CMAKE_DIR}")
+        message(FATAL_ERROR "Could not find LLVM CMake directory at '${CHOIR_LLVM_CMAKE_DIR}'. Must provide -DCHOIR_LLVM_CMAKE_DIR=<Path to LLVM CMake files>")
+    endif()
+endif()
+
+set(CHOIR_LLVM_BIN_DIR "${CHOIR_LLVM_REDIST_DIR}/bin")
 set(LLVM_DIR "${CHOIR_LLVM_CMAKE_DIR}/llvm")
 set(Clang_DIR "${CHOIR_LLVM_CMAKE_DIR}/clang")
 
@@ -252,12 +257,25 @@ target_link_libraries(options INTERFACE
     LLVMX86AsmParser LLVMX86CodeGen LLVMX86Desc LLVMX86Info
 )
 
-file(GLOB _driver_sources src/*.cc)
-file(GLOB_RECURSE _driver_sources_lib lib/*.cc)
+file(GLOB_RECURSE _sources_driver src/*.cpp)
+file(GLOB_RECURSE _modules_driver lib/*.ixx lib/*.cpp)
 
 ## Add the executable.
-add_clang_executable(choir ${_driver_sources} ${_driver_sources_lib})
+add_clang_executable(choir ${_sources_driver})
+target_sources(choir PUBLIC FILE_SET CXX_MODULES FILES ${_modules_driver})
 target_compile_definitions(choir PRIVATE "CHOIR_CLANG_EXE_PATH=\"${CHOIR_CLANG_EXE_PATH}\"")
 
 ## Link everything together.
 target_link_libraries(choir PRIVATE options)
+
+if (NOT WIN32)
+    set(CHOIR_CHOIR_EXE_NAME "choir")
+else()
+    set(CHOIR_CHOIR_EXE_NAME "choir.exe")
+endif()
+
+add_custom_target(choir_exe_copy ALL
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:choir>" "${PROJECT_SOURCE_DIR}/out/${CHOIR_CHOIR_EXE_NAME}"
+    DEPENDS choir
+    COMMENT "Copy $<TARGET_FILE:choir> executable to ${PROJECT_SOURCE_DIR}/out/${CHOIR_CHOIR_EXE_NAME}"
+)

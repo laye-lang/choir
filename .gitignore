@@ -1,3 +1,7 @@
+/choir
+/choir.exe
+!/choir/
+
 #==============================================================================#
 # File extensions to be ignored anywhere in the tree.
 #==============================================================================#
@@ -14,6 +18,8 @@
 .sw?
 #OS X specific files.
 .DS_store
+# Visual Studio PDB
+*.pdb
 
 # Ignore the user specified CMake presets in subproject directories.
 /*/CMakeUserPresets.json

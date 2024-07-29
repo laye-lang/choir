@@ -22,6 +22,7 @@ int choir_main(int argc, char** argv) {
     auto file_contents_buffer = std::move(file_contents_or_error.get());
 
     auto ast_unit = clang::tooling::buildASTFromCodeWithArgs(file_contents_buffer->getBuffer(), {}, "input.c");
+    //ast_unit.get()->getPreprocessor().getMacroDefinition().;
     auto& ast_context = ast_unit->getASTContext();
     auto tu_decl = ast_context.getTranslationUnitDecl();
     for (auto decl : tu_decl->decls()) {
