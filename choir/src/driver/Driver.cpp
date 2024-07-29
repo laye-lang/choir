@@ -94,19 +94,20 @@ void BuildLayeDriverJob::add_source_file(File::Path file_path) {
 }
 
 void BuildLayeDriverJob::run() {
-    laye::SyntaxUnit syntax{context()};
+    laye::SyntaxGraph syntax{context()};
     for (auto& file_path : source_files) {
-        syntax.parse(file_path);
+        syntax.add_file(file_path);
     }
 }
 
 struct Driver::Impl : DiagsProducer<Driver::Impl> {
+    std::mutex mutex{};
+
     Context context{};
     DriverOptions options;
 
     BuildLayeDriverJob* build_laye_job{};
     std::vector<DriverJob*> jobs{};
-    std::mutex mutex{};
 
     bool invoked = false;
 

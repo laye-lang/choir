@@ -8,6 +8,8 @@ module;
 #include <expected>
 #include <filesystem>
 #include <format>
+#include <llvm/ADT/APInt.h>
+#include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/IntrusiveRefCntPtr.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/Alignment.h>
@@ -23,6 +25,23 @@ module;
 export module choir;
 
 export namespace choir {
+using u8 = std::uint8_t;
+using u16 = std::uint16_t;
+using u32 = std::uint32_t;
+using u64 = std::uint64_t;
+using usz = std::size_t;
+using uptr = std::uintptr_t;
+
+using i8 = std::int8_t;
+using i16 = std::int16_t;
+using i32 = std::int32_t;
+using i64 = std::int64_t;
+using isz = std::make_signed_t<std::size_t>;
+using iptr = std::intptr_t;
+
+using f32 = float;
+using f64 = double;
+
 class Context;
 class Diagnostic;
 class DiagnosticsEngine;
@@ -37,6 +56,10 @@ class Size;
 class String;
 enum struct Color;
 struct Colors;
+class StoredInteger;
+class IntegerStorage;
+class StoredFloat;
+class FloatStorage;
 }; // namespace choir
 
 namespace choir {
@@ -612,6 +635,46 @@ public:
     [[nodiscard]] static auto Save(llvm::UniqueStringSaver& ss, StringRef s) {
         return CreateUnsafe(ss.save(s));
     }
+};
+
+class StoredInteger;
+class IntegerStorage {
+    friend StoredInteger;
+    llvm::SmallVector<llvm::APInt> saved;
+public:
+    auto store_int(llvm::APInt integer) -> StoredInteger;
+};
+
+class StoredFloat;
+class FloatStorage {
+    friend StoredFloat;
+    llvm::SmallVector<llvm::APFloat> saved;
+public:
+    auto store_float(llvm::APFloat floating_point) -> StoredFloat;
+};
+
+/// Class to store APInts in AST nodes.
+class StoredInteger {
+    friend IntegerStorage;
+
+    // Stored inline if small, and a pointer to an APInt otherwise.
+    uint64_t data;
+    uint64_t bits;
+
+    StoredInteger() = default;
+
+public:
+    /// Get the value if it is small enough.
+    auto inline_value() const -> std::optional<int64_t>;
+
+    /// Check if the value is stored inline.
+    bool is_inline() const { return bits <= 64; }
+
+    /// Convert this to a string for printing.
+    auto str(const IntegerStorage* storage, bool is_signed) const -> std::string;
+
+    /// Get the value of this integer.
+    auto value(const IntegerStorage& storage) const -> llvm::APInt;
 };
 
 }; // namespace choir
