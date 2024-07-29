@@ -9,6 +9,11 @@ import choir;
 import choir.frontend;
 
 export namespace choir::laye {
+class TranslationUnit;
+class SemaNode;
+};
+
+namespace choir::laye {
 
 class TranslationUnit {
     CHOIR_IMMOVABLE(TranslationUnit);

@@ -33,7 +33,7 @@ struct Context::Impl {
     mutable std::atomic<bool> errored = false;
 
     /// Whether to use coloured output.
-    std::atomic<bool> enable_colours = true;
+    std::atomic<bool> enable_colors = true;
 };
 
 CHOIR_DEFINE_HIDDEN_IMPL(Context);
@@ -50,8 +50,8 @@ auto Context::diags() const -> DiagnosticsEngine& {
     return *impl->diags_engine;
 }
 
-void Context::enable_colours(bool enable) {
-    impl->enable_colours.store(enable, std::memory_order_release);
+void Context::enable_colors(bool enable) {
+    impl->enable_colors.store(enable, std::memory_order_release);
 }
 
 auto Context::file(size_t idx) const -> const File* {
@@ -87,5 +87,5 @@ void Context::set_diags(llvm::IntrusiveRefCntPtr<DiagnosticsEngine> diags) {
 }
 
 bool Context::use_colours() const {
-    return impl->enable_colours.load(std::memory_order_acquire);
+    return impl->enable_colors.load(std::memory_order_acquire);
 }

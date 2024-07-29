@@ -205,7 +205,7 @@ public:
     [[nodiscard]] auto diags() const -> DiagnosticsEngine&;
 
     /// Enable or disable coloured output.
-    void enable_colours(bool enable);
+    void enable_colors(bool enable);
 
     /// Get a file by index. Returns nullptr if the index is out of bounds.
     [[nodiscard]] auto file(size_t idx) const -> const File*;

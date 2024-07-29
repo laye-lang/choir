@@ -17,6 +17,9 @@ using options = clopts< // clang-format off
     multiple<positional<"file", "The file to compile", ref<std::string, "-x">>>,
     // TODO(local): when aliases work, support a long options
     experimental::short_option<"-x", "Override the language", std::string, false, true>,
+    option<"--color", "Enable or disable colored output (default: auto)", values<"auto", "always", "never">>,
+    option<"--error-limit", "Limit how many errors are printed; passing 0 removes the limit", std::int64_t>,
+    flag<"--verify", "Run in verify-diagnostics mode">,
     help<>
 >; // clang-format on
 
@@ -27,9 +30,18 @@ int choir_main(int argc, char** argv, const llvm::ToolContext& tool_context) {
 
     auto opts = ::detail::options::parse(argc, argv);
 
-    ::printf("Hello, choir 2!\n");
+    // Enable colors.
+    std::string color_opt = opts.get_or<"--color">("auto");
+    bool use_color = color_opt == "never"  ? false
+                   : color_opt == "always" ? true
+                                           //: isatty(fileno(stderr)) && isatty(fileno(stdout)); // FIXME: Cross-platform
+                                           : true;
 
-    DriverOptions driver_options{};
+    DriverOptions driver_options{
+        .colors = use_color,
+        .error_limit = uint32_t(opts.get_or<"--error-limit">(10)),
+        .verify = opts.get<"--verify">(),
+    };
     Driver driver{driver_options};
 
     // NOTE(local): the following two lines are written out explicitly for two reasons:

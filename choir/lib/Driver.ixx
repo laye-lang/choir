@@ -15,12 +15,13 @@ enum struct SourceFileKind {
 };
 
 struct DriverOptions {
+    bool colors;
+    uint32_t error_limit;
+    bool verify;
 };
 
 class Driver {
     CHOIR_DECLARE_HIDDEN_IMPL(Driver);
-
-    DriverOptions _options;
 
 public:
     Driver(DriverOptions options);
