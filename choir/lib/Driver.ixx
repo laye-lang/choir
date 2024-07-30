@@ -7,6 +7,13 @@ export module choir.driver;
 
 export namespace choir {
 
+enum struct DriverAction {
+    Compile,
+    Sema,
+    Parse,
+    Lex,
+};
+
 enum struct SourceFileKind {
     Default,
     Laye,
@@ -15,6 +22,7 @@ enum struct SourceFileKind {
 };
 
 struct DriverOptions {
+    DriverAction action;
     bool colors;
     uint32_t error_limit;
     bool verify;

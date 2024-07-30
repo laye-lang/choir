@@ -8,8 +8,6 @@ module;
 #include <expected>
 #include <filesystem>
 #include <format>
-#include <llvm/ADT/APInt.h>
-#include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/IntrusiveRefCntPtr.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/Alignment.h>
@@ -18,9 +16,9 @@ module;
 #include <llvm/Support/StringSaver.h>
 #include <mutex>
 #include <print>
+#include <source_location>
 #include <string>
 #include <string_view>
-#include <source_location>
 
 export module choir;
 
@@ -54,12 +52,10 @@ struct LocInfoShort;
 class File;
 class Size;
 class String;
+template <typename ElementType>
+class DirectedGraph;
 enum struct Color;
 struct Colors;
-class StoredInteger;
-class IntegerStorage;
-class StoredFloat;
-class FloatStorage;
 }; // namespace choir
 
 namespace choir {
@@ -559,7 +555,7 @@ public:
     /// Construct from a string literal.
     template <size_t size>
     consteval String(const char (&arr)[size]) : val{arr} {
-        Assert(arr[size - 1] == '\0', "Strings must be null-terminated!");
+        CHOIR_ASSERT(arr[size - 1] == '\0', "Strings must be null-terminated!");
     }
 
     /// Construct from a string literal.
@@ -637,44 +633,114 @@ public:
     }
 };
 
-class StoredInteger;
-class IntegerStorage {
-    friend StoredInteger;
-    llvm::SmallVector<llvm::APInt> saved;
-public:
-    auto store_int(llvm::APInt integer) -> StoredInteger;
-};
+template <typename ElementType>
+class DirectedGraph {
+    std::vector<ElementType> _nodes{};
+    std::vector<llvm::SmallVector<u32, 16>> _edges{};
 
-class StoredFloat;
-class FloatStorage {
-    friend StoredFloat;
-    llvm::SmallVector<llvm::APFloat> saved;
-public:
-    auto store_float(llvm::APFloat floating_point) -> StoredFloat;
-};
+private:
+    auto add_node_internal(ElementType element) -> u32 {
+        CHOIR_ASSERT(_nodes.size() == _edges.size());
 
-/// Class to store APInts in AST nodes.
-class StoredInteger {
-    friend IntegerStorage;
+        for (u32 i = 0, count = u32(_nodes.size()); i < count; i++) {
+            if (_nodes[i] == element) return i;
+        }
 
-    // Stored inline if small, and a pointer to an APInt otherwise.
-    uint64_t data;
-    uint64_t bits;
+        u32 node_index = u32(_nodes.size());
+        _nodes.push_back(element);
+        _edges.push_back({});
 
-    StoredInteger() = default;
+        return node_index;
+    }
 
 public:
-    /// Get the value if it is small enough.
-    auto inline_value() const -> std::optional<int64_t>;
+    enum struct OrderKind {
+        Ok,
+        Cycle,
+    };
 
-    /// Check if the value is stored inline.
-    bool is_inline() const { return bits <= 64; }
+    struct OrderResult {
+        OrderKind kind;
+        std::vector<ElementType> elements{};
+        ElementType cycle_from{};
+        ElementType cycle_to{};
+    };
 
-    /// Convert this to a string for printing.
-    auto str(const IntegerStorage* storage, bool is_signed) const -> std::string;
+    explicit DirectedGraph() {}
 
-    /// Get the value of this integer.
-    auto value(const IntegerStorage& storage) const -> llvm::APInt;
+private:
+    auto resolve_order(std::vector<ElementType>& resolved, std::vector<ElementType>& seen, ElementType element) const -> OrderResult {
+        auto nodes_it = std::find(_nodes.begin(), _nodes.end(), element);
+        CHOIR_ASSERT(nodes_it != _nodes.end(), "must only resolve nodes which are present in the graph");
+
+        size_t node_index = nodes_it - _nodes.begin();
+
+        if (auto resolved_it = std::find(resolved.begin(), resolved.end(), element); resolved_it != resolved.end()) {
+            return {OrderKind::Ok};
+        }
+
+        seen.push_back(element);
+
+        if (auto edges = _edges[node_index]; not edges.empty()) {
+            for (u32 v : edges) {
+                ElementType dependency = _nodes[v];
+                if (auto resolved_it = std::find(resolved.begin(), resolved.end(), dependency); resolved_it != resolved.end()) {
+                    continue;
+                }
+
+                if (auto seen_it = std::find(seen.begin(), seen.end(), dependency); seen_it != seen.end()) {
+                    return {OrderKind::Cycle, {}, element, dependency};
+                }
+
+                auto dep_result = resolve_order(resolved, seen, dependency);
+                if (dep_result.kind != OrderKind::Ok) {
+                    return dep_result;
+                }
+            }
+        }
+
+        resolved.push_back(element);
+        seen.erase(std::find(seen.begin(), seen.end(), element));
+
+        return {OrderKind::Ok};
+    }
+
+public:
+    auto add_node(ElementType element) -> void {
+        add_node_internal(element);
+    }
+
+    auto add_edge(ElementType from, ElementType to) {
+        u32 from_index = add_node_internal(from);
+        u32 to_index = add_node_internal(to);
+
+        auto& from_edges = _edges[from_index];
+        for (u32 i = 0, count = u32(from_edges.size()); i < count; i++) {
+            if (from_edges[i] == to_index) return;
+        }
+
+        from_edges.push_back(to_index);
+    }
+
+    auto ordered_elements() const -> OrderResult {
+        std::vector<ElementType> ordered_elements{};
+        std::vector<ElementType> seen{};
+
+        ordered_elements.reserve(_nodes.size());
+        seen.reserve(_nodes.size());
+
+        for (ElementType element : _nodes) {
+            auto result = resolve_order(ordered_elements, seen, element);
+            if (result.kind != OrderKind::Ok) {
+                return result;
+            }
+        }
+
+        return {
+            OrderKind::Ok,
+            std::move(ordered_elements),
+        };
+    }
 };
 
 }; // namespace choir

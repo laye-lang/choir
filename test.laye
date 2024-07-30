@@ -1,4 +1,15 @@
-   a
-// this is a comment, it's valid : )
-s  d f
+~ ! % & * ( ) - = + [ ] { } | ; : , < > . / ?
+~!%&*()- =+[]{}|;:,<>./?
+
+/: %: ?? ??= ++ +% +| -- -% -| ** <: << :> >> == != += +%= +|= -= -%= -|= /= /:= *= **= %= %:= <= <=: > :>= &= |= ~= <<= >>= => <- ::
+
+var void noreturn bool int
+// sized types
+true false nil if else for while do switch case default return break continue fallthrough yield unreachable
+defer discard goto xyzzy assert try catch struct variant enum template alias test import export operator
+mut new delete cast is sizeof alignof offsetof typeof not and or xor varargs const foreign inline callconv
+pure discardable
+
 foo
+bar
+baz

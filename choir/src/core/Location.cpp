@@ -9,7 +9,7 @@ using namespace choir;
 bool Location::seekable(const Context& ctx) const {
     auto* f = ctx.file(file_id);
     if (not f) return false;
-    return pos + len <= f->size() and is_valid();
+    return pos + len <= f->size() + 1 and is_valid();
 }
 
 /// Seek to a source location. The location must be valid.
@@ -35,7 +35,7 @@ auto Location::seek(const Context& ctx) const -> std::optional<LocInfo> {
     info.line = 1;
     info.col = 1;
     for (const char* d = data; d < data + pos; d++) {
-        if (*d == '\n') {
+        if (d < end and *d == '\n') {
             info.line++;
             info.col = 1;
         } else {
@@ -58,12 +58,13 @@ auto Location::seek_line_column(const Context& ctx) const -> std::optional<LocIn
 
     // Seek back to the start of the line.
     const char* const data = f->data();
+    const char* const end = data + f->size();
 
     // Determine the line and column number.
     info.line = 1;
     info.col = 1;
     for (const char* d = data; d < data + pos; d++) {
-        if (*d == '\n') {
+        if (d < end and *d == '\n') {
             info.line++;
             info.col = 1;
         } else {

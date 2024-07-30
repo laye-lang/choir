@@ -20,6 +20,10 @@ using options = clopts< // clang-format off
     option<"--color", "Enable or disable colored output (default: auto)", values<"auto", "always", "never">>,
     option<"--error-limit", "Limit how many errors are printed; passing 0 removes the limit", std::int64_t>,
     flag<"--verify", "Run in verify-diagnostics mode">,
+    flag<"--debug-dump", "Dump the results of the lex/parse/sema stages when specified">,
+    flag<"--lex", "Lex tokens only and exit">,
+    flag<"--parse", "Parse only and exit">,
+    flag<"--sema", "Run sema only and exit">,
     help<>
 >; // clang-format on
 
@@ -37,7 +41,14 @@ int choir_main(int argc, char** argv, const llvm::ToolContext& tool_context) {
                                            //: isatty(fileno(stderr)) && isatty(fileno(stdout)); // FIXME: Cross-platform
                                            : true;
 
+    // Figure out what we want to do.
+    DriverAction action = opts.get<"--lex">()   ? DriverAction::Lex
+                        : opts.get<"--parse">() ? DriverAction::Parse
+                        : opts.get<"--sema">()  ? DriverAction::Sema
+                                                : DriverAction::Compile;
+
     DriverOptions driver_options{
+        .action = action,
         .colors = use_color,
         .error_limit = uint32_t(opts.get_or<"--error-limit">(10)),
         .verify = opts.get<"--verify">(),

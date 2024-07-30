@@ -127,6 +127,9 @@ endif()
 if (ENABLE_ASAN)
     target_compile_options(options INTERFACE -fsanitize=address)
     target_link_options(options INTERFACE -fsanitize=address)
+    if (WIN32)
+        add_compile_definitions(_DISABLE_VECTOR_ANNOTATION _DISABLE_STRING_ANNOTATION)
+    endif()
 endif()
 
 ## Debug/Release flags.
