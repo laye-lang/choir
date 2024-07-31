@@ -1,12 +1,7 @@
-module;
-
 #include <choir/macros.hh>
+#include <choir/front/laye.hh>
 #include <filesystem>
 #include <vector>
-
-module choir.laye;
-import choir;
-import choir.frontend;
 
 using namespace choir;
 using namespace choir::laye;

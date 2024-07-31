@@ -23,8 +23,8 @@ public:
 
 private:
     /// The source files that are part of this translation unit.
-    /// This includes all Laye source files passed from the command line,
-    /// as well as those found and included through Laye's import statements.
+    /// This includes all laye source files passed from the command line,
+    /// as well as those found and included through laye's import statements.
     llvm::SmallVector<const File*> _files{};
 
     explicit TranslationUnit();

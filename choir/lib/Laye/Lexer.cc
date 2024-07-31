@@ -1,18 +1,14 @@
-module;
-
 #include <choir/macros.hh>
+#include <choir/front/laye.hh>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringMap.h>
+#include <llvm/Support/ConvertUTF.h>
 #include <llvm/Support/Error.h>
 #include <mutex>
 // #include <llvm/Support/UnicodeCharRanges.h>
-
-module choir.laye;
-import choir;
-import choir.frontend;
 
 using namespace choir;
 using namespace choir::laye;
@@ -139,6 +135,9 @@ struct Lexer::Impl : DiagsProducer<Lexer::Impl> {
 
     void read_token_from_digit_start(SyntaxToken& token, bool transform_keywords = true);
     void read_token_from_identifier_start(SyntaxToken& token, bool transform_keywords = true);
+    void read_string(SyntaxToken& token);
+    void read_rune(SyntaxToken& token);
+    auto read_escape_sequence() -> i32;
 
     enum struct NumericComponentDigit {
         AnyBase10,
@@ -479,8 +478,18 @@ auto Lexer::Impl::read_token() -> SyntaxToken {
             if (IsIdentifierStart(current())) {
                 read_token_from_identifier_start(token, false);
             } else {
-                Error(location(), "Expected an identifier. String-based identifiers are currently not support.");
+                read_string(token);
+                token.kind = SyntaxToken::Kind::Identifier;
+                // TODO(local): probably validate this is a sensible identifier by some rules
             }
+        } break;
+
+        case '"': {
+            read_string(token);
+        } break;
+
+        case '\'': {
+            read_rune(token);
         } break;
 
         case '0':
@@ -501,7 +510,7 @@ auto Lexer::Impl::read_token() -> SyntaxToken {
                 read_token_from_identifier_start(token);
             } else {
                 token.kind = SyntaxToken::Kind::Invalid;
-                ErrorNoLoc("Invalid character in Laye source file");
+                ErrorNoLoc("Invalid character in laye source file");
                 advance();
             }
         } break;
@@ -516,7 +525,7 @@ auto Lexer::Impl::read_token() -> SyntaxToken {
 void Lexer::Impl::read_token_from_identifier_start(SyntaxToken& token, bool transform_keywords) {
     // if we're calling this function, we should have already determined that a number could not have possible started here.
     // this is important because we'd end up with cyclic calls if at least one of those paths didn't make this assumption.
-    // (Laye identifiers can start with decimal digits)
+    // (laye identifiers can start with decimal digits)
 
     string_builder.clear();
     while (not eof() and IsIdentifierContinue(current())) {
@@ -629,7 +638,7 @@ void Lexer::Impl::read_token_from_digit_start(SyntaxToken& token, bool transform
     } else if (current() == '.') {
         continue_read_numeric_token_from_float_point(token, 10);
     }
-    
+
     string_builder.clear();
 }
 
@@ -764,6 +773,186 @@ bool Lexer::Impl::read_float_exponent() {
     }
 
     return is_valid_literal_to_parse;
+}
+
+void Lexer::Impl::read_string(SyntaxToken& token) {
+    CHOIR_ASSERT(current() == '"');
+    advance();
+
+    Location character_location{};
+
+    char utf8[UNI_MAX_UTF8_BYTES_PER_CODE_POINT]{};
+    auto append_codepoint = [&](i32 codepoint_value) {
+        char* buf = utf8;
+        if (llvm::ConvertCodePointToUTF8(codepoint_value, buf)) {
+            for (char* bytes = utf8; bytes < buf; bytes++) {
+                string_builder.push_back(*bytes);
+            }
+        } else {
+            character_location.len = location().pos - character_location.pos;
+            Error(character_location, "Invalid Unicode codepoint in escape sequence.");
+            string_builder.push_back('?');
+        }
+    };
+
+    while (not eof() and current() != '"') {
+        character_location = location();
+        if (current() == '\\') {
+            i32 escaped_character = read_escape_sequence();
+            append_codepoint(escaped_character);
+        } else {
+            string_builder.push_back(current());
+            advance();
+        }
+    }
+
+    CHOIR_TODO("read_string");
+}
+
+void Lexer::Impl::read_rune(SyntaxToken& token) {
+    CHOIR_ASSERT(current() == '\'');
+    CHOIR_TODO("read_rune");
+}
+
+i32 Lexer::Impl::read_escape_sequence() {
+    CHOIR_ASSERT(current() == '\\');
+
+    auto escape_location = location();
+    advance();
+
+    if (eof()) {
+        ErrorNoLoc("End of file in escape sequence.");
+        return 0;
+    }
+
+    auto read_codepoint = [&](int width) -> int {
+        CHOIR_ASSERT(width == 4 or width == 8);
+
+        llvm::SmallString<8> hex_image{};
+        for (int i = 1; i < width; i++) {
+            if (eof() or not IsDigitInRadix(current(), 16)) {
+                if (width == 4) {
+                    Error(escape_location, "Escape sequence '\\u' requires exactly four hexadecimal digits.");
+                } else {
+                    Error(escape_location, "Escape sequence '\\U' requires exactly eight hexadecimal digits.");
+                }
+                break;
+            }
+
+            hex_image.push_back(current());
+            advance();
+        }
+
+        llvm::APInt hex_value{};
+        llvm::StringRef{hex_image}.getAsInteger(16, hex_value);
+
+        return int(hex_value.getZExtValue());
+    };
+
+    switch (current()) {
+        case 'a': {
+            advance();
+            return '\a';
+        }
+
+        case 'b': {
+            advance();
+            return '\b';
+        }
+
+        case 'f': {
+            advance();
+            return '\f';
+        }
+
+        case 'n': {
+            advance();
+            return '\n';
+        }
+
+        case 'r': {
+            advance();
+            return '\r';
+        }
+
+        case 't': {
+            advance();
+            return '\t';
+        }
+
+        case 'v': {
+            advance();
+            return '\v';
+        }
+
+        case '\\': {
+            advance();
+            return '\\';
+        }
+
+        case '\'': {
+            advance();
+            return '\'';
+        }
+
+        case '"': {
+            advance();
+            return '"';
+        }
+
+        case 'u': {
+            advance();
+            return read_codepoint(4);
+        }
+
+        case 'U': {
+            advance();
+            return read_codepoint(8);
+        }
+
+        case 'x': {
+            advance();
+
+            if (eof() or not IsDigitInRadix(current(), 16)) {
+                escape_location.len = location().pos - escape_location.pos;
+                Error(escape_location, "Escape sequence '\\x' requires at least one hexadecimal digit.");
+                return '?';
+            }
+
+            llvm::SmallString<2> hex_image{};
+            for (int i = 1; i < 2 and IsDigitInRadix(current(), 16); i++) {
+                hex_image.push_back(current());
+                advance();
+            }
+
+            llvm::APInt hex_value{};
+            llvm::StringRef{hex_image}.getAsInteger(16, hex_value);
+
+            return char(hex_value.getZExtValue());
+        }
+
+        default: {
+            if (IsDigitInRadix(current(), 8)) {
+                llvm::SmallString<3> octal_image{};
+                while (not eof() and IsDigitInRadix(current(), 8) and octal_image.size() < 3) {
+                    octal_image.push_back(current());
+                    advance();
+                }
+
+                llvm::APInt octal_value{};
+                llvm::StringRef{octal_image}.getAsInteger(8, octal_value);
+
+                return char(octal_value.getZExtValue());
+            } else {
+                char the_character = current();
+                ErrorNoLoc("Invalid escape sequence.");
+                advance();
+                return the_character;
+            }
+        }
+    }
+
+    CHOIR_UNREACHABLE();
 }
 
 // ============================================================================

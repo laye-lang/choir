@@ -1,6 +1,5 @@
-module;
-
 #include <choir/macros.hh>
+#include <choir/core.hh>
 #include <filesystem>
 #include <llvm/ADT/IntrusiveRefCntPtr.h>
 #include <llvm/IR/LLVMContext.h>
@@ -17,14 +16,13 @@ module;
 #    include <unistd.h>
 #endif
 
-module choir;
 using namespace choir;
 
 void StreamingDiagnosticsEngine::report_impl(Diagnostic&& diag) {
     Colors C(ctx.use_colours());
     using enum Color;
 
-    // Give up if we’ve printed too many errors.
+    // Give up if weâ€™ve printed too many errors.
     if (error_limit and printed >= error_limit) {
         if (printed == error_limit) {
             printed++;
@@ -50,10 +48,10 @@ void StreamingDiagnosticsEngine::report_impl(Diagnostic&& diag) {
         return;
     }
 
-    // Reset the colour when we’re done.
+    // Reset the colour when weâ€™re done.
     defer { stream << std::format("{}", C(Reset)); };
 
-    // Make sure that diagnostics don’t clump together, but also don’t insert
+    // Make sure that diagnostics donâ€™t clump together, but also donâ€™t insert
     // an ugly empty line before the first diagnostic.
     if (printed != 0 and diag.level != Diagnostic::Level::Note) stream << "\n";
     printed++;
@@ -116,7 +114,7 @@ void StreamingDiagnosticsEngine::report_impl(Diagnostic&& diag) {
     // Determine the number of digits in the line number.
     const auto digits = utils::NumberWidth(line);
 
-    // LLVM’s columnWidthUTF8() function returns -1 for non-printable characters
+    // LLVMâ€™s columnWidthUTF8() function returns -1 for non-printable characters
     // for some ungodly reason, so guard against that.
     static const auto ColumnWidth = [](llvm::StringRef text) {
         auto wd = llvm::sys::unicode::columnWidthUTF8(text);

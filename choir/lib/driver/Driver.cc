@@ -1,6 +1,7 @@
-module;
-
 #include <choir/macros.hh>
+#include <choir/core.hh>
+#include <choir/driver.hh>
+#include <choir/front/laye.hh>
 #include <filesystem>
 #include <format>
 #include <future>
@@ -11,10 +12,6 @@ module;
 #include <print>
 #include <unordered_set>
 #include <vector>
-
-module choir.driver;
-import choir;
-import choir.laye;
 
 using llvm::StringRef;
 
@@ -51,6 +48,7 @@ class DriverJob : DiagsProducer<DriverJob> {
 
 protected:
     DriverJob(DriverJobKind kind, Context& context, DriverOptions options) : _kind(kind), _context(context), _options(options) {}
+    virtual ~DriverJob() = default;
 
     template <typename... Args>
     void Diag(Diagnostic::Level level, Location loc, std::format_string<Args...> fmt, Args&&... args) {
@@ -76,6 +74,7 @@ class BuildLayeDriverJob : public DriverJob {
 
 public:
     BuildLayeDriverJob(Context& context, DriverOptions options) : DriverJob(DriverJobKind::BuildLaye, context, options) {}
+    ~BuildLayeDriverJob() override = default;
 
     void add_source_file(File::Path file_path);
     void run() override;
@@ -124,6 +123,8 @@ void BuildLayeDriverJob::run() {
                     llvm::SmallVector<char, 16> buf{};
                     token.float_value.toString(buf);
                     std::println("    literal value: {}", StringRef{buf.data(), buf.size()});
+                } else if (token.kind == laye::SyntaxToken::Kind::LiteralString) {
+                    std::println("    literal value: '{}'", token.text);
                 }
 
                 if (not token.leading_trivia.empty() or not token.trailing_trivia.empty()) {
@@ -224,7 +225,7 @@ void Driver::Impl::add_file(File::Path file_path, SourceFileKind file_kind) {
 }
 
 int Driver::Impl::execute_jobs() {
-    CHOIR_ASSERT(not invoked, "Can only call execute_jobs() once ber Driver instance!");
+    CHOIR_ASSERT(not invoked, "Can only call execute_jobs() once ber driver instance!");
     invoked = true;
 
     if (context.diags().has_error()) return 1;

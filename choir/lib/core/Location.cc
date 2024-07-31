@@ -1,9 +1,7 @@
-module;
-
 #include <choir/macros.hh>
+#include <choir/core.hh>
 #include <llvm/ADT/StringRef.h>
 
-module choir;
 using namespace choir;
 
 bool Location::seekable(const Context& ctx) const {

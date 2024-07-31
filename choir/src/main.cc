@@ -1,12 +1,10 @@
 #include <choir/macros.hh>
 #include <clopts.hh>
-#include <cstdio>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringSwitch.h>
 #include <llvm/Support/LLVMDriver.h>
-#include <typeinfo>
 
-import choir.driver;
+#include <choir/driver.hh>
 
 using namespace choir;
 

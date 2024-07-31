@@ -11,6 +11,10 @@ mut new delete cast is sizeof alignof offsetof typeof not and or xor varargs con
 pure discardable
 
 foo
+@"bar baz"
+
+"hello, world!\n" "\"" "'"
+'\t' '\'' '"' '\xFF'
 
 0
 12345

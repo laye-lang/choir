@@ -1,6 +1,7 @@
 #ifndef CHOIR_API_CORE_MACROS_HH
 #define CHOIR_API_CORE_MACROS_HH
 
+#include <choir/macros.hh>
 #include <format>
 #include <libassert/assert.hpp>
 
@@ -44,11 +45,11 @@ private:                             \
 ///     Bar res = Try(foo(), std::format("Failed to do X: {}", $));
 ///
 /// to invoke `foo` and propagate the error up the call stack, if there
-/// is one; this way, we don’t have to actually write any verbose error
+/// is one; this way, we donï¿½t have to actually write any verbose error
 /// handling code.
 ///
 /// (Yes, I know this macro is an abomination, but this is what happens
-/// if you don’t have access to this as a language feature...)
+/// if you donï¿½t have access to this as a language feature...)
 // clang-format off
 #define Try(x, ...) ({                                                       \
     auto _res = x;                                                           \

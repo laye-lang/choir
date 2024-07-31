@@ -1,6 +1,5 @@
-module;
-
 #include <choir/macros.hh>
+#include <choir/core.hh>
 #include <filesystem>
 #include <llvm/ADT/IntrusiveRefCntPtr.h>
 #include <llvm/ADT/StringRef.h>
@@ -8,9 +7,7 @@ module;
 #include <llvm/Support/TargetSelect.h>
 #include <unordered_map>
 #include <mutex>
-#include <thread>
 
-module choir;
 using namespace choir;
 
 struct Context::Impl {
@@ -71,7 +68,7 @@ auto Context::get_file(const File::Path& path) -> const File& {
     static constexpr size_t MaxFiles = std::numeric_limits<uint16_t>::max();
     CHOIR_ASSERT(
         impl->files.size() < MaxFiles,
-        "Sorry, that’s too many files for us! (max is {})",
+        "Sorry, thatï¿½s too many files for us! (max is {})",
         MaxFiles
     );
 

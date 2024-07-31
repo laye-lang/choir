@@ -260,12 +260,12 @@ target_link_libraries(options INTERFACE
     LLVMX86AsmParser LLVMX86CodeGen LLVMX86Desc LLVMX86Info
 )
 
-file(GLOB_RECURSE _sources_driver src/*.cpp)
-file(GLOB_RECURSE _modules_driver lib/*.ixx lib/*.cpp)
+file(GLOB_RECURSE _sources_driver src/*.cc lib/*.cc)
+file(GLOB_RECURSE _headers_driver include/choir/*.hh)
 
 ## Add the executable.
 add_clang_executable(choir ${_sources_driver})
-target_sources(choir PUBLIC FILE_SET CXX_MODULES FILES ${_modules_driver})
+target_sources(choir PUBLIC FILE_SET HEADERS FILES ${_headers_driver})
 target_compile_definitions(choir PRIVATE "CHOIR_CLANG_EXE_PATH=\"${CHOIR_CLANG_EXE_PATH}\"")
 
 ## Link everything together.

@@ -1,6 +1,5 @@
-module;
-
 #include <choir/macros.hh>
+#include <choir/core.hh>
 #include <filesystem>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/Error.h>
@@ -8,7 +7,6 @@ module;
 #include <mutex>
 #include <random>
 
-module choir;
 using namespace choir;
 
 using llvm::StringRef;
@@ -31,7 +29,7 @@ auto File::TempPath(StringRef extension) -> Path {
     auto tid = std::to_string(uint32_t(std::hash<std::thread::id>{}(std::this_thread::get_id())));
 
     // And some random letters too.
-    // Do NOT use `char` for this because it’s signed on some systems (including mine),
+    // Do NOT use `char` for this because itï¿½s signed on some systems (including mine),
     // which completely breaks the modulo operation below... Thanks a lot, C.
     std::array<uint8_t, 8> rand{};
     std::ranges::generate(rand, [&] { return rd() % 26 + 'a'; });
