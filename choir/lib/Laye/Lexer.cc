@@ -806,12 +806,52 @@ void Lexer::Impl::read_string(SyntaxToken& token) {
         }
     }
 
-    CHOIR_TODO("read_string");
+    if (eof()) {
+        ErrorNoLoc("End of file reachedin string literal.");
+        return;
+    }
+    
+    if (current() != '"') {
+        ErrorNoLoc("Expected \" to close string literal.");
+        return;
+    }
+
+    CHOIR_ASSERT(current() == '"');
+    advance();
+
+    token.kind = SyntaxToken::Kind::LiteralString;
+    token.text = String::Save(syntax_module.string_saver, string_builder);
+    string_builder.clear();
 }
 
 void Lexer::Impl::read_rune(SyntaxToken& token) {
     CHOIR_ASSERT(current() == '\'');
-    CHOIR_TODO("read_rune");
+    advance();
+    
+    auto character_location = location();
+    if (current() == '\\') {
+        i32 escaped_character = read_escape_sequence();
+        token.integer_value = llvm::APInt{32, u64(escaped_character), true};
+    } else {
+        token.integer_value = llvm::APInt{32, u64(current()), true};
+        advance();
+    }
+
+
+    if (eof()) {
+        ErrorNoLoc("End of file reachedin rune literal.");
+        return;
+    }
+    
+    if (current() != '\'') {
+        ErrorNoLoc("Expected \' to close rune literal.");
+        return;
+    }
+
+    CHOIR_ASSERT(current() == '\'');
+    advance();
+
+    token.kind = SyntaxToken::Kind::LiteralRune;
 }
 
 i32 Lexer::Impl::read_escape_sequence() {
@@ -920,7 +960,7 @@ i32 Lexer::Impl::read_escape_sequence() {
             }
 
             llvm::SmallString<2> hex_image{};
-            for (int i = 1; i < 2 and IsDigitInRadix(current(), 16); i++) {
+            for (int i = 0; i < 2 and IsDigitInRadix(current(), 16); i++) {
                 hex_image.push_back(current());
                 advance();
             }

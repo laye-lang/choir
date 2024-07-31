@@ -123,8 +123,13 @@ void BuildLayeDriverJob::run() {
                     llvm::SmallVector<char, 16> buf{};
                     token.float_value.toString(buf);
                     std::println("    literal value: {}", StringRef{buf.data(), buf.size()});
-                } else if (token.kind == laye::SyntaxToken::Kind::LiteralString) {
-                    std::println("    literal value: '{}'", token.text);
+                } else if (token.kind == laye::SyntaxToken::Kind::LiteralRune) {
+                    i32 codepoint = i32(token.integer_value.getSExtValue());
+                    if (codepoint < 256) {
+                        std::println("    literal value: '{}'", char(codepoint));
+                    } else {
+                        std::println("    literal value: '\\U{:X}'", codepoint);
+                    }
                 }
 
                 if (not token.leading_trivia.empty() or not token.trailing_trivia.empty()) {
