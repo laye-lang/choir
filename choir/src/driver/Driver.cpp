@@ -116,6 +116,16 @@ void BuildLayeDriverJob::run() {
 
                 std::println("[{}] '{}' ({})", laye::SyntaxToken::KindToString(token.kind), token.text, token.spelling(context()));
 
+                if (token.kind == laye::SyntaxToken::Kind::LiteralInteger) {
+                    llvm::SmallVector<char, 16> buf{};
+                    token.integer_value.toStringUnsigned(buf);
+                    std::println("    literal value: {}", StringRef{buf.data(), buf.size()});
+                } else if (token.kind == laye::SyntaxToken::Kind::LiteralFloat) {
+                    llvm::SmallVector<char, 16> buf{};
+                    token.float_value.toString(buf);
+                    std::println("    literal value: {}", StringRef{buf.data(), buf.size()});
+                }
+
                 if (not token.leading_trivia.empty() or not token.trailing_trivia.empty()) {
                     CHOIR_TODO("print token trivia");
                 }

@@ -11,8 +11,6 @@ mut new delete cast is sizeof alignof offsetof typeof not and or xor varargs con
 pure discardable
 
 foo
-bar
-baz
 
 0
 12345
@@ -27,6 +25,7 @@ _1 _2 _3
 36#0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ
 36#1Z
 
-1.23 123.456 1.2345^2 1.2345^-2
+1.23 123.456 1.2345e2 1.2345e-2
 
 16#DEAD.BEEF
+16#DEAD.BEEFp2

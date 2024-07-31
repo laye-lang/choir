@@ -1,11 +1,12 @@
 module;
 
 #include <choir/macros.hh>
-#include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APFloat.h>
+#include <llvm/ADT/APInt.h>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringMap.h>
+#include <llvm/Support/Error.h>
 #include <mutex>
 // #include <llvm/Support/UnicodeCharRanges.h>
 
@@ -119,7 +120,7 @@ struct Lexer::Impl : DiagsProducer<Lexer::Impl> {
     auto eof() const -> bool { return current_ptr >= end_ptr; }
 
     auto advance() -> void { current_ptr++; }
-    auto current() const { return eof() ? 0 : *current_ptr; }
+    auto current() const -> char { return eof() ? 0 : *current_ptr; }
     auto peek() const -> char {
         if (current_ptr + 1 >= end_ptr) return 0;
         return *(current_ptr + 1);
@@ -132,7 +133,23 @@ struct Lexer::Impl : DiagsProducer<Lexer::Impl> {
     auto consume_trivia(llvm::SmallVectorImpl<SyntaxTrivia>& trivia, bool is_trailing) -> void;
     auto read_token() -> SyntaxToken;
 
-    void read_identifier_token(SyntaxToken& token, bool transform_keywords = true);
+    void update_token_location(SyntaxToken& token) {
+        token.location.len = location().pos - token.location.pos;
+    }
+
+    void read_token_from_digit_start(SyntaxToken& token, bool transform_keywords = true);
+    void read_token_from_identifier_start(SyntaxToken& token, bool transform_keywords = true);
+
+    enum struct NumericComponentDigit {
+        AnyBase10,
+        AnyBase16,
+        AnyBase36,
+    };
+
+    bool read_numeric_component_into_builder(i32 radix, NumericComponentDigit digit_mode = NumericComponentDigit::AnyBase10);
+    void continue_read_numeric_token_from_radix(SyntaxToken& token, i32 radix);
+    void continue_read_numeric_token_from_float_point(SyntaxToken& token, i32 radix);
+    bool read_float_exponent();
 };
 
 auto Lexer::Impl::consume_trivia(llvm::SmallVectorImpl<SyntaxTrivia>& trivia, bool is_trailing) -> void {
@@ -460,15 +477,28 @@ auto Lexer::Impl::read_token() -> SyntaxToken {
         case '@': {
             advance();
             if (IsIdentifierStart(current())) {
-                read_identifier_token(token, false);
+                read_token_from_identifier_start(token, false);
             } else {
                 Error(location(), "Expected an identifier. String-based identifiers are currently not support.");
             }
         } break;
 
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9': {
+            read_token_from_digit_start(token);
+        } break;
+
         default: {
             if (IsIdentifierStart(current())) {
-                read_identifier_token(token);
+                read_token_from_identifier_start(token);
             } else {
                 token.kind = SyntaxToken::Kind::Invalid;
                 ErrorNoLoc("Invalid character in Laye source file");
@@ -477,14 +507,16 @@ auto Lexer::Impl::read_token() -> SyntaxToken {
         } break;
     }
 
-    token.location.len = location().pos - token.location.pos;
+    update_token_location(token);
     consume_trivia(token.trailing_trivia, true);
 
     return token;
 }
 
-void Lexer::Impl::read_identifier_token(SyntaxToken& token, bool transform_keywords) {
-    auto start_location = token.location;
+void Lexer::Impl::read_token_from_identifier_start(SyntaxToken& token, bool transform_keywords) {
+    // if we're calling this function, we should have already determined that a number could not have possible started here.
+    // this is important because we'd end up with cyclic calls if at least one of those paths didn't make this assumption.
+    // (Laye identifiers can start with decimal digits)
 
     string_builder.clear();
     while (not eof() and IsIdentifierContinue(current())) {
@@ -494,7 +526,7 @@ void Lexer::Impl::read_identifier_token(SyntaxToken& token, bool transform_keywo
 
     token.text = String::Save(syntax_module.string_saver, string_builder);
     token.kind = SyntaxToken::Kind::Identifier;
-    //token.location.len = location().pos - token.location.pos;
+    // token.location.len = location().pos - token.location.pos;
 
     if (transform_keywords) {
         auto kind = keyword_kinds.find(string_builder);
@@ -504,8 +536,234 @@ void Lexer::Impl::read_identifier_token(SyntaxToken& token, bool transform_keywo
     }
 
     string_builder.clear();
+}
 
-    token.text.value().getAsInteger(10, token.integer_value);
+bool Lexer::Impl::read_numeric_component_into_builder(i32 radix, NumericComponentDigit digit_mode) {
+    auto is_valid_digit = [radix, digit_mode](char c, bool is_strict) -> bool {
+        if (digit_mode == NumericComponentDigit::AnyBase10) {
+            return IsDecimalDigit(c);
+        } else if (digit_mode == NumericComponentDigit::AnyBase16) {
+            return IsDigitInRadix(c, 16);
+        } else {
+            return IsDigitInRadix(c, is_strict ? radix : 36);
+        }
+    };
+
+    bool is_valid_literal_to_parse = true;
+
+    while (not eof() and (is_valid_digit(current(), false) or current() == '_')) {
+        if (current() == '_') {
+            auto underscore_location = location();
+            underscore_location.len--;
+
+            while (current() == '_') {
+                underscore_location.len++;
+                advance();
+            }
+
+            if (eof() or not is_valid_digit(current(), false)) {
+                Error(underscore_location, "Numeric literal component cannot end with '_'.");
+                while (not eof() and IsIdentifierContinue(current())) {
+                    advance();
+                }
+
+                break;
+            }
+
+            if (string_builder.empty()) {
+                Error(underscore_location, "Numeric literal component cannot start with '_'.");
+            }
+        }
+
+        if (not is_valid_digit(current(), true)) {
+            is_valid_literal_to_parse = false;
+            ErrorNoLoc("'{}' is not a valid digit in base {}.", current(), radix);
+        }
+
+        if (is_valid_literal_to_parse) {
+            string_builder.push_back(current());
+        }
+
+        advance();
+    }
+
+    return is_valid_literal_to_parse;
+}
+
+void Lexer::Impl::read_token_from_digit_start(SyntaxToken& token, bool transform_keywords) {
+    const char* token_start_ptr = current_ptr;
+
+    string_builder.clear();
+    bool is_valid_literal_to_parse = read_numeric_component_into_builder(10, NumericComponentDigit::AnyBase10);
+
+    if (not is_valid_literal_to_parse or (not eof() and IsIdentifierContinue(current()))) {
+        string_builder.clear();
+        current_ptr = token_start_ptr;
+        read_token_from_identifier_start(token, transform_keywords);
+        return;
+    }
+
+    token.kind = SyntaxToken::Kind::LiteralInteger;
+    token.integer_value = llvm::APInt{};
+    llvm::StringRef{string_builder}.getAsInteger(10, token.integer_value);
+    update_token_location(token);
+
+    if (current() == '#') {
+        i32 radix;
+        if (token.integer_value.ult(2)) {
+            // it can't possibly be a valid radix, since 36 is 6 bits
+            Error(token.location, "Numeric literal base must be in the range [2, 36].");
+            radix = 2;
+        } else if (token.integer_value.ugt(36)) {
+            // it can't possibly be a valid radix, since 36 is 6 bits
+            Error(token.location, "Numeric literal base must be in the range [2, 36].");
+            radix = 36;
+        } else {
+            radix = i32(token.integer_value.getZExtValue());
+        }
+
+        CHOIR_ASSERT(radix >= 2 and radix <= 36);
+        token.integer_value = llvm::APInt{};
+        string_builder.clear();
+        continue_read_numeric_token_from_radix(token, radix);
+    } else if (current() == '.') {
+        continue_read_numeric_token_from_float_point(token, 10);
+    }
+    
+    string_builder.clear();
+}
+
+void Lexer::Impl::continue_read_numeric_token_from_radix(SyntaxToken& token, i32 radix) {
+    CHOIR_ASSERT(current() == '#');
+    advance();
+
+    string_builder.clear();
+    bool is_valid_literal_to_parse = read_numeric_component_into_builder(radix, NumericComponentDigit::AnyBase36);
+
+    if (current() == '.') {
+        continue_read_numeric_token_from_float_point(token, radix);
+        return;
+    }
+
+    token.kind = SyntaxToken::Kind::LiteralInteger;
+    token.integer_value = llvm::APInt{};
+    if (is_valid_literal_to_parse) {
+        llvm::StringRef{string_builder}.getAsInteger(radix, token.integer_value);
+        string_builder.clear();
+    }
+}
+
+void Lexer::Impl::continue_read_numeric_token_from_float_point(SyntaxToken& token, i32 radix) {
+    CHOIR_ASSERT(current() == '.');
+    advance();
+
+    // if we're called with an empty string builder, then the first half of the token is considered invalid for parsing.
+    // we can continue lexing the token, but we won't attempt to parse it.
+    bool is_valid_literal_to_parse = not string_builder.empty();
+    if (radix != 10 and radix != 16) {
+        is_valid_literal_to_parse = false;
+        Error(token.location, "Only base 10 float literals are supported.");
+
+        if (radix <= 10) {
+            radix = 10;
+        } else {
+            radix = 16;
+        }
+    }
+
+    if (is_valid_literal_to_parse) {
+        string_builder.push_back('.');
+    }
+
+    CHOIR_ASSERT(radix == 10 or radix == 16);
+    is_valid_literal_to_parse &= read_numeric_component_into_builder(radix, radix == 16 ? NumericComponentDigit::AnyBase16 : NumericComponentDigit::AnyBase10);
+
+    if (radix == 10 and (current() == 'e' or current() == 'E')) {
+        string_builder.push_back('e');
+        advance();
+        read_float_exponent();
+    } else if (radix == 16) {
+        if (current() != 'p' and current() != 'P') {
+            ErrorNoLoc("Hexadecimal float literals require an exponent delimited by 'p'.");
+            string_builder.push_back('p');
+            string_builder.push_back('0');
+        } else {
+            advance();
+            string_builder.push_back('p');
+            read_float_exponent();
+        }
+    }
+
+    token.kind = SyntaxToken::Kind::LiteralFloat;
+    token.float_value = llvm::APFloat{0.0f};
+    if (is_valid_literal_to_parse) {
+        if (radix == 10) {
+            auto result = token.float_value.convertFromString(llvm::StringRef{string_builder}, llvm::RoundingMode::NearestTiesToEven);
+            if (auto e = result.takeError()) {
+                update_token_location(token);
+                ICE(token.location, "Failed to parse float");
+            }
+        } else if (radix == 16) {
+            string_builder.insert(string_builder.begin(), {'0', 'x'});
+            auto result = token.float_value.convertFromString(llvm::StringRef{string_builder}, llvm::RoundingMode::NearestTiesToEven);
+            if (auto e = result.takeError()) {
+                update_token_location(token);
+                ICE(token.location, "Failed to parse float");
+            }
+        } else {
+            CHOIR_UNREACHABLE();
+        }
+    }
+
+    string_builder.clear();
+}
+
+bool Lexer::Impl::read_float_exponent() {
+    bool is_valid_literal_to_parse = true;
+
+    if (current() == '-') {
+        advance();
+        string_builder.push_back('-');
+    }
+
+    if (current() == '_') {
+        auto underscore_location = location();
+        underscore_location.len--;
+
+        while (current() == '_') {
+            underscore_location.len++;
+            advance();
+        }
+
+        Error(underscore_location, "Float exponent cannot contain '_'.");
+    }
+
+    while (not eof() and (IsDigitInRadix(current(), 36) or current() == '_')) {
+        if (current() == '_') {
+            auto underscore_location = location();
+            underscore_location.len--;
+
+            while (current() == '_') {
+                underscore_location.len++;
+                advance();
+            }
+
+            Error(underscore_location, "Numeric literal component cannot contain '_'.");
+        }
+
+        if (not IsDecimalDigit(current())) {
+            is_valid_literal_to_parse = false;
+            ErrorNoLoc("'{}' is not a valid decimal digit.", current());
+        }
+
+        if (is_valid_literal_to_parse) {
+            string_builder.push_back(current());
+        }
+
+        advance();
+    }
+
+    return is_valid_literal_to_parse;
 }
 
 // ============================================================================
@@ -557,13 +815,21 @@ bool choir::laye::IsDecimalDigit(char c) {
 }
 
 int choir::laye::DigitValue(char c) {
+    CHOIR_ASSERT(c >= '0' and c <= '9');
     return c - '0';
 }
 
 bool choir::laye::IsDigitInRadix(char c, int radix) {
-    CHOIR_TODO("Non-decimal digits");
+    if (radix <= 10) {
+        return c >= '0' and c <= '0' + (radix - 1);
+    }
+
+    return (c >= '0' and c <= '9') or (c >= 'a' and c <= 'a' + (radix - 11)) or (c >= 'A' and c <= 'A' + (radix - 11));
 }
 
 int choir::laye::DigitValueInRadix(char c, int radix) {
-    CHOIR_TODO("Non-decimal digits");
+    if (c <= '9') return DigitValue(c);
+    CHOIR_ASSERT((c >= 'a' and c <= 'a' + (radix - 11)) or (c >= 'A' and c <= 'A' + (radix - 11)));
+    if (c >= 'a' and c <= 'z') return 11 + (c - 'a');
+    return 11 + (c - 'A');
 }
