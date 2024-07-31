@@ -1,6 +1,8 @@
 module;
 
 #include <choir/macros.hh>
+#include <llvm/ADT/APInt.h>
+#include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringMap.h>
@@ -311,19 +313,21 @@ auto Lexer::Impl::read_token() -> SyntaxToken {
 
         case '*': {
             advance();
-            if (current() == '*') {
-                advance();
-                if (current() == '=') {
-                    advance();
-                    token.kind = SyntaxToken::Kind::StarStarEqual;
-                } else {
-                    token.kind = SyntaxToken::Kind::StarStar;
-                }
-            } else if (current() == '=') {
+            if (current() == '=') {
                 advance();
                 token.kind = SyntaxToken::Kind::StarEqual;
             } else {
                 token.kind = SyntaxToken::Kind::Star;
+            }
+        } break;
+
+        case '^': {
+            advance();
+            if (current() == '=') {
+                advance();
+                token.kind = SyntaxToken::Kind::CaretEqual;
+            } else {
+                token.kind = SyntaxToken::Kind::Caret;
             }
         } break;
 
@@ -500,6 +504,8 @@ void Lexer::Impl::read_identifier_token(SyntaxToken& token, bool transform_keywo
     }
 
     string_builder.clear();
+
+    token.text.value().getAsInteger(10, token.integer_value);
 }
 
 // ============================================================================

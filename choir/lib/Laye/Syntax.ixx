@@ -141,7 +141,7 @@ struct SyntaxToken {
         MinusMinus,
         MinusPercent,
         MinusPipe,
-        StarStar,
+        Caret,
         LessColon,
         LessLess,
         ColonGreater,
@@ -157,7 +157,7 @@ struct SyntaxToken {
         SlashEqual,
         SlashColonEqual,
         StarEqual,
-        StarStarEqual,
+        CaretEqual,
         PercentEqual,
         PercentColonEqual,
         LessEqual,
@@ -305,7 +305,7 @@ struct SyntaxToken {
             case Kind::MinusMinus: return "MinusMinus";
             case Kind::MinusPercent: return "MinusPercent";
             case Kind::MinusPipe: return "MinusPipe";
-            case Kind::StarStar: return "StarStar";
+            case Kind::Caret: return "Caret";
             case Kind::LessColon: return "LessColon";
             case Kind::LessLess: return "LessLess";
             case Kind::ColonGreater: return "ColonGreater";
@@ -321,7 +321,7 @@ struct SyntaxToken {
             case Kind::SlashEqual: return "SlashEqual";
             case Kind::SlashColonEqual: return "SlashColonEqual";
             case Kind::StarEqual: return "StarEqual";
-            case Kind::StarStarEqual: return "StarStarEqual";
+            case Kind::CaretEqual: return "CaretEqual";
             case Kind::PercentEqual: return "PercentEqual";
             case Kind::PercentColonEqual: return "PercentColonEqual";
             case Kind::LessEqual: return "LessEqual";
