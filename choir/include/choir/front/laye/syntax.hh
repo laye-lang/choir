@@ -1,8 +1,9 @@
 #ifndef CHOIR_FRONT_LAYE_SYNTAX_H
 #define CHOIR_FRONT_LAYE_SYNTAX_H
 
-#include <choir/macros.hh>
 #include <choir/core.hh>
+#include <choir/core/result.hh>
+#include <choir/macros.hh>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/DirectedGraph.h>
@@ -12,6 +13,7 @@
 #include <llvm/Support/StringSaver.h>
 #include <memory>
 #include <span>
+#include <variant>
 #include <vector>
 
 namespace choir::laye {
@@ -23,6 +25,8 @@ struct SyntaxToken;
 class Lexer;
 class Parser;
 class SyntaxGraph;
+
+using SyntaxTokenOrNodePointer = llvm::PointerUnion<const SyntaxToken*, const SyntaxNode*>;
 
 bool IsWhiteSpace(char c);
 bool IsIdentifierStart(char c);
@@ -219,156 +223,27 @@ struct SyntaxToken {
 
     auto spelling(const Context& context) const -> llvm::StringRef { return location.text(context); }
 
-    static auto KindToString(Kind kind) -> String {
-        switch (kind) {
-            default: return "Unknown??";
-            case Kind::Invalid: return "Invalid";
-            case Kind::EndOfFile: return "EndOfFile";
-            case Kind::Tilde: return "Tilde";
-            case Kind::Bang: return "Bang";
-            case Kind::Percent: return "Percent";
-            case Kind::Ampersand: return "Ampersand";
-            case Kind::Star: return "Star";
-            case Kind::OpenParen: return "OpenParen";
-            case Kind::CloseParen: return "CloseParen";
-            case Kind::Minus: return "Minus";
-            case Kind::Equal: return "Equal";
-            case Kind::Plus: return "Plus";
-            case Kind::OpenBracket: return "OpenBracket";
-            case Kind::CloseBracket: return "CloseBracket";
-            case Kind::OpenBrace: return "OpenBrace";
-            case Kind::CloseBrace: return "CloseBrace";
-            case Kind::Pipe: return "Pipe";
-            case Kind::SemiColon: return "SemiColon";
-            case Kind::Colon: return "Colon";
-            case Kind::Comma: return "Comma";
-            case Kind::Less: return "Less";
-            case Kind::Greater: return "Greater";
-            case Kind::Dot: return "Dot";
-            case Kind::Slash: return "Slash";
-            case Kind::Question: return "Question";
-            case Kind::Identifier: return "Identifier";
-            case Kind::Global: return "Global";
-            case Kind::LiteralInteger: return "LiteralInteger";
-            case Kind::LiteralFloat: return "LiteralFloat";
-            case Kind::LiteralString: return "LiteralString";
-            case Kind::LiteralRune: return "LiteralRune";
-            case Kind::SlashColon: return "SlashColon";
-            case Kind::PercentColon: return "PercentColon";
-            case Kind::QuestionQuestion: return "QuestionQuestion";
-            case Kind::QuestionQuestionEqual: return "QuestionQuestionEqual";
-            case Kind::PlusPlus: return "PlusPlus";
-            case Kind::PlusPercent: return "PlusPercent";
-            case Kind::PlusPipe: return "PlusPipe";
-            case Kind::MinusMinus: return "MinusMinus";
-            case Kind::MinusPercent: return "MinusPercent";
-            case Kind::MinusPipe: return "MinusPipe";
-            case Kind::Caret: return "Caret";
-            case Kind::LessColon: return "LessColon";
-            case Kind::LessLess: return "LessLess";
-            case Kind::ColonGreater: return "ColonGreater";
-            case Kind::GreaterGreater: return "GreaterGreater";
-            case Kind::EqualEqual: return "EqualEqual";
-            case Kind::BangEqual: return "BangEqual";
-            case Kind::PlusEqual: return "PlusEqual";
-            case Kind::PlusPercentEqual: return "PlusPercentEqual";
-            case Kind::PlusPipeEqual: return "PlusPipeEqual";
-            case Kind::MinusEqual: return "MinusEqual";
-            case Kind::MinusPercentEqual: return "MinusPercentEqual";
-            case Kind::MinusPipeEqual: return "MinusPipeEqual";
-            case Kind::SlashEqual: return "SlashEqual";
-            case Kind::SlashColonEqual: return "SlashColonEqual";
-            case Kind::StarEqual: return "StarEqual";
-            case Kind::CaretEqual: return "CaretEqual";
-            case Kind::PercentEqual: return "PercentEqual";
-            case Kind::PercentColonEqual: return "PercentColonEqual";
-            case Kind::LessEqual: return "LessEqual";
-            case Kind::LessEqualColon: return "LessEqualColon";
-            case Kind::GreaterEqual: return "GreaterEqual";
-            case Kind::ColonGreaterEqual: return "ColonGreaterEqual";
-            case Kind::AmpersandEqual: return "AmpersandEqual";
-            case Kind::PipeEqual: return "PipeEqual";
-            case Kind::TildeEqual: return "TildeEqual";
-            case Kind::LessLessEqual: return "LessLessEqual";
-            case Kind::GreaterGreaterEqual: return "GreaterGreaterEqual";
-            case Kind::EqualGreater: return "EqualGreater";
-            case Kind::LessMinus: return "LessMinus";
-            case Kind::ColonColon: return "ColonColon";
-            case Kind::Strict: return "Strict";
-            case Kind::From: return "From";
-            case Kind::As: return "As";
-            case Kind::Var: return "Var";
-            case Kind::Void: return "Void";
-            case Kind::NoReturn: return "NoReturn";
-            case Kind::Bool: return "Bool";
-            case Kind::BoolSized: return "BoolSized";
-            case Kind::Int: return "Int";
-            case Kind::IntSized: return "IntSized";
-            case Kind::FloatSized: return "FloatSized";
-            case Kind::True: return "True";
-            case Kind::False: return "False";
-            case Kind::Nil: return "Nil";
-            case Kind::If: return "If";
-            case Kind::Else: return "Else";
-            case Kind::For: return "For";
-            case Kind::While: return "While";
-            case Kind::Do: return "Do";
-            case Kind::Switch: return "Switch";
-            case Kind::Case: return "Case";
-            case Kind::Default: return "Default";
-            case Kind::Return: return "Return";
-            case Kind::Break: return "Break";
-            case Kind::Continue: return "Continue";
-            case Kind::Fallthrough: return "Fallthrough";
-            case Kind::Yield: return "Yield";
-            case Kind::Unreachable: return "Unreachable";
-            case Kind::Defer: return "Defer";
-            case Kind::Discard: return "Discard";
-            case Kind::Goto: return "Goto";
-            case Kind::Xyzzy: return "Xyzzy";
-            case Kind::Assert: return "Assert";
-            case Kind::Try: return "Try";
-            case Kind::Catch: return "Catch";
-            case Kind::Struct: return "Struct";
-            case Kind::Variant: return "Variant";
-            case Kind::Enum: return "Enum";
-            case Kind::Template: return "Template";
-            case Kind::Alias: return "Alias";
-            case Kind::Test: return "Test";
-            case Kind::Import: return "Import";
-            case Kind::Export: return "Export";
-            case Kind::Operator: return "Operator";
-            case Kind::Mut: return "Mut";
-            case Kind::New: return "New";
-            case Kind::Delete: return "Delete";
-            case Kind::Cast: return "Cast";
-            case Kind::Is: return "Is";
-            case Kind::Sizeof: return "Sizeof";
-            case Kind::Alignof: return "Alignof";
-            case Kind::Offsetof: return "Offsetof";
-            case Kind::Not: return "Not";
-            case Kind::And: return "And";
-            case Kind::Or: return "Or";
-            case Kind::Xor: return "Xor";
-            case Kind::Varargs: return "Varargs";
-            case Kind::Const: return "Const";
-            case Kind::Foreign: return "Foreign";
-            case Kind::Inline: return "Inline";
-            case Kind::Callconv: return "Callconv";
-            case Kind::Pure: return "Pure";
-            case Kind::Discardable: return "Discardable";
-        }
-    }
+    static auto KindToString(Kind kind) -> String;
 };
 
 class SyntaxModule {
     CHOIR_IMMOVABLE(SyntaxModule);
 
     friend Parser;
+    friend SyntaxNode;
+
     const File& _source_file;
 
     /// Vector of all tokens in this module.
     std::vector<SyntaxToken> _tokens{};
+
+    /// All syntax nodes owned by this module.
+    std::vector<SyntaxNode*> _nodes{};
+
+    /// All declarations at the top-level of this syntax module.
+    std::vector<SyntaxNode*> _top_level_nodes{};
+
+    SyntaxToken* _invalid_token = new SyntaxToken{SyntaxToken::Kind::Invalid, {}};
 
 public:
     using Ptr = std::unique_ptr<SyntaxModule>;
@@ -378,12 +253,21 @@ public:
     llvm::UniqueStringSaver string_saver{*string_alloc};
 
     explicit SyntaxModule(const File& source_file) : _source_file(source_file) {}
+    ~SyntaxModule();
 
     auto context() const -> Context& { return _source_file.context(); }
     auto source_file() const -> const File& { return _source_file; }
 
+    auto invalid_token() { return _invalid_token; }
+
     auto tokens() -> std::vector<SyntaxToken>& { return _tokens; }
     auto tokens() const -> std::span<const SyntaxToken> { return _tokens; }
+
+    auto top_level_declarations() const -> std::span<const SyntaxNode* const> { return _top_level_nodes; }
+    auto append_top_level_declaration(SyntaxNode* top_level_node) { _top_level_nodes.push_back(top_level_node); }
+
+    void print_tokens(bool use_color = true);
+    void print_tree(bool use_color = true);
 };
 
 class SyntaxNode {
@@ -392,13 +276,159 @@ class SyntaxNode {
 public:
     enum struct Kind {
         Invalid,
+
+        ImportInvalidWithTokens,
+        ImportPathSimple,
+        ImportPathSimpleAliased,
+        ImportNamedSimple,
+        ImportNamedSimpleAliased,
     };
 
 private:
     Kind _kind;
+    Location _location;
 
 public:
-    SyntaxNode(Kind kind) : _kind(kind) {}
+    constexpr SyntaxNode(Kind kind, Location location) : _kind(kind), _location(location) {}
+    virtual ~SyntaxNode() = default;
+
+    /// Disallow creating syntax nodes without a module reference.
+    void* operator new(usz) = delete;
+    void* operator new(usz sz, SyntaxModule* module);
+
+    auto kind() const { return _kind; }
+    auto location() const { return _location; }
+
+    auto children() const -> std::vector<SyntaxTokenOrNodePointer>;
+
+    static auto KindToString(Kind kind) -> String;
+};
+
+/// `import <anything>;`
+class SyntaxImportInvalidWithTokens : public SyntaxNode {
+    SyntaxToken* _token_import;
+    SyntaxToken* _token_semi;
+    std::vector<SyntaxToken*> _consumed_tokens;
+
+public:
+    SyntaxImportInvalidWithTokens(SyntaxToken* token_import, SyntaxToken* token_semi, std::vector<SyntaxToken*> consumed_tokens)
+        : SyntaxNode(Kind::ImportInvalidWithTokens, token_import->location), _token_import(token_import), _token_semi(token_semi), _consumed_tokens(std::move(consumed_tokens)) {
+        CHOIR_ASSERT(token_import->kind == SyntaxToken::Kind::Import);
+    }
+
+    auto token_import() const -> const SyntaxToken* { return _token_import; }
+    auto token_semi() const -> const SyntaxToken* { return _token_semi; }
+    auto consumed_tokens() const -> std::span<const SyntaxToken* const> { return _consumed_tokens; }
+
+    [[nodiscard]]
+    static auto classof(const SyntaxNode* type) -> bool { return type->kind() == Kind::ImportInvalidWithTokens; }
+};
+
+/// `import "foo.laye";`
+class SyntaxImportPathSimple : public SyntaxNode {
+    SyntaxToken* _token_import;
+    SyntaxToken* _token_path;
+    SyntaxToken* _token_semi;
+
+public:
+    SyntaxImportPathSimple(SyntaxToken* token_import, SyntaxToken* token_path, SyntaxToken* token_semi)
+        : SyntaxNode(Kind::ImportPathSimple, token_import->location), _token_import(token_import), _token_path(token_path), _token_semi(token_semi) {
+        CHOIR_ASSERT(token_import->kind == SyntaxToken::Kind::Import);
+        CHOIR_ASSERT(token_path->kind == SyntaxToken::Kind::LiteralString);
+    }
+
+    auto token_import() const { return _token_import; }
+    auto token_path() const { return _token_path; }
+    auto token_semi() const { return _token_semi; }
+
+    auto path_text() const -> String { return _token_path->text; }
+
+    [[nodiscard]]
+    static auto classof(const SyntaxNode* type) -> bool { return type->kind() == Kind::ImportPathSimple; }
+};
+
+/// `import "foo.laye" as bar;`
+class SyntaxImportPathSimpleAliased : public SyntaxNode {
+    SyntaxToken* _token_import;
+    SyntaxToken* _token_path;
+    SyntaxToken* _token_as;
+    SyntaxToken* _token_alias_ident;
+    SyntaxToken* _token_semi;
+
+public:
+    SyntaxImportPathSimpleAliased(SyntaxToken* token_import, SyntaxToken* token_path, SyntaxToken* token_as, SyntaxToken* token_alias_ident, SyntaxToken* token_semi)
+        : SyntaxNode(Kind::ImportPathSimpleAliased, token_import->location), _token_import(token_import), _token_path(token_path), _token_as(token_as), _token_alias_ident(token_alias_ident), _token_semi(token_semi) {
+        CHOIR_ASSERT(token_import->kind == SyntaxToken::Kind::Import);
+        CHOIR_ASSERT(token_path->kind == SyntaxToken::Kind::LiteralString);
+        CHOIR_ASSERT(token_as->kind == SyntaxToken::Kind::As);
+    }
+
+    auto token_import() const { return _token_import; }
+    auto token_path() const { return _token_path; }
+    auto token_as() const { return _token_as; }
+    auto token_alias_ident() const { return _token_alias_ident; }
+    auto token_semi() const { return _token_semi; }
+
+    auto path_text() const -> String { return _token_path->text; }
+    auto alias_name() const -> String { return _token_alias_ident->kind == SyntaxToken::Kind::Identifier ? _token_alias_ident->text : ""; }
+
+    [[nodiscard]]
+    static auto classof(const SyntaxNode* type) -> bool { return type->kind() == Kind::ImportPathSimpleAliased; }
+};
+
+/// `import foo;`
+class SyntaxImportNamedSimple : public SyntaxNode {
+    SyntaxToken* _token_import;
+    SyntaxToken* _token_name;
+    SyntaxToken* _token_semi;
+
+public:
+    SyntaxImportNamedSimple(SyntaxToken* token_import, SyntaxToken* token_name, SyntaxToken* token_semi)
+        : SyntaxNode(Kind::ImportNamedSimple, token_import->location), _token_import(token_import), _token_name(token_name), _token_semi(token_semi) {
+        CHOIR_ASSERT(token_import->kind == SyntaxToken::Kind::Import);
+        CHOIR_ASSERT(token_name->kind == SyntaxToken::Kind::Identifier);
+        CHOIR_ASSERT(token_semi->kind == SyntaxToken::Kind::SemiColon);
+    }
+
+    auto token_import() const { return _token_import; }
+    auto token_name() const { return _token_name; }
+    auto token_semi() const { return _token_semi; }
+
+    auto name_text() const -> String { return _token_name->text; }
+
+    [[nodiscard]]
+    static auto classof(const SyntaxNode* type) -> bool { return type->kind() == Kind::ImportNamedSimple; }
+};
+
+/// `import foo as bar;`
+class SyntaxImportNamedSimpleAliased : public SyntaxNode {
+    SyntaxToken* _token_import;
+    SyntaxToken* _token_name;
+    SyntaxToken* _token_as;
+    SyntaxToken* _token_alias_ident;
+    SyntaxToken* _token_semi;
+
+public:
+    SyntaxImportNamedSimpleAliased(SyntaxToken* token_import, SyntaxToken* token_name, SyntaxToken* token_as, SyntaxToken* token_alias_ident, SyntaxToken* token_semi)
+        : SyntaxNode(Kind::ImportNamedSimpleAliased, token_import->location), _token_import(token_import), _token_name(token_name), _token_as(token_as), _token_alias_ident(token_alias_ident), _token_semi(token_semi) {
+        CHOIR_ASSERT(token_import->kind == SyntaxToken::Kind::Import);
+        CHOIR_ASSERT(token_name->kind == SyntaxToken::Kind::Identifier);
+        CHOIR_ASSERT(token_as->kind == SyntaxToken::Kind::As);
+        CHOIR_ASSERT(token_alias_ident->kind == SyntaxToken::Kind::Identifier);
+        CHOIR_ASSERT(token_semi->kind == SyntaxToken::Kind::SemiColon);
+    }
+
+    auto token_import() const { return _token_import; }
+    auto token_name() const { return _token_name; }
+    auto token_as() const { return _token_as; }
+    auto token_alias_ident() const { return _token_alias_ident; }
+    auto token_semi() const { return _token_semi; }
+
+    auto name_text() const -> String { return _token_name->text; }
+    auto alias_name() const -> String { return _token_alias_ident->text; }
+
+    [[nodiscard]]
+    static auto classof(const SyntaxNode* type) -> bool { return type->kind() == Kind::ImportNamedSimpleAliased; }
 };
 
 class Lexer {
@@ -415,23 +445,21 @@ public:
     static void ReadTokens(SyntaxModule& syntax_module, SyntaxTriviaMode trivia_mode = SyntaxTriviaMode::None);
 };
 
-class Parser : DiagsProducer<Parser> {
-    CHOIR_IMMOVABLE(Parser);
-
-    friend DiagsProducer;
-
-    Context& _context;
-    SyntaxModule::Ptr _module;
-
-    explicit Parser(const File& source_file)
-        : _context(source_file.context()), _module{std::make_unique<SyntaxModule>(source_file)} {
-        Lexer::ReadTokens(*_module);
-    }
-
-    auto tokens() const -> std::span<const SyntaxToken> { return _module->tokens(); }
+class Parser {
+    CHOIR_DECLARE_HIDDEN_IMPL(Parser);
 
 public:
-    auto context() const -> Context& { return _context; }
+    explicit Parser(const File& source_file);
+
+    auto context() const -> Context&;
+    auto module() const -> SyntaxModule*;
+    auto tokens() const -> std::span<const SyntaxToken>;
+
+    auto eof() const -> bool;
+
+    auto parse_statement() -> SyntaxNode*;
+    auto parse_declaration() -> SyntaxNode*;
+    auto parse_expression() -> SyntaxNode*;
 
     static auto Parse(const File& source_file) -> SyntaxModule::Ptr;
 };

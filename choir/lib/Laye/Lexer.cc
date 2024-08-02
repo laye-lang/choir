@@ -85,6 +85,8 @@ llvm::StringMap<SyntaxToken::Kind> keyword_kinds{
 // ============================================================================
 
 struct Lexer::Impl : DiagsProducer<Lexer::Impl> {
+    friend DiagsProducer;
+    
     std::mutex mutex{};
 
     SyntaxModule& syntax_module;

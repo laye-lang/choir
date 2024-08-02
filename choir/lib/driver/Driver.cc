@@ -105,44 +105,21 @@ void BuildLayeDriverJob::run() {
     auto ordered_modules = syntax.ordered_modules();
     if (options().action == DriverAction::Lex) {
         for (const auto& module : ordered_modules) {
-            std::println("Module '{}'", module->source_file().name());
-            for (const auto& token : module->tokens()) {
-                if (auto loc_info = token.location.seek_line_column(context())) {
-                    std::print("  ({}:{}) ", loc_info->line, loc_info->col);
-                } else {
-                    std::print("  (?:?) ");
-                }
-
-                std::println("[{}] '{}' ({})", laye::SyntaxToken::KindToString(token.kind), token.text, token.spelling(context()));
-
-                if (token.kind == laye::SyntaxToken::Kind::LiteralInteger) {
-                    llvm::SmallVector<char, 16> buf{};
-                    token.integer_value.toStringUnsigned(buf);
-                    std::println("    literal value: {}", StringRef{buf.data(), buf.size()});
-                } else if (token.kind == laye::SyntaxToken::Kind::LiteralFloat) {
-                    llvm::SmallVector<char, 16> buf{};
-                    token.float_value.toString(buf);
-                    std::println("    literal value: {}", StringRef{buf.data(), buf.size()});
-                } else if (token.kind == laye::SyntaxToken::Kind::LiteralRune) {
-                    i32 codepoint = i32(token.integer_value.getSExtValue());
-                    if (codepoint < 256) {
-                        std::println("    literal value: '{}'", char(codepoint));
-                    } else {
-                        std::println("    literal value: '\\U{:X}'", codepoint);
-                    }
-                }
-
-                if (not token.leading_trivia.empty() or not token.trailing_trivia.empty()) {
-                    CHOIR_TODO("print token trivia");
-                }
-            }
+            module->print_tokens(options().colors);
         }
 
         return;
     }
 
     if (options().action == DriverAction::Parse) {
-        CHOIR_TODO("print AST");
+        for (const auto& module : ordered_modules) {
+            module->print_tree(options().colors);
+        }
+        
+        return;
+    }
+
+    if (context().diags().has_error()) {
         return;
     }
 }
