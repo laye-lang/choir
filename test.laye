@@ -1,8 +1,0 @@
-import "foo.laye";
-import "foo.laye" as bar;
-
-import foo;
-// import foo as bar;
-
-import;
-import ();
