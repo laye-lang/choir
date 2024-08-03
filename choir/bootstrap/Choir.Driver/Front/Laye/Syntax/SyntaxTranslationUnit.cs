@@ -6,4 +6,9 @@ public sealed class SyntaxTranslationUnit(ChoirContext context)
 
     public ChoirContext Context { get; } = context;
     public IEnumerable<SyntaxModule> Modules => _modules;
+
+    public void AddModule(SyntaxModule module)
+    {
+        _modules.Add(module);
+    }
 }

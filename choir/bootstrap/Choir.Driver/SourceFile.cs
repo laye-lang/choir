@@ -21,7 +21,7 @@ public class SourceFile
         if (location.FileId != FileId)
             Context.Diag.ICE("Attempt to get the span of a location in the wrong file.");
 
-        if (location.Length <= 0)
+        if (location.Length <= 0 || location.Offset == Text.Length && location.Length == 1)
             return "";
 
         if (location.Offset < 0 || location.Offset + location.Length >= Text.Length)

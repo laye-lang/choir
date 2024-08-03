@@ -33,11 +33,19 @@ public static class Program
         }
     }
 
+    private enum OutputColoring
+    {
+        Auto,
+        Always,
+        Never,
+    }
+
     private static ChoirDriverOptions ParseChoirDriverOptions(DiagnosticWriter diag, CliArgumentIterator args)
     {
         var options = new ChoirDriverOptions();
 
         var currentFileType = InputFileLanguage.Default;
+        var outputColoring = OutputColoring.Auto;
 
         while (args.Shift(out string arg))
         {
@@ -57,6 +65,8 @@ public static class Program
                     }
                 }
             }
+            else if (arg == "--lex")
+                options.DriverStage = ChoirDriverStage.Lex;
             else
             {
                 var inputFileInfo = new FileInfo(arg);
@@ -88,6 +98,10 @@ public static class Program
 
         if (options.InputFiles.Count == 0)
             diag.Error("no input files");
+
+        if (outputColoring == OutputColoring.Auto)
+            outputColoring = Console.IsErrorRedirected ? OutputColoring.Never : OutputColoring.Always;
+        options.OutputColoring = outputColoring == OutputColoring.Always;
 
         return options;
     }

@@ -1,5 +1,6 @@
 
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Choir;
@@ -69,20 +70,12 @@ public sealed class ChoirContext
         return sourceFile;
     }
 
-    public SourceFile GetSourceFileById(int fileId)
+    public SourceFile? GetSourceFileById(int fileId)
     {
         // NOTE(local): we return File IDs as their index + 1, so manually account for that shift in range
         if (fileId <= 0 || fileId > _sourceFiles.Count)
-        {
-            Diag.ICE("Attempt to get a source file by ID, but that ID does not exist.");
-            throw new UnreachableException();
-        }
+            return null;
 
         return _sourceFiles[fileId - 1];
-    }
-
-    public LocationInfo Seek(Location location)
-    {
-        throw new NotImplementedException();
     }
 }

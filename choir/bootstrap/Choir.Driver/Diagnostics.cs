@@ -99,17 +99,17 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
 
         Writer.Write(Colors.Reset);
 
-        if (location is {} loc)
+        if (location is {} loc && loc.Seekable(Context!))
         {
             Debug.Assert(Context is not null);
 
             var sourceFile = Context.GetSourceFileById(loc.FileId);
-            Writer.Write($"{sourceFile.FileInfo.FullName}");
+            Writer.Write($"{sourceFile!.FileInfo.FullName}");
 
             if (Context.DiagnosticLocationStyle == DiagnosticLocationStyle.LineColumn)
             {
-                var locInfo = loc.Seek(Context);
-                Writer.Write($"({locInfo.Line}:{locInfo.Column}]): ");
+                var locInfo = loc.SeekLineColumn(Context)!.Value;
+                Writer.Write($"({locInfo.Line}:{locInfo.Column}): ");
             }
             else
             {

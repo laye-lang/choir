@@ -41,9 +41,9 @@ public static class SyntaxFacts
             throw new ArgumentException($"{nameof(IsNumericLiteralDigit)} can only accept a radix in the range [2, 36].", nameof(radix));
 
         if (radix <= 10)
-            return c >= '0' && c <= ('0' + radix);
+            return c >= '0' && c < ('0' + radix);
         
-        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'a' + (radix - 10)) || (c >= 'A' && c <= 'A' + (radix - 10));
+        return (c >= '0' && c <= '9') || (c >= 'a' && c < 'a' + (radix - 10)) || (c >= 'A' && c < 'A' + (radix - 10));
     }
 
     public static int NumericLiteralDigitValueInRadix(char c, int radix)
@@ -58,9 +58,9 @@ public static class SyntaxFacts
             return c - '0';
             
         if (c >= 'a' && c <= 'z')
-            return c - 'a';
+            return c - 'a' + 10;
 
         Debug.Assert(c >= 'A' && c <= 'Z');
-        return c - 'A';
+        return c - 'A' + 10;
     }
 }

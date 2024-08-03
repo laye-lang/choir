@@ -1,12 +1,26 @@
 using System.Diagnostics;
 using System.Numerics;
 using System.Text;
-using ClangSharp;
 
 namespace Choir.Front.Laye.Syntax;
 
 public sealed class Lexer(SourceFile sourceFile)
 {
+    public static void ReadTokens(SyntaxModule module)
+    {
+        if (module.Tokens.Any())
+            throw new InvalidOperationException("Can't repeatedly read tokens into a module which already had tokens read into it.");
+        
+        var lexer = new Lexer(module.SourceFile);
+
+        SyntaxToken token;
+        do
+        {
+            token = lexer.ReadToken();
+            module.AddToken(token);
+        } while (token.Kind != SyntaxKind.TokenEndOfFile);
+    }
+
     private static readonly Dictionary<string, SyntaxKind> _keywordTokensKinds = new()
     {
         {"var", SyntaxKind.TokenVar},
@@ -158,7 +172,9 @@ public sealed class Lexer(SourceFile sourceFile)
         tokenInfo.Kind = SyntaxKind.Invalid;
         tokenInfo.Position = _position;
 
-        switch (CurrentCharacter)
+        if (IsAtEnd)
+            tokenInfo.Kind = SyntaxKind.TokenEndOfFile;
+        else switch (CurrentCharacter)
         {
             case '_':
             case (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'):
@@ -181,12 +197,163 @@ public sealed class Lexer(SourceFile sourceFile)
                 }
             } break;
 
+            case '(': Advance(); tokenInfo.Kind = SyntaxKind.TokenOpenParen; break;
+            case ')': Advance(); tokenInfo.Kind = SyntaxKind.TokenCloseParen; break;
+            case '[': Advance(); tokenInfo.Kind = SyntaxKind.TokenOpenBracket; break;
+            case ']': Advance(); tokenInfo.Kind = SyntaxKind.TokenCloseBracket; break;
+            case '{': Advance(); tokenInfo.Kind = SyntaxKind.TokenOpenBrace; break;
+            case '}': Advance(); tokenInfo.Kind = SyntaxKind.TokenCloseBrace; break;
+            case ';': Advance(); tokenInfo.Kind = SyntaxKind.TokenSemiColon; break;
+            case ',': Advance(); tokenInfo.Kind = SyntaxKind.TokenComma; break;
+            case '.': Advance(); tokenInfo.Kind = SyntaxKind.TokenDot; break;
+
+            case '~':
+            {
+                Advance();
+                tokenInfo.Kind = TryAdvance('=') ? SyntaxKind.TokenTildeEqual : SyntaxKind.TokenTilde;
+            } break;
+
+            case '!':
+            {
+                Advance();
+                tokenInfo.Kind = TryAdvance('=') ? SyntaxKind.TokenBangEqual : SyntaxKind.TokenBang;
+            } break;
+
+            case '%':
+            {
+                Advance();
+                tokenInfo.Kind
+                    = TryAdvance('=') ? SyntaxKind.TokenPercentEqual
+                    : TryAdvance(':')
+                        ? TryAdvance('=') ? SyntaxKind.TokenPercentColonEqual : SyntaxKind.TokenPercentColon
+                    : SyntaxKind.TokenPercent;
+            } break;
+
+            case '&':
+            {
+                Advance();
+                tokenInfo.Kind = TryAdvance('=') ? SyntaxKind.TokenAmpersandEqual : SyntaxKind.TokenAmpersand;
+            } break;
+
+            case '*':
+            {
+                Advance();
+                tokenInfo.Kind = TryAdvance('=') ? SyntaxKind.TokenStarEqual : SyntaxKind.TokenStar;
+            } break;
+
+            case '-':
+            {
+                Advance();
+                tokenInfo.Kind
+                    = TryAdvance('=') ? SyntaxKind.TokenMinusEqual
+                    : TryAdvance('-') ? SyntaxKind.TokenMinusMinus
+                    : TryAdvance('|')
+                        ? TryAdvance('=') ? SyntaxKind.TokenMinusPipeEqual : SyntaxKind.TokenMinusPipe
+                    : TryAdvance('%')
+                        ? TryAdvance('=') ? SyntaxKind.TokenMinusPercentEqual : SyntaxKind.TokenMinusPercent
+                    : SyntaxKind.TokenMinus;
+            } break;
+
+            case '=':
+            {
+                Advance();
+                tokenInfo.Kind = TryAdvance('=') ? SyntaxKind.TokenEqualEqual
+                               : TryAdvance('>') ? SyntaxKind.TokenEqualGreater : SyntaxKind.TokenEqual;
+            } break;
+
+            case '+':
+            {
+                Advance();
+                tokenInfo.Kind
+                    = TryAdvance('=') ? SyntaxKind.TokenPlusEqual
+                    : TryAdvance('+') ? SyntaxKind.TokenPlusPlus
+                    : TryAdvance('|')
+                        ? TryAdvance('=') ? SyntaxKind.TokenPlusPipeEqual : SyntaxKind.TokenPlusPipe
+                    : TryAdvance('%')
+                        ? TryAdvance('=') ? SyntaxKind.TokenPlusPercentEqual : SyntaxKind.TokenPlusPercent
+                    : SyntaxKind.TokenPlus;
+            } break;
+
+            case '|':
+            {
+                Advance();
+                tokenInfo.Kind = TryAdvance('=') ? SyntaxKind.TokenPipeEqual : SyntaxKind.TokenPipe;
+            } break;
+
+            case ':':
+            {
+                Advance();
+                tokenInfo.Kind
+                    = TryAdvance(':') ? SyntaxKind.TokenColonColon
+                    : TryAdvance('>')
+                        ? TryAdvance('=') ? SyntaxKind.TokenColonGreaterEqual : SyntaxKind.TokenColonGreater
+                    : SyntaxKind.TokenColon;
+            } break;
+
+            case '<':
+            {
+                Advance();
+                tokenInfo.Kind
+                    = TryAdvance(':') ? SyntaxKind.TokenLessColon
+                    : TryAdvance('<')
+                        ? TryAdvance('=') ? SyntaxKind.TokenLessLessEqual : SyntaxKind.TokenLessLess
+                    : TryAdvance('=')
+                        ? TryAdvance(':') ? SyntaxKind.TokenLessEqualColon : SyntaxKind.TokenLessEqual
+                    : SyntaxKind.TokenLess;
+            } break;
+
+            case '>':
+            {
+                Advance();
+                tokenInfo.Kind
+                    = TryAdvance('=') ? SyntaxKind.TokenGreaterEqual
+                    : TryAdvance('>')
+                        ? TryAdvance('=') ? SyntaxKind.TokenGreaterGreaterEqual : SyntaxKind.TokenGreaterGreater
+                    : SyntaxKind.TokenGreater;
+            } break;
+
+            case '/':
+            {
+                Advance();
+                tokenInfo.Kind
+                    = TryAdvance('=') ? SyntaxKind.TokenSlashEqual
+                    : TryAdvance(':')
+                        ? TryAdvance('=') ? SyntaxKind.TokenSlashColonEqual : SyntaxKind.TokenSlashColon
+                    : SyntaxKind.TokenSlash;
+            } break;
+
+            case '?':
+            {
+                Advance();
+                tokenInfo.Kind
+                    = TryAdvance('?')
+                        ? TryAdvance('=') ? SyntaxKind.TokenQuestionQuestionEqual : SyntaxKind.TokenQuestionQuestion
+                    : SyntaxKind.TokenQuestion;
+            } break;
+
+            case '^':
+            {
+                Advance();
+                tokenInfo.Kind = TryAdvance('=') ? SyntaxKind.TokenCaretEqual : SyntaxKind.TokenCaret;
+            } break;
+
             default:
             {
+                Debug.Assert(!IsAtEnd);
+                Debug.Assert(CurrentCharacter != 0);
+
+                if (SyntaxFacts.IsIdentifierStartCharacter(CurrentCharacter))
+                    ReadIdentifier(ref tokenInfo);
+                else
+                {
+                    tokenInfo.Kind = SyntaxKind.Invalid;
+                    Context.Diag.Error(CurrentLocation, $"invalid character '{CurrentCharacter}' in Laye source");
+                    Advance();
+                }
             } break;
         }
 
-        tokenInfo.Length = _position - tokenInfo.Position;
+        tokenInfo.Length = Math.Max(1, _position - tokenInfo.Position);
         SkipTrivia();
     }
 
@@ -337,6 +504,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
         Debug.Assert(!IsAtEnd && CurrentCharacter == '#');
         Debug.Assert(radix is >= 2 and <= 36);
+        Advance();
 
         _stringBuilder.Clear();
         
@@ -351,16 +519,16 @@ public sealed class Lexer(SourceFile sourceFile)
                 wasLastCharacterUnderscore = true;
                 continue;
             }
-            else if (SyntaxFacts.IsIdentifierPartCharacter(CurrentCharacter))
+            else if (SyntaxFacts.IsIdentifierPartCharacter(CurrentCharacter) && CurrentCharacter is not ((>= '0' and <= '9') or (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_'))
             {
-                Context.Diag.Error(CurrentLocation, "invalid digit in integer literal");
+                Context.Diag.Error(CurrentLocation, $"invalid digit '{CurrentCharacter}' in integer literal");
                 while (SyntaxFacts.IsIdentifierPartCharacter(CurrentCharacter)) Advance();
                 return;
             }
 
             if (!SyntaxFacts.IsNumericLiteralDigitInRadix(CurrentCharacter, radix))
             {
-                Context.Diag.Error(CurrentLocation, $"invalid digit in base {radix} integer literal");
+                Context.Diag.Error(CurrentLocation, $"invalid digit '{CurrentCharacter}' in base {radix} integer literal");
                 parseResult = false;
                 _stringBuilder.Clear();
             }
