@@ -54,6 +54,10 @@ public abstract class DiagnosticWriter(ChoirContext? context, bool? useColor = n
 
 public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter? writer = null, bool? useColor = null) : DiagnosticWriter(context, useColor)
 {
+    private int _errorsWritten = 0;
+    private bool _printedErrorLimitMessage = false;
+    private bool _printed = false;
+
     public TextWriter Writer { get; } = writer ?? Console.Error;
 
     protected void WriteKind(DiagnosticKind kind)
@@ -70,6 +74,23 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
 
     protected override void IssueInternal(DiagnosticKind kind, Location? location, string message)
     {
+        if (kind == DiagnosticKind.Error && Context is not null && _errorsWritten > Context.ErrorLimit)
+        {
+            if (!_printedErrorLimitMessage)
+            {
+                _printedErrorLimitMessage = true;
+                Writer.WriteLine($"choir: {Colors.Red}error: {Colors.White}too many errors emitted (> {Context.ErrorLimit}). further errors will not be shown.{Colors.Reset}");
+                Writer.WriteLine($"choir: {Colors.White}note: {Colors.White}use '--error-limit <limit>' to show more errors.{Colors.Reset}");
+            }
+
+            return;
+        }
+
+        if (_printed && kind != DiagnosticKind.Note && Context is not null)
+            Writer.WriteLine();
+
+        _printed = true;
+
         if (location is not null && Context is null)
         {
             ICE("Attempt to issue a diagnostic with location information when no context is present.");

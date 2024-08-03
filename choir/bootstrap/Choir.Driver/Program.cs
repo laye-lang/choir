@@ -1,4 +1,5 @@
-﻿using Choir.CommandLine;
+﻿using System.Runtime.InteropServices;
+using Choir.CommandLine;
 
 namespace Choir;
 
@@ -19,7 +20,7 @@ public static class Program
                 var options = ParseChoirDriverOptions(diag, new CliArgumentIterator(args));
                 if (hasIssuedError) return 1;
 
-                var driver = new ChoirDriver(options);
+                var driver = ChoirDriver.Create(diag, options);
                 return driver.Execute();
             }
 
@@ -61,7 +62,27 @@ public static class Program
                 var inputFileInfo = new FileInfo(arg);
                 if (!inputFileInfo.Exists)
                     diag.Error($"no such file or directory: '{arg}'");
-                else options.InputFiles.Add(new(currentFileType, inputFileInfo));
+                else
+                {
+                    var inputFileType = currentFileType;
+                    if (inputFileType == InputFileLanguage.Default)
+                    {
+                        string inputFileExtension = inputFileInfo.Extension;
+                        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && inputFileExtension == ".C")
+                            inputFileType = InputFileLanguage.CPP;
+                        else switch (inputFileExtension.ToLower())
+                        {
+                            case ".laye": inputFileType = InputFileLanguage.Laye; break;
+                            case ".c": inputFileType = InputFileLanguage.C; break;
+                            case ".cpp": inputFileType = InputFileLanguage.CPP; break;
+                            case ".ixx": inputFileType = InputFileLanguage.CPP; break;
+                            case ".cc": inputFileType = InputFileLanguage.CPP; break;
+                            case ".ccm": inputFileType = InputFileLanguage.CPP; break;
+                        }
+                    }
+
+                    options.InputFiles.Add(new(inputFileType, inputFileInfo));
+                }
             }
         }
 

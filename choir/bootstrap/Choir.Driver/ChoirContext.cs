@@ -25,6 +25,7 @@ public sealed class ChoirContext
         }
     }
 
+    public int ErrorLimit { get; set; } = 10;
     public bool HasIssuedError { get; private set; } = false;
 
     public DiagnosticLocationStyle DiagnosticLocationStyle { get; set; } = DiagnosticLocationStyle.LineColumn;
@@ -68,7 +69,7 @@ public sealed class ChoirContext
         return sourceFile;
     }
 
-    public SourceFile GetSourceFileById(short fileId)
+    public SourceFile GetSourceFileById(int fileId)
     {
         // NOTE(local): we return File IDs as their index + 1, so manually account for that shift in range
         if (fileId <= 0 || fileId > _sourceFiles.Count)
