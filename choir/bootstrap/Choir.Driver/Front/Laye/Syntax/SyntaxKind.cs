@@ -80,6 +80,8 @@ public enum SyntaxKind : ushort
     TokenGreaterEqual,
     TokenGreaterGreater,
     TokenGreaterGreaterEqual,
+    TokenGreaterGreaterGreater,
+    TokenGreaterGreaterGreaterEqual,
     TokenSlashEqual,
     TokenSlashColon,
     TokenSlashColonEqual,

@@ -197,6 +197,13 @@ public sealed class Lexer(SourceFile sourceFile)
                 }
             } break;
 
+            case '@':
+            {
+            } break;
+
+            case '"':
+            case '\'': goto default;
+
             case '(': Advance(); tokenInfo.Kind = SyntaxKind.TokenOpenParen; break;
             case ')': Advance(); tokenInfo.Kind = SyntaxKind.TokenCloseParen; break;
             case '[': Advance(); tokenInfo.Kind = SyntaxKind.TokenOpenBracket; break;
@@ -308,7 +315,9 @@ public sealed class Lexer(SourceFile sourceFile)
                 tokenInfo.Kind
                     = TryAdvance('=') ? SyntaxKind.TokenGreaterEqual
                     : TryAdvance('>')
-                        ? TryAdvance('=') ? SyntaxKind.TokenGreaterGreaterEqual : SyntaxKind.TokenGreaterGreater
+                        ? TryAdvance('>')
+                            ? TryAdvance('=') ? SyntaxKind.TokenGreaterGreaterGreaterEqual : SyntaxKind.TokenGreaterGreaterGreater
+                        : TryAdvance('=') ? SyntaxKind.TokenGreaterGreaterEqual : SyntaxKind.TokenGreaterGreater
                     : SyntaxKind.TokenGreater;
             } break;
 
