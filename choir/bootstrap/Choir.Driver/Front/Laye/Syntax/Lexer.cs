@@ -622,6 +622,15 @@ public sealed class Lexer(SourceFile sourceFile)
             case '\'': Advance(); lowSurrogate = '\''; return 1;
             case '"': Advance(); lowSurrogate = '"'; return 1;
 
+            case 'x' when SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(1), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(2), 16):
+            {
+                Advance();
+                lowSurrogate = (char)int.Parse(_text.AsSpan().Slice(_position, 2), System.Globalization.NumberStyles.HexNumber);
+                for (int i = 0; i < 2; i++) Advance();
+                return 1;
+            }
+
             case 'u' when SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(1), 16)
                        && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(2), 16)
                        && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(3), 16)
