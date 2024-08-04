@@ -553,7 +553,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
         static BigInteger ParseBigInteger(string value, int radix)
         {
-            if (radix == 16) return BigInteger.Parse(value, System.Globalization.NumberStyles.HexNumber);
+            if (radix == 16) return BigInteger.Parse("0" + value, System.Globalization.NumberStyles.HexNumber);
             var result = BigInteger.Zero;
             for (int i = 0; i < value.Length; i++)
                 result = result * radix + SyntaxFacts.NumericLiteralDigitValueInRadix(value[i], radix);

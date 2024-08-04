@@ -1,0 +1,26 @@
+~ ! % & * ( ) - = + [ ] { } | ; : , < > . / ?
+~!%&*()- =+[]{}|;:,<>./?
+
+/: %: ?? ??= ++ +% +| -- -% -| ^ <: << :> >> == != += +%= +|= -= -%= -|= /= /:= *= ^= %= %:= <= <=: > :>= &= |= ~= <<= >>= => <- ::
+
+var void noreturn bool int
+// sized types
+true false nil if else for while do switch case default return break continue fallthrough yield unreachable
+defer discard goto xyzzy assert try catch struct variant enum template alias test import export operator
+mut new delete cast is sizeof alignof offsetof typeof not and or xor varargs const foreign inline callconv
+pure discardable
+
+foo
+
+0
+12345
+123_456_789
+_123 123_
+_1 _2 _3
+
+16#DEAD_BEEF 16#0123_4567_89AB_CDEF
+2#1011_0010 2#1211_3211
+36#ZZEF_CSIE_FM01
+
+36#0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ
+36#1Z
