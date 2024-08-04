@@ -394,44 +394,49 @@ public sealed class Lexer(SourceFile sourceFile)
             {
                 default: return;
 
+                case '#':
+                {
+                    Advance();
+                    while (!IsAtEnd && CurrentCharacter != '\n')
+                        Advance();
+                } break;
+
                 case '/' when Peek(1) == '/':
-                    {
+                {
+                    Advance();
+                    Advance();
+                    while (!IsAtEnd && CurrentCharacter != '\n')
                         Advance();
-                        Advance();
-                        while (!IsAtEnd && CurrentCharacter != '\n')
-                            Advance();
-                    }
-                    break;
+                } break;
 
                 case '/' when Peek(1) == '*':
+                {
+                    var location = CurrentLocation;
+
+                    Advance();
+                    Advance();
+
+                    int nesting = 1;
+                    while (!IsAtEnd && nesting > 0)
                     {
-                        var location = CurrentLocation;
-
-                        Advance();
-                        Advance();
-
-                        int nesting = 1;
-                        while (!IsAtEnd && nesting > 0)
+                        if (CurrentCharacter == '/' && Peek(1) == '*')
                         {
-                            if (CurrentCharacter == '/' && Peek(1) == '*')
-                            {
-                                Advance();
-                                Advance();
-                                nesting++;
-                            }
-                            else if (CurrentCharacter == '*' && Peek(1) == '/')
-                            {
-                                Advance();
-                                Advance();
-                                nesting--;
-                            }
-                            else Advance();
+                            Advance();
+                            Advance();
+                            nesting++;
                         }
-
-                        if (nesting > 0)
-                            Context.Diag.Error(location, "comment unclosed at end of file");
+                        else if (CurrentCharacter == '*' && Peek(1) == '/')
+                        {
+                            Advance();
+                            Advance();
+                            nesting--;
+                        }
+                        else Advance();
                     }
-                    break;
+
+                    if (nesting > 0)
+                        Context.Diag.Error(location, "comment unclosed at end of file");
+                } break;
             }
         }
     }
