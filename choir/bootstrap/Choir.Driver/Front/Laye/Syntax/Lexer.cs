@@ -197,12 +197,29 @@ public sealed class Lexer(SourceFile sourceFile)
                 }
             } break;
 
-            case '@':
+            case '@' when Peek(1) == '"':
             {
+                Advance();
+                ReadString(ref tokenInfo);
+                tokenInfo.Kind = SyntaxKind.TokenIdentifier;
             } break;
 
-            case '"':
-            case '\'': goto default;
+            case '@' when Peek(1) is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_':
+            {
+                Advance();
+                // we just don't transform it into a keyword here
+                ReadIdentifier(ref tokenInfo);
+            } break;
+
+            case '@' when SyntaxFacts.IsIdentifierStartCharacter(Peek(1)):
+            {
+                Advance();
+                // we just don't transform it into a keyword here
+                ReadIdentifier(ref tokenInfo);
+            } break;
+
+            case '"': ReadString(ref tokenInfo); break;
+            case '\'': ReadRune(ref tokenInfo); break;
 
             case '(': Advance(); tokenInfo.Kind = SyntaxKind.TokenOpenParen; break;
             case ')': Advance(); tokenInfo.Kind = SyntaxKind.TokenCloseParen; break;
@@ -580,6 +597,148 @@ public sealed class Lexer(SourceFile sourceFile)
     {
         Context.Diag.Fatal("float literal tokens are currently not supported :(");
         throw new UnreachableException();
+    }
+
+    private int ReadEscapeSequenceAsSurrogatePair(out char highSurrogate, out char lowSurrogate)
+    {
+        highSurrogate = '\0';
+        lowSurrogate = '\0';
+
+        Debug.Assert(CurrentCharacter == '\\');
+
+        var startLocation = CurrentLocation;
+        Advance();
+
+        switch (CurrentCharacter)
+        {
+            case 'a': Advance(); lowSurrogate = '\a'; return 1;
+            case 'b': Advance(); lowSurrogate = '\b'; return 1;
+            case 'f': Advance(); lowSurrogate = '\f'; return 1;
+            case 'n': Advance(); lowSurrogate = '\n'; return 1;
+            case 'r': Advance(); lowSurrogate = '\r'; return 1;
+            case 't': Advance(); lowSurrogate = '\t'; return 1;
+            case 'v': Advance(); lowSurrogate = '\v'; return 1;
+            case '\\': Advance(); lowSurrogate = '\\'; return 1;
+            case '\'': Advance(); lowSurrogate = '\''; return 1;
+            case '"': Advance(); lowSurrogate = '"'; return 1;
+
+            case 'u' when SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(1), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(2), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(3), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(4), 16):
+            {
+                Advance();
+                lowSurrogate = (char)int.Parse(_text.AsSpan().Slice(_position, 4), System.Globalization.NumberStyles.HexNumber);
+                for (int i = 0; i < 4; i++) Advance();
+                return 1;
+            }
+
+            case 'U' when SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(1), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(2), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(3), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(4), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(5), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(6), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(7), 16)
+                       && SyntaxFacts.IsNumericLiteralDigitInRadix(Peek(8), 16):
+            {
+                Advance();
+                int value = int.Parse(_text.AsSpan().Slice(_position, 8), System.Globalization.NumberStyles.HexNumber);
+                unsafe
+                {
+                    char* pair = stackalloc char[2];
+                    new Rune(value).EncodeToUtf16(new Span<char>(pair, 2));
+                    highSurrogate = pair[0];
+                    lowSurrogate = pair[1];
+                }
+                for (int i = 0; i < 8; i++) Advance();
+                return 2;
+            }
+
+            default:
+            {
+                Context.Diag.Error(startLocation, "unrecognized escape sequence");
+                lowSurrogate = CurrentCharacter;
+                Advance();
+                return 1;
+            }
+        }
+    }
+
+    private void ReadString(ref TokenInfo tokenInfo)
+    {
+        Debug.Assert(CurrentCharacter == '"');
+
+        var startLocation = CurrentLocation;
+        tokenInfo.Kind = SyntaxKind.TokenLiteralString;
+        Advance();
+
+        _stringBuilder.Clear();
+        while (!IsAtEnd && CurrentCharacter != '"' && CurrentCharacter != '\n')
+        {
+            if (CurrentCharacter == '\\')
+            {
+                int nchars = ReadEscapeSequenceAsSurrogatePair(out char higher, out char lower);
+                Debug.Assert(nchars == 1 || nchars == 2);
+                _stringBuilder.Append(lower);
+                if (nchars == 2) _stringBuilder.Append(higher);
+            }
+            else
+            {
+                _stringBuilder.Append(CurrentCharacter);
+                Advance();
+            }
+        }
+
+        tokenInfo.TextValue = _stringBuilder.ToString();
+        if (TryAdvance('"')) return;
+
+        if (IsAtEnd)
+        {
+            Context.Diag.Error(startLocation, "end of file reached in string literal");
+            return;
+        }
+
+        if (CurrentCharacter != '"')
+        {
+            Context.Diag.Error(startLocation, "newline in string literal");
+            return;
+        }
+    }
+
+    private void ReadRune(ref TokenInfo tokenInfo)
+    {
+        Debug.Assert(CurrentCharacter == '\'');
+        
+        var startLocation = CurrentLocation;
+        tokenInfo.Kind = SyntaxKind.TokenLiteralRune;
+        Advance();
+        
+        if (CurrentCharacter == '\\')
+        {
+            int nchars = ReadEscapeSequenceAsSurrogatePair(out char higher, out char lower);
+            tokenInfo.IntegerValue = new BigInteger(nchars == 1 ? lower : char.ConvertToUtf32(higher, lower));
+        }
+        else
+        {
+            tokenInfo.IntegerValue = new BigInteger(CurrentCharacter);
+            Advance();
+        }
+        
+        if (TryAdvance('\'')) return;
+
+        if (IsAtEnd)
+        {
+            Context.Diag.Error(startLocation, "end of file reached in rune literal");
+            return;
+        }
+
+        if (CurrentCharacter != '\'')
+        {
+            while (!IsAtEnd && CurrentCharacter != '\n') Advance();
+            Context.Diag.Error(startLocation, "too many characters in rune literal");
+            return;
+        }
     }
 
     private ScanNumberFlags ScanNumber()

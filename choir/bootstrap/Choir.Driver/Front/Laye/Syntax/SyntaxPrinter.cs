@@ -59,10 +59,7 @@ public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
 
                     case SyntaxKind.TokenLiteralRune:
                     {
-                        Console.Write($"{C[ColorValue]}");
-                        if (token.IntegerValue < 256)
-                            Console.Write($"\'{(char)token.IntegerValue}\'");
-                        else Console.Write($"\'\\U{token.IntegerValue:X8}\'");
+                        Console.Write($"{C[ColorValue]}\'{char.ConvertFromUtf32((int)token.IntegerValue)}\'");
                     } break;
 
                     case SyntaxKind.TokenLiteralInteger:
