@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Choir.Front.Laye;
+using Choir.Front.Laye.Sema;
 using Choir.Front.Laye.Syntax;
 
 namespace Choir;
@@ -44,20 +46,22 @@ public abstract class ChoirJob(ChoirDriver driver)
                 .DistinctBy(sourceFile => sourceFile.FileId)
                 .ToArray();
             
-            var stu = new SyntaxTranslationUnit(Context);
+            var tu = new TranslationUnit(Context);
+
             foreach (var file in layeFiles)
             {
-                var module = new SyntaxModule(file);
-                if (Driver.Options.DriverStage == ChoirDriverStage.Lex)
-                    Lexer.ReadTokens(module);
-                else Context.Diag.ICE("Going any farther than lexing is not yet supported");
-                stu.AddModule(module);
+                var module = new Module(file);
+                tu.AddModule(module);
+
+                Lexer.ReadTokens(module);
+                if (Driver.Options.DriverStage != ChoirDriverStage.Lex)
+                    Parser.ParseSyntax(module);
             }
 
             if (Driver.Options.DriverStage == ChoirDriverStage.Lex)
             {
                 var printer = new SyntaxPrinter(Context);
-                foreach (var module in stu.Modules)
+                foreach (var module in tu.Modules)
                     printer.PrintModuleTokens(module);
                 return 0;
             }
@@ -65,7 +69,7 @@ public abstract class ChoirJob(ChoirDriver driver)
             if (Driver.Options.DriverStage == ChoirDriverStage.Parse)
             {
                 var printer = new SyntaxPrinter(Context);
-                foreach (var module in stu.Modules)
+                foreach (var module in tu.Modules)
                     printer.PrintModuleSyntax(module);
                 return 0;
             }

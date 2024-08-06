@@ -24,7 +24,7 @@ public class SourceFile
         if (location.Length <= 0 || location.Offset == Text.Length && location.Length == 1)
             return "";
 
-        if (location.Offset < 0 || location.Offset + location.Length >= Text.Length)
+        if (location.Offset < 0 || location.Offset + location.Length > Text.Length)
             Context.Diag.ICE("Attempt to get a span outside the bounds of the file's source text.");
         
         return Text.AsSpan().Slice(location.Offset, location.Length);

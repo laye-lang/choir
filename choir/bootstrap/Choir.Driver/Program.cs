@@ -67,6 +67,10 @@ public static class Program
             }
             else if (arg == "--lex")
                 options.DriverStage = ChoirDriverStage.Lex;
+            else if (arg == "--parse")
+                options.DriverStage = ChoirDriverStage.Parse;
+            else if (arg == "--sema")
+                options.DriverStage = ChoirDriverStage.Sema;
             else
             {
                 var inputFileInfo = new FileInfo(arg);

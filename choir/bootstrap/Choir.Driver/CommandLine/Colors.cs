@@ -15,6 +15,9 @@ public enum Color
 
 public class Colors(bool useColor)
 {
+    public static readonly Colors On = new(false);
+    public static readonly Colors Off = new(false);
+
     public string Reset { get; } = useColor ? "\x1b[0m" : "";
     public string Red { get; } = useColor ? "\x1b[91m" : "";
     public string Green { get; } = useColor ? "\x1b[92m" : "";

@@ -2,15 +2,18 @@ namespace Choir;
 
 public struct Location(int offset, int length, int fileId)
 {
+    public static readonly Location Nowhere = new(0, 0, 0);
+
     public int Offset = offset;
     public int Length = length;
     public readonly int FileId = fileId;
 
     public readonly bool Seekable(ChoirContext context)
     {
+        if (FileId <= 0) return false;
         var file = context.GetSourceFileById(FileId);
         if (file is null) return false;
-        return Offset >= 0 && Length > 0 && Offset + Length <= file.Text.Length;
+        return Offset >= 0 && Offset + Length <= file.Text.Length;
     }
 
     public readonly LocationInfo? Seek(ChoirContext context)

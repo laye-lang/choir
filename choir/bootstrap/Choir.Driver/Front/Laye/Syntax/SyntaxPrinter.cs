@@ -11,28 +11,30 @@ public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
         ColorBase = CommandLine.Color.Green;
     }
 
-    public void PrintModuleHeader(SyntaxModule module)
+    public void PrintModuleHeader(Module module)
     {
         Console.WriteLine($"{C[ColorMisc]}// Laye Module '{module.SourceFile.FileInfo.FullName}'");
     }
 
-    public void PrintModuleTokens(SyntaxModule module)
+    public void PrintModuleTokens(Module module)
     {
         PrintModuleHeader(module);
         foreach (var token in module.Tokens)
             Print(token);
     }
     
-    public void PrintModuleSyntax(SyntaxModule module)
+    public void PrintModuleSyntax(Module module)
     {
         PrintModuleHeader(module);
-        foreach (var node in module.TopLevelNodes)
+        foreach (var node in module.TopLevelSyntax)
             Print(node);
     }
 
     protected virtual void PrintSyntaxNodeHeader(SyntaxNode node)
     {
-        Console.Write($"{C[ColorBase]}{node.Kind} {C[ColorLocation]}<{node.Location.Offset}> ");
+        if (node is SyntaxToken token)
+            Console.Write($"{C[ColorBase]}Token {token.Kind} {C[ColorLocation]}<{node.Location.Offset}> ");
+        else Console.Write($"{C[ColorBase]}{node.GetType().Name} {C[ColorLocation]}<{node.Location.Offset}> ");
     }
 
     protected override void Print(SyntaxNode node)
@@ -47,22 +49,22 @@ public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
                 {
                     default: Console.Write($"{C[ColorBase]}{token.Location.Span(Context)}"); break;
 
-                    case SyntaxKind.TokenIdentifier:
+                    case TokenKind.Identifier:
                     {
                         Console.Write($"{C[ColorName]}{token.TextValue}");
                     } break;
 
-                    case SyntaxKind.TokenLiteralString:
+                    case TokenKind.LiteralString:
                     {
                         Console.Write($"{C[ColorValue]}\"{token.TextValue}\"");
                     } break;
 
-                    case SyntaxKind.TokenLiteralRune:
+                    case TokenKind.LiteralRune:
                     {
                         Console.Write($"{C[ColorValue]}\'{char.ConvertFromUtf32((int)token.IntegerValue)}\'");
                     } break;
 
-                    case SyntaxKind.TokenLiteralInteger:
+                    case TokenKind.LiteralInteger:
                     {
                         Console.Write($"{C[ColorValue]}{token.IntegerValue}");
                     } break;
@@ -71,5 +73,6 @@ public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
         }
         
         Console.WriteLine(C.Reset);
+        PrintChildren(node.Children);
     }
 }
