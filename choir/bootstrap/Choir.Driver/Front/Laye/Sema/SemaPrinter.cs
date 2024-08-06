@@ -40,6 +40,33 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
         switch (node)
         {
             default: break;
+
+            case SemaTypeQual typeQual:
+            {
+                Console.Write($"{C[ColorBase]}{typeQual.Qualifiers}");
+            } break;
+
+            case SemaDeclField declField:
+            {
+                Console.Write($"{C[ColorName]}{declField.Name}");
+            } break;
+
+            case SemaDeclStruct declStruct:
+            {
+                Console.Write($"{C[ColorName]}{declStruct.Name}");
+            } break;
+
+            case SemaDeclAlias declAlias:
+            {
+                if (declAlias.IsStrict)
+                    Console.Write($"{C[ColorBase]}Strict ");
+                Console.Write($"{C[ColorName]}{declAlias.Name}");
+            } break;
+
+            case SemaType typeBuiltin:
+            {
+                Console.Write(typeBuiltin.ToDebugString(C));
+            } break;
         }
         
         Console.WriteLine(C.Reset);

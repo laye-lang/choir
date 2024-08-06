@@ -1,12 +1,13 @@
-struct foo {
-    int value;
-};
-
 typedef struct foo foo;
+struct foo {
+    int const value;
+};
 
 typedef struct bar
 {
     int value;
+    const struct foo foo1;
+    const foo foo2;
 } bar;
 
 foo get_foo();

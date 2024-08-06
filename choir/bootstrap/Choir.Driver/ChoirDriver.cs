@@ -68,9 +68,16 @@ public abstract class ChoirJob(ChoirDriver driver)
 
             if (Driver.Options.DriverStage == ChoirDriverStage.Parse)
             {
-                var printer = new SyntaxPrinter(Context);
+                var syntaxPrinter = new SyntaxPrinter(Context);
+                var semaPrinter = new SemaPrinter(Context);
                 foreach (var module in tu.Modules)
-                    printer.PrintModuleSyntax(module);
+                {
+                    if (module.HasSemaDecls)
+                        semaPrinter.PrintModule(module);
+                    else if (module.HasSyntax)
+                        syntaxPrinter.PrintModuleSyntax(module);
+                    else syntaxPrinter.PrintModuleHeader(module);
+                }
                 return 0;
             }
 

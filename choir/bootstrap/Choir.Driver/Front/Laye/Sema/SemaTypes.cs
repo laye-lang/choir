@@ -11,7 +11,7 @@ public enum BuiltinTypeKind
     Int,
     IntSized,
     FloatSized,
-
+    FFIBool,
     FFIChar,
     FFIShort,
     FFIInt,
@@ -20,6 +20,36 @@ public enum BuiltinTypeKind
     FFIFloat,
     FFIDouble,
     FFILongDouble,
+}
+
+public static class BuiltinTypeKindExtensions
+{
+    public static string ToLanguageKeywordString(this BuiltinTypeKind kind, int bitWidth = 0) => kind switch {
+        BuiltinTypeKind.Void => "void",
+        BuiltinTypeKind.NoReturn => "noreturn",
+        BuiltinTypeKind.Bool => "bool",
+        BuiltinTypeKind.BoolSized => $"b{bitWidth}",
+        BuiltinTypeKind.Int => "int",
+        BuiltinTypeKind.IntSized => $"i{bitWidth}",
+        BuiltinTypeKind.FloatSized => $"f{bitWidth}",
+        BuiltinTypeKind.FFIBool => "__laye_ffi_bool",
+        BuiltinTypeKind.FFIChar => "__laye_ffi_char",
+        BuiltinTypeKind.FFIShort => "__laye_ffi_short",
+        BuiltinTypeKind.FFIInt => "__laye_ffi_int",
+        BuiltinTypeKind.FFILong => "__laye_ffi_long",
+        BuiltinTypeKind.FFILongLong => "__laye_ffi_longlong",
+        BuiltinTypeKind.FFIFloat => "__laye_ffi_float",
+        BuiltinTypeKind.FFIDouble => "__laye_ffi_double",
+        BuiltinTypeKind.FFILongDouble => "__laye_ffi_longdouble",
+        _ => "{{unknown builtin type}}",
+    };
+
+    public static bool IsExplicitlySized(this BuiltinTypeKind kind) => kind switch {
+        BuiltinTypeKind.BoolSized => true,
+        BuiltinTypeKind.IntSized => true,
+        BuiltinTypeKind.FloatSized => true,
+        _ => false,
+    };
 }
 
 public sealed class SemaTypePoison : SemaType
@@ -50,7 +80,7 @@ public sealed class SemaTypeBuiltIn(BuiltinTypeKind kind, int bitWidth = 0) : Se
     public bool IsExplicitlySized => Kind is BuiltinTypeKind.IntSized or BuiltinTypeKind.FloatSized or BuiltinTypeKind.BoolSized;
 
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeKeyword()}{Kind.ToString().ToLower()}";
+        $"{colors.LayeKeyword()}{Kind.ToLanguageKeywordString(BitWidth)}";
 }
 
 public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedType) : SemaType
@@ -60,6 +90,8 @@ public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedTyp
     
     public override string ToDebugString(Colors colors) =>
         string.Join($"{colors.Reset}::", NameParts.Select(name => $"{colors.LayeName()}{name}"));
+
+    public override IEnumerable<BaseSemaNode> Children { get; } = [namedType];
 }
 
 public sealed class SemaTypeTemplateParameter(string parameterName) : SemaType
@@ -135,4 +167,18 @@ public sealed class SemaTypeStruct(SemaDeclStruct declStruct) : SemaType
     public SemaDeclStruct DeclStruct { get; } = declStruct;
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeName()}{DeclStruct.Name}";
+}
+
+public sealed class SemaTypeEnum(SemaDeclEnum declEnum) : SemaType
+{
+    public SemaDeclEnum DeclEnum { get; } = declEnum;
+    public override string ToDebugString(Colors colors) =>
+        $"{colors.LayeName()}{DeclEnum.Name}";
+}
+
+public sealed class SemaTypeAlias(SemaDeclAlias declAlias) : SemaType
+{
+    public SemaDeclAlias DeclAlias { get; } = declAlias;
+    public override string ToDebugString(Colors colors) =>
+        $"{colors.LayeName()}{DeclAlias.Name}";
 }

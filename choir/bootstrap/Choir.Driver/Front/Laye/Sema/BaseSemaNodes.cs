@@ -28,6 +28,10 @@ public abstract class BaseSemaNode
 public abstract class SemaType : BaseSemaNode
 {
     public virtual bool IsPoison { get; } = false;
+
+    public SemaTypeQual Qualified(Location location, TypeQualifiers qualifiers = TypeQualifiers.None) =>
+        new(this, location, qualifiers);
+
     public override string ToString() => ToDebugString(Colors.Off);
     public abstract string ToDebugString(Colors colors);
 }
@@ -45,6 +49,18 @@ public sealed class SemaTypeQual(SemaType type, Location location, TypeQualifier
 
     public bool IsQualified => Qualifiers != TypeQualifiers.None;
     public SemaTypeQual Unqualified => new(Type, Location);
+
+    public SemaTypeQual Qualified(TypeQualifiers qualifiers = TypeQualifiers.None) =>
+        new(Type, Location, Qualifiers | qualifiers);
+
+    public SemaTypeQual Qualified(Location location, TypeQualifiers qualifiers = TypeQualifiers.None) =>
+        new(Type, location, Qualifiers | qualifiers);
+
+    public SemaTypeQual Requalified(TypeQualifiers qualifiers = TypeQualifiers.None) =>
+        new(Type, Location, qualifiers);
+
+    public SemaTypeQual Requalified(Location location, TypeQualifiers qualifiers = TypeQualifiers.None) =>
+        new(Type, location, qualifiers);
 
     public override string ToString() => ToDebugString(Colors.Off);
     public string ToDebugString(Colors colors)

@@ -33,6 +33,8 @@ public sealed class SemaDeclTemplateValueParameter(Location location, string nam
     public string Name { get; } = name;
     public SemaTypeQual ParamType { get; } = paramType;
     // TODO(local): constraints/contracts/concepts/whatever
+    
+    public override IEnumerable<BaseSemaNode> Children { get; } = [paramType];
 }
 
 public sealed class SemaDeclParameter(Location location, string name, SemaTypeQual paramType)
@@ -41,6 +43,8 @@ public sealed class SemaDeclParameter(Location location, string name, SemaTypeQu
     public string Name { get; } = name;
     public SemaTypeQual ParamType { get; } = paramType;
     // TODO(local): evaluated constant for default values, or even arbitrary semantic expressions depending
+    
+    public override IEnumerable<BaseSemaNode> Children { get; } = [paramType];
 }
 
 public sealed class SemaDeclFunction(Location location, string name, SemaTypeQual returnType, SemaDeclParameter[] parameterDecls)
@@ -50,6 +54,16 @@ public sealed class SemaDeclFunction(Location location, string name, SemaTypeQua
     public SemaTypeQual ReturnType { get; } = returnType;
     public IReadOnlyList<SemaDeclParameter> ParameterDecls { get; } = parameterDecls;
     public IReadOnlyList<SemaDeclTemplateParameter> TemplateParams { get; init; } = [];
+
+    public override IEnumerable<BaseSemaNode> Children
+    {
+        get
+        {
+            yield return ReturnType;
+            foreach (var param in ParameterDecls)
+                yield return param;
+        }
+    }
 }
 
 public sealed class SemaDeclBinding(Location location, string name, SemaTypeQual bindingType, SemaExpr? initialValue)
@@ -58,6 +72,8 @@ public sealed class SemaDeclBinding(Location location, string name, SemaTypeQual
     public string Name { get; } = name;
     public SemaTypeQual BindingType { get; } = bindingType;
     public SemaExpr? InitialValue { get; } = initialValue;
+
+    public override IEnumerable<BaseSemaNode> Children { get; } = initialValue is not null ? [bindingType, initialValue] : [bindingType];
 }
 
 public sealed class SemaDeclField(Location location, string name, SemaTypeQual fieldType)
@@ -65,6 +81,8 @@ public sealed class SemaDeclField(Location location, string name, SemaTypeQual f
 {
     public string Name { get; } = name;
     public SemaTypeQual FieldType { get; } = fieldType;
+
+    public override IEnumerable<BaseSemaNode> Children { get; } = [fieldType];
 }
 
 public sealed class SemaDeclStruct(Location location, string name, SemaDeclField[] fields, SemaDeclStruct[] variants)
@@ -74,6 +92,17 @@ public sealed class SemaDeclStruct(Location location, string name, SemaDeclField
     public IReadOnlyList<SemaDeclField> FieldDecls { get; } = fields;
     public IReadOnlyList<SemaDeclStruct> VariantDecls { get; } = variants;
     public IReadOnlyList<SemaDeclTemplateParameter> TemplateParams { get; init; } = [];
+
+    public override IEnumerable<BaseSemaNode> Children
+    {
+        get
+        {
+            foreach (var @field in FieldDecls)
+                yield return @field;
+            foreach (var variant in VariantDecls)
+                yield return variant;
+        }
+    }
 }
 
 public sealed class SemaDeclEnumVariant(Location location, string name, BigInteger value)
@@ -88,6 +117,15 @@ public sealed class SemaDeclEnum(Location location, string name, SemaDeclEnumVar
 {
     public string Name { get; } = name;
     public IReadOnlyList<SemaDeclEnumVariant> Variants { get; } = variants;
+
+    public override IEnumerable<BaseSemaNode> Children
+    {
+        get
+        {
+            foreach (var variant in Variants)
+                yield return variant;
+        }
+    }
 }
 
 public sealed class SemaDeclAlias(Location location, string name, SemaTypeQual alaisedType, bool isStrict = false)
@@ -97,6 +135,14 @@ public sealed class SemaDeclAlias(Location location, string name, SemaTypeQual a
     public bool IsStrict { get; } = isStrict;
     public SemaTypeQual AliasedType { get; } = alaisedType;
     public IReadOnlyList<SemaDeclTemplateParameter> TemplateParams { get; init; } = [];
+
+    public override IEnumerable<BaseSemaNode> Children
+    {
+        get
+        {
+            yield return AliasedType;
+        }
+    }
 }
 
 public sealed class SemaDeclTest(Location location, string description, SemaStmt body)
