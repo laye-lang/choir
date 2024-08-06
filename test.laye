@@ -1,2 +1,2 @@
-import * from "stdio.h";
-//import * from "foo.h";
+//import * from "stdio.h";
+import * from "foo.h";

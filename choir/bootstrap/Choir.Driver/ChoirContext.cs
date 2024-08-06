@@ -124,7 +124,7 @@ public sealed class ChoirContext
             string sourceText;
             try
             {
-                sourceText = File.ReadAllText(canonicalPath, Encoding.UTF8);
+                sourceText = File.ReadAllText(canonicalPath, Encoding.UTF8).ReplaceLineEndings("\n");
             }
             catch (Exception ex)
             {

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace Choir;
 
 public struct Location(int offset, int length, int fileId)
@@ -20,8 +22,34 @@ public struct Location(int offset, int length, int fileId)
     {
         if (!Seekable(context)) return null;
         var file = context.GetSourceFileById(FileId);
+        if (file is null) return null;
 
-        throw new NotImplementedException();
+        int lineStart = Offset;
+        int lineEnd = Offset;
+
+        string text = file.Text;
+
+        // seek to start of line
+        while (lineStart > 0 && text[lineStart] != '\n') lineStart--;
+        if (text[lineStart] == '\n') lineStart++;
+
+        // seek to end of line
+        while (lineEnd < text.Length && text[lineEnd] != '\n') lineEnd++;
+
+        int line = 1;
+        int column = 1;
+
+        for (int i = 0; i < Offset; i++)
+        {
+            if (text[i] == '\n')
+            {
+                line++;
+                column = 1;
+            }
+            else column++;
+        }
+
+        return new(line, column, lineStart, lineEnd - lineStart, text.Substring(lineStart, lineEnd - lineStart));
     }
 
     public readonly LocationInfoShort? SeekLineColumn(ChoirContext context)
@@ -54,10 +82,12 @@ public struct Location(int offset, int length, int fileId)
     }
 }
 
-public readonly struct LocationInfo(int line, int column, string lineText)
+public readonly struct LocationInfo(int line, int column, int lineStart, int lineLength, string lineText)
 {
     public readonly int Line = line;
     public readonly int Column = column;
+    public readonly int LineStart = lineStart;
+    public readonly int LineLength = lineLength;
     public readonly string LineText = lineText;
 }
 

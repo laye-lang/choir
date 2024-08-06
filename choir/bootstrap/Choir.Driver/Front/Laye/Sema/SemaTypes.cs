@@ -1,3 +1,4 @@
+using System.Text;
 using Choir.CommandLine;
 
 namespace Choir.Front.Laye.Sema;
@@ -88,8 +89,19 @@ public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedTyp
     public IReadOnlyList<string> NameParts { get; } = nameParts;
     public SemaTypeQual NamedType { get; } = namedType;
     
-    public override string ToDebugString(Colors colors) =>
-        string.Join($"{colors.Reset}::", NameParts.Select(name => $"{colors.LayeName()}{name}"));
+    public override string ToDebugString(Colors colors)
+    {
+        var builder = new StringBuilder();
+        for (int i = 0; i < NameParts.Count; i++) {
+            if (i > 0) builder.Append($"{colors.Reset}::");
+            if (i == NameParts.Count - 1)
+                builder.Append(colors.LayeTypeName());
+            else builder.Append(colors.LayeName());
+            builder.Append(NameParts[i]);
+        }
+
+        return builder.ToString();
+    }
 
     public override IEnumerable<BaseSemaNode> Children { get; } = [namedType];
 }
@@ -171,19 +183,19 @@ public sealed class SemaTypeStruct(SemaDeclStruct declStruct) : SemaType
 {
     public SemaDeclStruct DeclStruct { get; } = declStruct;
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeName()}{DeclStruct.Name}";
+        $"{colors.LayeTypeName()}{DeclStruct.Name}";
 }
 
 public sealed class SemaTypeEnum(SemaDeclEnum declEnum) : SemaType
 {
     public SemaDeclEnum DeclEnum { get; } = declEnum;
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeName()}{DeclEnum.Name}";
+        $"{colors.LayeTypeName()}{DeclEnum.Name}";
 }
 
 public sealed class SemaTypeAlias(SemaDeclAlias declAlias) : SemaType
 {
     public SemaDeclAlias DeclAlias { get; } = declAlias;
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeName()}{DeclAlias.Name}";
+        $"{colors.LayeTypeName()}{DeclAlias.Name}";
 }

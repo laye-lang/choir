@@ -44,10 +44,10 @@ public partial class Parser
 
             var choirFile = Context.GetSourceFile(file);
             
-            using var index = CXIndex.Create();
+            using var index = ClangSharp.Index.Create();
 
             string[] clangArgs = [$"-I{Environment.CurrentDirectory}"];
-            var translationUnit = CXTranslationUnit.Parse(index, file.FullName, clangArgs, [], CXTranslationUnit_None);
+            var translationUnit = CXTranslationUnit.Parse(index.Handle, file.FullName, clangArgs, [], CXTranslationUnit_None | CXTranslationUnit_SkipFunctionBodies | CXTranslationUnit_DetailedPreprocessingRecord | CXTranslationUnit_CacheCompletionResults);
 
             var hasErrored = translationUnit.DiagnosticSet.Any(d => d.Severity >= CXDiagnosticSeverity.CXDiagnostic_Error);
             if (hasErrored)
@@ -60,7 +60,7 @@ public partial class Parser
                     Console.Error.WriteLine(diagText.CString);
                 }
 
-                Context.Diag.ICE("we can't handle reporting Clang diagnostics right now, that needs to happen");
+                //Context.Diag.ICE("we can't handle reporting Clang diagnostics right now, that needs to happen");
             }
 
             var clangFile = translationUnit.GetFile(file.FullName);
@@ -69,8 +69,39 @@ public partial class Parser
             Module.TranslationUnit?.AddModule(cImportModule);
 
             using var tu = ClangSharp.TranslationUnit.GetOrCreate(translationUnit);
+
+            #if false
+            var macroDefinitions = tu.TranslationUnitDecl.CursorChildren
+                .Where(cursor => cursor is MacroDefinitionRecord)
+                .Cast<MacroDefinitionRecord>()
+                .ToArray();
+            
+            foreach (var macro in macroDefinitions)
+            {
+                var location = GetLocation(macro);
+                var definitionFile = Context.GetSourceFileById(location.FileId);
+                if (definitionFile is null) continue;
+                string text = definitionFile.Text;
+
+                if (location.Seek(Context) is not {} locInfo) continue;
+
+                int lineLength = locInfo.LineLength;
+                while (locInfo.LineStart + lineLength < text.Length && text[locInfo.LineStart + lineLength] == '\n' && (locInfo.LineStart + lineLength == 0 || text[locInfo.LineStart + lineLength - 1] == '\\'))
+                {
+                    lineLength++;
+                    while (locInfo.LineStart + lineLength < text.Length && text[locInfo.LineStart + lineLength] != '\n')
+                        lineLength++;
+                }
+
+                string defineBodyText = text.Substring(locInfo.LineStart, lineLength);
+                Console.WriteLine($"// Line {locInfo.Line}, Column {locInfo.Column} in '{definitionFile.FileInfo.FullName}'");
+                Console.WriteLine(defineBodyText);
+            }
+            #endif
+            
             foreach (var decl in tu.TranslationUnitDecl.Decls)
             {
+                //Console.WriteLine(decl.CursorKindSpelling + " :: " + decl);
                 CreateCBindingSema(cImportModule, decl);
             }
         }
@@ -87,7 +118,13 @@ public partial class Parser
         
         SourceFile cFile;
         using (var nameString = cxFile.Name)
-            cFile = Context.GetSourceFile(new FileInfo(nameString.CString));
+        {
+            string name = nameString.CString;
+            if (string.IsNullOrEmpty(name) || !File.Exists(name))
+                return Location.Nowhere;
+            
+            cFile = Context.GetSourceFile(new FileInfo(name));
+        }
             
         return new Location((int)offset, 1, cFile.FileId);
     }
@@ -97,7 +134,6 @@ public partial class Parser
         type = type.CanonicalType;
 
         var qualifiers = type.IsLocalConstQualified ? TypeQualifiers.None : TypeQualifiers.Mutable;
-        
 
         var typeKind = type.Kind;
         if (typeKind == CXTypeKind.CXType_FirstBuiltin)
@@ -125,6 +161,8 @@ public partial class Parser
             case CXTypeKind.CXType_ULong: return cModule.Context.Types.LayeTypeFFILong.Qualified(Location.Nowhere, qualifiers);
             case CXTypeKind.CXType_LongLong:
             case CXTypeKind.CXType_ULongLong: return cModule.Context.Types.LayeTypeFFILongLong.Qualified(Location.Nowhere, qualifiers);
+            case CXTypeKind.CXType_Int128:
+            case CXTypeKind.CXType_UInt128: return cModule.Context.Types.LayeTypeIntSized(128).Qualified(Location.Nowhere, qualifiers);
 
             case CXTypeKind.CXType_Pointer:
             {
@@ -183,7 +221,7 @@ public partial class Parser
         if (decl.IsInvalidDecl) return;
 
         var location = GetLocation(decl);
-        if (location.FileId == 0) return;
+        //if (location.FileId == 0) return;
 
         SemaDecl? generatedDecl = null;
 
