@@ -159,7 +159,7 @@ public partial class Parser
                 if (LookupDecl(typeRecord.Decl) is SemaDeclStruct structDecl)
                     return new SemaTypeStruct(structDecl).Qualified(Location.Nowhere, qualifiers);
                 else if (typeRecord.Decl.Definition is null)
-                    return cModule.Context.Types.LayeTypeVoid.Qualified(Location.Nowhere, qualifiers);
+                    return cModule.Context.Types.LayeTypeFFIChar.Qualified(Location.Nowhere, qualifiers);
 
                 Console.WriteLine($"Unhandled record type: {typeRecord} ({typeRecord.Decl}, {typeRecord.Decl.UnderlyingDecl.Handle.Hash})");
                 return null;
@@ -227,7 +227,7 @@ public partial class Parser
                 }
                 else
                 {
-                    generatedDecl = new SemaDeclAlias(location, $"struct_{declRecord.Name}", cModule.Context.Types.LayeTypeVoid.Qualified(location));
+                    generatedDecl = new SemaDeclAlias(location, $"struct_{declRecord.Name}", cModule.Context.Types.LayeTypeFFIChar.Qualified(location));
                 }
             } break;
 

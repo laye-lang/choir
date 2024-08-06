@@ -105,6 +105,8 @@ public sealed class SemaTypeTemplateParameter(string parameterName) : SemaType
 public abstract class SemaContainerType(SemaTypeQual elementType) : SemaType
 {
     public SemaTypeQual ElementType { get; } = elementType;
+
+    public override IEnumerable<BaseSemaNode> Children { get; } = [elementType];
 }
 
 public sealed class SemaTypePointer(SemaTypeQual elementType) : SemaContainerType(elementType)
@@ -113,7 +115,8 @@ public sealed class SemaTypePointer(SemaTypeQual elementType) : SemaContainerTyp
         $"{ElementType.ToDebugString(colors)}{colors.Reset}*";
 }
 
-public sealed class SemaTypeBuffer(SemaTypeQual elementType, byte? terminator = null) : SemaContainerType(elementType)
+public sealed class SemaTypeBuffer(SemaTypeQual elementType, byte? terminator = null)
+    : SemaContainerType(elementType)
 {
     public byte? Terminator { get; } = terminator;
     public override string ToDebugString(Colors colors)
@@ -160,6 +163,8 @@ public sealed class SemaTypeErrorPair(SemaTypeQual resultType, SemaTypeQual erro
     public SemaTypeQual ErrorType { get; } = errorType;
     public override string ToDebugString(Colors colors) =>
         $"{ResultType.ToDebugString(colors)}{colors.Reset}!{ErrorType.ToDebugString(colors)}";
+
+    public override IEnumerable<BaseSemaNode> Children { get; } = [resultType, errorType];
 }
 
 public sealed class SemaTypeStruct(SemaDeclStruct declStruct) : SemaType

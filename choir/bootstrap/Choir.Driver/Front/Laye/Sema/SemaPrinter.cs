@@ -58,7 +58,7 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
 
             case SemaDeclFunction declFunction:
             {
-                string parameters = string.Join(", ", declFunction.ParameterDecls.Select(d => $"{d.ParamType.ToDebugString(C)} {d.Name}"));
+                string parameters = string.Join(", ", declFunction.ParameterDecls.Select(d => $"{d.ParamType.ToDebugString(C)} {C[ColorName]}{d.Name}"));
                 Console.Write($"{declFunction.ReturnType.ToDebugString(C)} {C[ColorName]}{declFunction.Name}({parameters})");
             } break;
 
@@ -79,9 +79,9 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
                 Console.Write($"{C[ColorName]}{declAlias.Name} = {declAlias.AliasedType.ToDebugString(C)}");
             } break;
 
-            case SemaType typeBuiltin:
+            case SemaType type:
             {
-                Console.Write(typeBuiltin.ToDebugString(C));
+                Console.Write(type.ToDebugString(C));
             } break;
         }
         
