@@ -16,7 +16,7 @@ public partial class Parser(Module module)
             module.AddTopLevelSyntax(topLevelNode);
     }
 
-    private static bool IsImportDeclForCHeader(SyntaxNode.Import importDecl)
+    private static bool IsImportDeclForCHeader(SyntaxImport importDecl)
     {
         return importDecl. ImportKind == ImportKind.FilePath && importDecl.ModuleNameText.EndsWith(".h", StringComparison.InvariantCultureIgnoreCase);
     }
@@ -30,7 +30,7 @@ public partial class Parser(Module module)
     private int _position = 0;
     private bool _hasOnlyReadImports = true;
 
-    private readonly List<SyntaxNode.Import> _cHeaderImports = [];
+    private readonly List<SyntaxImport> _cHeaderImports = [];
     
     private bool IsAtEnd => _position >= _tokens.Length - 1;
     private SyntaxToken EndOfFileToken => _tokens[_tokens.Length - 1];
@@ -46,6 +46,31 @@ public partial class Parser(Module module)
             return EndOfFileToken;
         
         return _tokens[peekPosition];
+    }
+
+    private bool At(params TokenKind[] kinds) => PeekAt(0, kinds);
+    private bool At(params string[] contextualKeywordTexts) => PeekAt(0, contextualKeywordTexts);
+
+    private bool PeekAt(int ahead, params TokenKind[] kinds)
+    {
+        foreach (var kind in kinds)
+        {
+            if (Peek(ahead).Kind == kind)
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool PeekAt(int ahead, params string[] contextualKeywordTexts)
+    {
+        foreach (string text in contextualKeywordTexts)
+        {
+            if (Peek(ahead).Kind == TokenKind.Identifier && Peek(ahead).TextValue == text)
+                return true;
+        }
+
+        return false;
     }
 
     private void Advance() => Advance(out _);
@@ -72,7 +97,7 @@ public partial class Parser(Module module)
 
     private bool TryAdvance(string keywordText, TokenKind contextualKind, [MaybeNullWhen(false)] out SyntaxToken token)
     {
-        if (CurrentToken.Kind == TokenKind.Identifier && MemoryExtensions.SequenceEqual(CurrentToken.Location.Span(Context), keywordText))
+        if (CurrentToken.Kind == contextualKind || (CurrentToken.Kind == TokenKind.Identifier && MemoryExtensions.SequenceEqual(CurrentToken.Location.Span(Context), keywordText)))
         {
             token = CurrentToken;
             token.Kind = contextualKind;
@@ -107,6 +132,23 @@ public partial class Parser(Module module)
         return true;
     }
 
+    private bool Consume(TokenKind[] kinds, out SyntaxToken token)
+    {
+        foreach (var kind in kinds)
+        {
+            if (CurrentToken.Kind == kind)
+            {
+                token = CurrentToken;
+                Advance();
+                
+                return true;
+            }
+        }
+        
+        token = new SyntaxToken(TokenKind.Missing, new Location(CurrentLocation.Offset, 0, SourceFile.FileId));
+        return false;
+    }
+
     private bool Consume(string keywordText, TokenKind contextualKind)
     {
         if (CurrentToken.Kind == TokenKind.Identifier && MemoryExtensions.SequenceEqual(CurrentToken.Location.Span(Context), keywordText))
@@ -133,16 +175,43 @@ public partial class Parser(Module module)
         return false;
     }
 
-    private void ExpectSemiColon()
+    private void Expect(TokenKind kind, string expected)
     {
-        if (!Consume(TokenKind.SemiColon))
-            Context.Diag.Error(CurrentLocation, "expected ';'");
+        if (!Consume(kind))
+            Context.Diag.Error(CurrentLocation, $"expected {expected}");
     }
 
-    private void ExpectSemiColon(out SyntaxToken token)
+    private void Expect(TokenKind kind, string expected, out SyntaxToken token)
     {
-        if (!Consume(TokenKind.SemiColon, out token))
-            Context.Diag.Error(CurrentLocation, "expected ';'");
+        if (!Consume(kind, out token))
+            Context.Diag.Error(CurrentLocation, $"expected {expected}");
+    }
+
+    private void ExpectSemiColon() => Expect(TokenKind.SemiColon, "';'");
+    private void ExpectSemiColon(out SyntaxToken token) => Expect(TokenKind.SemiColon, "';'", out token);
+    private void ExpectIdentifier(out SyntaxToken token) => Expect(TokenKind.Identifier, "an identifier", out token);
+
+    private void ExpectContextualKeyword(string keywordText, TokenKind contextualKind)
+    {
+        if (!Consume(keywordText, contextualKind))
+            Context.Diag.Error(CurrentToken.Location, $"expected '{keywordText}'");
+    }
+
+    private void ExpectContextualKeyword(string keywordText, TokenKind contextualKind, out SyntaxToken token)
+    {
+        if (!Consume(keywordText, contextualKind, out token))
+            Context.Diag.Error(CurrentToken.Location, $"expected '{keywordText}'");
+    }
+
+    private IReadOnlyList<T> ParseDelimited<T>(Func<T> parser, TokenKind tokenDelimiter)
+        where T : SyntaxNode
+    {
+        var results = new List<T>();
+        do
+        {
+            results.Add(parser());
+        } while (TryAdvance(tokenDelimiter));
+        return [.. results];
     }
 
     public SyntaxNode? ParseTopLevelSyntax()
@@ -188,31 +257,96 @@ public partial class Parser(Module module)
         }
     }
 
-    public SyntaxNode.Import ParseImportDeclaration()
+    private IReadOnlyList<SyntaxImportQuery> ParseImportQueries() => ParseDelimited(ParseImportQuery, TokenKind.Comma);
+    private SyntaxImportQuery ParseImportQuery()
+    {
+        if (TryAdvance(TokenKind.Star, out var tokenStar))
+            return new SyntaxImportQueryWildcard(tokenStar);
+        else
+        {
+            if (At("as")) CurrentToken.Kind = TokenKind.As;
+            var queryNameref = ParseNameref();
+
+            SyntaxToken? tokenAlias = null;
+            if (TryAdvance("as", TokenKind.As, out SyntaxToken? tokenAs))
+                ExpectIdentifier(out tokenAlias);
+
+            return new SyntaxImportQueryNamed(queryNameref, tokenAs, tokenAlias);
+        }
+    }
+
+    public SyntaxImport ParseImportDeclaration()
     {
         Debug.Assert(CurrentToken.Kind == TokenKind.Import);
         Advance(out var tokenImport);
 
-        if (TryAdvance(TokenKind.Star, out var tokenStar))
-        {
-            if (!Consume("from", TokenKind.From, out var tokenFrom))
-                Context.Diag.Error(CurrentToken.Location, "expected 'from'");
-            
-            bool hasPath = Consume(TokenKind.LiteralString, out var tokenPath);
-            if (!hasPath) Context.Diag.Error(tokenPath.Location, "expected import path name");
+        SyntaxToken? tokenAs;
+        SyntaxToken? tokenAlias = null;
+        SyntaxToken tokenSemiColon;
 
-            ExpectSemiColon(out var tokenSemiColon);
-            return new SyntaxNode.Import(tokenImport)
+        bool isQueryless = At(TokenKind.LiteralString) ||
+            (At(TokenKind.Identifier) && PeekAt(1, TokenKind.SemiColon)) ||
+            (At(TokenKind.Identifier) && PeekAt(1, "as") && PeekAt(2, TokenKind.Identifier) && PeekAt(3, TokenKind.SemiColon));
+
+        if (isQueryless)
+        {
+            var tokenModuleName = CurrentToken;
+            Advance();
+
+            if (TryAdvance("as", TokenKind.As, out tokenAs))
+                ExpectIdentifier(out tokenAlias);
+
+            ExpectSemiColon(out tokenSemiColon);
+            return new SyntaxImport(tokenImport)
             {
-                ImportKind = hasPath ? ImportKind.FilePath : ImportKind.Invalid,
-                Queries = [new SyntaxNode.ImportQueryWildcard(tokenStar)],
-                TokenFrom = tokenFrom,
-                TokenModuleName = tokenPath,
+                ImportKind = tokenModuleName.Kind == TokenKind.LiteralString ? ImportKind.FilePath : ImportKind.Library,
+                Queries = [],
+                TokenFrom = null,
+                TokenModuleName = tokenModuleName,
                 TokenSemiColon = tokenSemiColon,
+                TokenAs = tokenAs,
+                TokenAlias = tokenAlias,
             };
         }
 
-        Context.Diag.ICE(CurrentLocation, "currently, only `import * from` is supported");
-        throw new UnreachableException();
+        IReadOnlyList<SyntaxImportQuery> queries = [];
+        if (!At("from"))
+            queries = ParseImportQueries();
+        else Context.Diag.Error(CurrentLocation, "expected an identifier");
+        ExpectContextualKeyword("from", TokenKind.From, out var tokenFrom);
+        
+        if (!Consume([TokenKind.Identifier, TokenKind.LiteralString], out var tokenPath))
+            Context.Diag.Error(tokenPath.Location, "expected an identifier or string literal");
+
+        if (TryAdvance("as", TokenKind.As, out tokenAs))
+            ExpectIdentifier(out tokenAlias);
+
+        ExpectSemiColon(out tokenSemiColon);
+        return new SyntaxImport(tokenImport)
+        {
+            ImportKind = tokenPath.Kind == TokenKind.LiteralString ? ImportKind.FilePath
+                       : tokenPath.Kind == TokenKind.Identifier ? ImportKind.Library : ImportKind.Invalid,
+            Queries = queries,
+            TokenFrom = tokenFrom,
+            TokenModuleName = tokenPath,
+            TokenSemiColon = tokenSemiColon,
+            TokenAs = tokenAs,
+            TokenAlias = tokenAlias,
+        };
+    }
+
+    private SyntaxNameref ParseNameref()
+    {
+        NamerefKind kind = NamerefKind.Default;
+        if (TryAdvance(TokenKind.ColonColon))
+            kind = NamerefKind.Implicit;
+        else if (TryAdvance(TokenKind.Global))
+        {
+            Expect(TokenKind.ColonColon, "'::'");
+            kind = NamerefKind.Global;
+        }
+
+        var names = ParseDelimited(() => { ExpectIdentifier(out var tokenName); return tokenName; }, TokenKind.ColonColon);
+        return SyntaxNameref.Create(names[names.Count - 1].Location, kind, names);
     }
 }

@@ -23,6 +23,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
     private static readonly Dictionary<string, TokenKind> _keywordTokensKinds = new()
     {
+        {"global", TokenKind.Global},
         {"var", TokenKind.Var},
         {"void", TokenKind.Void},
         {"noreturn", TokenKind.NoReturn},

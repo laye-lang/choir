@@ -1,2 +1,37 @@
 //import * from "stdio.h";
-import * from "foo.h";
+//import * from "foo.h";
+
+import "foo.laye";
+import foo;
+
+import "foo.laye" as foo;
+import foo as foo;
+
+import * from "foo.laye";
+import * from foo;
+
+import * from "foo.laye" as foo; // error
+import * from foo as foo; // error
+
+import *, bar from "foo.laye"; // error
+import *, bar from foo; // 
+
+import *, bar from "foo.laye" as foo; // error
+import *, bar from foo as foo; // 
+
+import bar, baz as baz2 from "foo.laye";
+import bar, baz as baz2 from foo;
+
+import bar, baz::qux as baz2 from "foo.laye";
+import bar::qux, baz as baz2 from foo;
+
+import bar, baz as baz2 from "foo.laye" as foo; // error
+import bar, baz as baz2 from foo as foo; // error
+
+import from "foo.laye"; // error
+import as bar from "foo.laye"; // error
+
+import from "foo.laye"; // error
+import ::foo as bar from "foo.laye"; // error
+import global::foo as bar from "foo.laye"; // error
+import global foo as bar from "foo.laye"; // error

@@ -43,6 +43,7 @@ public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
         switch (node)
         {
             default: break;
+
             case SyntaxToken token:
             {
                 switch (token.Kind)
@@ -69,6 +70,11 @@ public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
                         Console.Write($"{C[ColorValue]}{token.IntegerValue}");
                     } break;
                 }
+            } break;
+
+            case SyntaxNameref nameref:
+            {
+                Console.Write($"{C[ColorBase]}{nameref.NamerefKind}");
             } break;
         }
         
