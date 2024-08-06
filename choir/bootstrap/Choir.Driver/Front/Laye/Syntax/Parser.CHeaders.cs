@@ -1,6 +1,7 @@
-using System.Diagnostics;
 using System.Text;
+
 using Choir.Front.Laye.Sema;
+
 using ClangSharp;
 using ClangSharp.Interop;
 
@@ -10,6 +11,7 @@ namespace Choir.Front.Laye.Syntax;
 
 public partial class Parser
 {
+    private readonly HashSet<CXCursor> _visitedCanonicalDecls = [];
     private readonly Dictionary<CXCursor, SemaDecl> _generatedCTypeDecls = [];
 
     private SyntaxToken CreateTokenForCFile(SourceFile cFile, TokenKind kind = TokenKind.Missing)
@@ -69,9 +71,7 @@ public partial class Parser
             using var tu = ClangSharp.TranslationUnit.GetOrCreate(translationUnit);
             foreach (var decl in tu.TranslationUnitDecl.Decls)
             {
-                var node = CreateCBindingSema(cImportModule, decl);
-                if (node is not null)
-                    cImportModule.AddDecl(node);
+                CreateCBindingSema(cImportModule, decl);
             }
         }
         finally
@@ -80,18 +80,42 @@ public partial class Parser
         }
     }
 
+    private Location GetLocation(Cursor cursor)
+    {
+        cursor.Location.GetFileLocation(out var cxFile, out var line, out var column, out var offset);
+        if (line == 0 && column == 0 && offset == 0) return Location.Nowhere;
+        
+        SourceFile cFile;
+        using (var nameString = cxFile.Name)
+            cFile = Context.GetSourceFile(new FileInfo(nameString.CString));
+            
+        return new Location((int)offset, 1, cFile.FileId);
+    }
+
     private SemaTypeQual? CreateCBindingSema(Module cModule, ClangSharp.Type type)
     {
+        type = type.CanonicalType;
+
         var qualifiers = type.IsLocalConstQualified ? TypeQualifiers.None : TypeQualifiers.Mutable;
-        switch (type.Kind)
+        
+
+        var typeKind = type.Kind;
+        if (typeKind == CXTypeKind.CXType_FirstBuiltin)
+            typeKind = CXTypeKind.CXType_Void;
+
+        switch (typeKind)
         {
             default:
             {
-                Console.WriteLine($"Unhandled type: {type.Kind} ({type})");
+                Console.WriteLine($"Unhandled type: {typeKind} ({type})");
                 return null;
             }
 
+            case CXTypeKind.CXType_Void: return cModule.Context.Types.LayeTypeVoid.Qualified(Location.Nowhere, qualifiers);
+            case CXTypeKind.CXType_Bool: return cModule.Context.Types.LayeTypeBool.Qualified(Location.Nowhere, qualifiers);
             case CXTypeKind.CXType_SChar:
+            case CXTypeKind.CXType_Char_S:
+            case CXTypeKind.CXType_Char_U:
             case CXTypeKind.CXType_UChar: return cModule.Context.Types.LayeTypeFFIChar.Qualified(Location.Nowhere, qualifiers);
             case CXTypeKind.CXType_Short:
             case CXTypeKind.CXType_UShort: return cModule.Context.Types.LayeTypeFFIShort.Qualified(Location.Nowhere, qualifiers);
@@ -101,6 +125,14 @@ public partial class Parser
             case CXTypeKind.CXType_ULong: return cModule.Context.Types.LayeTypeFFILong.Qualified(Location.Nowhere, qualifiers);
             case CXTypeKind.CXType_LongLong:
             case CXTypeKind.CXType_ULongLong: return cModule.Context.Types.LayeTypeFFILongLong.Qualified(Location.Nowhere, qualifiers);
+
+            case CXTypeKind.CXType_Pointer:
+            {
+                var typePointer = (PointerType)type;
+                var elementType = CreateCBindingSema(cModule, typePointer.PointeeType);
+                if (elementType is null) return null;
+                return new SemaTypePointer(elementType).Qualified(Location.Nowhere);
+            }
 
             case CXTypeKind.CXType_Elaborated:
             {
@@ -112,7 +144,7 @@ public partial class Parser
             case CXTypeKind.CXType_Typedef:
             {
                 var typeTypedef = (TypedefType)type;
-                if (CreateCBindingSema(cModule, typeTypedef.Decl) is SemaDeclAlias decl)
+                if (LookupDecl(typeTypedef.Decl) is SemaDeclAlias decl)
                 {
                     return new SemaTypeElaborated([typeTypedef.Decl.Name], decl.AliasedType).Qualified(Location.Nowhere, qualifiers);
                 }
@@ -124,8 +156,10 @@ public partial class Parser
             case CXTypeKind.CXType_Record:
             {
                 var typeRecord = (RecordType)type;
-                if (_generatedCTypeDecls.TryGetValue(typeRecord.Decl.UnderlyingDecl.Handle, out var semaDecl) && semaDecl is SemaDeclStruct structDecl)
+                if (LookupDecl(typeRecord.Decl) is SemaDeclStruct structDecl)
                     return new SemaTypeStruct(structDecl).Qualified(Location.Nowhere, qualifiers);
+                else if (typeRecord.Decl.Definition is null)
+                    return cModule.Context.Types.LayeTypeVoid.Qualified(Location.Nowhere, qualifiers);
 
                 Console.WriteLine($"Unhandled record type: {typeRecord} ({typeRecord.Decl}, {typeRecord.Decl.UnderlyingDecl.Handle.Hash})");
                 return null;
@@ -133,67 +167,112 @@ public partial class Parser
         }
     }
 
-    private SemaDecl? CreateCBindingSema(Module cModule, Decl decl)
+    private SemaDecl? LookupDecl(Decl decl)
     {
-        decl.Location.GetFileLocation(out var cxFile, out var line, out var column, out var offset);
-        if (line == 0 && column == 0 && offset == 0) return null;
+        if (_generatedCTypeDecls.TryGetValue(decl.CanonicalDecl.Handle, out var node))
+            return node;
         
-        SourceFile cFile;
-        using (var nameString = cxFile.Name)
-            cFile = Context.GetSourceFile(new FileInfo(nameString.CString));
-            
-        var location = new Location((int)offset, 1, cFile.FileId);
+        return null;
+    }
 
-        switch (decl.Kind)
+    private void CreateCBindingSema(Module cModule, Decl decl)
+    {
+        decl = decl.CanonicalDecl;
+        if (_visitedCanonicalDecls.Contains(decl.Handle)) return;
+        _visitedCanonicalDecls.Add(decl.Handle);
+        if (decl.IsInvalidDecl) return;
+
+        var location = GetLocation(decl);
+        if (location.FileId == 0) return;
+
+        SemaDecl? generatedDecl = null;
+
+        var declKind = decl.Kind;
+        if (declKind == CX_DeclKind.CX_DeclKind_FirstRecord)
+            declKind = CX_DeclKind.CX_DeclKind_Record;
+        else if (declKind == CX_DeclKind.CX_DeclKind_FirstFunction)
+            declKind = CX_DeclKind.CX_DeclKind_Function;
+        else if (declKind == CX_DeclKind.CX_DeclKind_FirstVar)
+            declKind = CX_DeclKind.CX_DeclKind_Var;
+
+        switch (declKind)
         {
-            default:
-            {
-                Console.WriteLine($"Unhandled: {decl.Kind} ({decl.Spelling})");
-                return null;
-            }
+            default: break;
 
             case CX_DeclKind.CX_DeclKind_Typedef:
             {
                 var declTypedef = (TypedefNameDecl)decl;
-                var aliasedType = CreateCBindingSema(cModule, declTypedef.UnderlyingType);
-                if (aliasedType is null)
-                {
-                    Console.WriteLine($"Unhandled typedef {declTypedef.Spelling} :: {declTypedef.UnderlyingType}");
-                    return null;
-                }
-                return _generatedCTypeDecls[declTypedef.UnderlyingDecl.Handle] = new SemaDeclAlias(location, declTypedef.Name, aliasedType);
-            }
 
-            case CX_DeclKind.CX_DeclKind_FirstRecord:
+                var aliasedType = CreateCBindingSema(cModule, declTypedef.UnderlyingType);
+                if (aliasedType is null) break;
+
+                generatedDecl = new SemaDeclAlias(location, declTypedef.Name, aliasedType);
+            } break;
+
+            case CX_DeclKind.CX_DeclKind_Record:
             {
                 var declRecord = (RecordDecl)decl;
-
-                var defRecord = declRecord.Definition;
-                if (defRecord is null)
-                {
-                    Console.WriteLine($"Record with no definition: {declRecord.Name}");
-                    return null;
-                }
-
-                if (!_generatedCTypeDecls.ContainsKey(defRecord.Handle))
+                if (declRecord.Definition is {} defRecord)
                 {
                     var fields = new SemaDeclField[defRecord.Fields.Count];
                     for (int i = 0; i < fields.Length; i++)
                     {
                         var fieldType = CreateCBindingSema(cModule, defRecord.Fields[i].Type);
-                        if (fieldType is null)
-                        {
-                            Console.WriteLine($"Unhandled (first) record: {defRecord.Name} ({defRecord.Definition})");
-                            return null;
-                        }
-                        fields[i] = new(Location.Nowhere, defRecord.Fields[i].Name, fieldType);
+                        if (fieldType is null) goto end_generate;
+                        string fieldName = defRecord.Fields[i].Name;
+                        fields[i] = new(Location.Nowhere, fieldName, fieldType);
                     }
 
-                    return _generatedCTypeDecls[defRecord.Handle] = new SemaDeclStruct(location, $"struct_{declRecord.Name}", fields, []);
+                    generatedDecl = new SemaDeclStruct(location, $"struct_{declRecord.Name}", fields, []);
+                }
+                else
+                {
+                    generatedDecl = new SemaDeclAlias(location, $"struct_{declRecord.Name}", cModule.Context.Types.LayeTypeVoid.Qualified(location));
+                }
+            } break;
+
+            case CX_DeclKind.CX_DeclKind_Function:
+            {
+                var declFunction = (FunctionDecl)decl;
+
+                var returnType = declFunction.IsNoReturn
+                    ? Context.Types.LayeTypeNoReturn.Qualified(Location.Nowhere)
+                    : CreateCBindingSema(cModule, declFunction.ReturnType);
+                if (returnType is null) break;
+
+                var paramDecls = new SemaDeclParameter[declFunction.NumParams];
+                for (int i = 0; i < paramDecls.Length; i++)
+                {
+                    var paramType = CreateCBindingSema(cModule, declFunction.Parameters[i].Type);
+                    if (paramType is null) goto end_generate;
+                    string paramName = declFunction.Parameters[i].Name.Length == 0 ? $"param{i}" : declFunction.Parameters[i].Name;
+                    paramDecls[i] = new(GetLocation(declFunction.Parameters[i]), paramName, paramType);
                 }
 
-                return null;
-            }
+                generatedDecl = new SemaDeclFunction(location, declFunction.Name, returnType, paramDecls);
+            } break;
+
+            case CX_DeclKind.CX_DeclKind_Var:
+            {
+                var declVar = (VarDecl)decl;
+
+                var varType = CreateCBindingSema(cModule, declVar.Type);
+                if (varType is null) break;
+
+                generatedDecl = new SemaDeclBinding(location, declVar.Name, varType, null);
+            } break;
+        }
+
+end_generate:;
+        if (generatedDecl is not null)
+        {
+            // Console.WriteLine($"Handled decl: {decl.Handle.Hash} = {decl.Spelling}");
+            _generatedCTypeDecls[decl.Handle] = generatedDecl;
+            cModule.AddDecl(generatedDecl);
+        }
+        else
+        {
+            Console.WriteLine($"Unhandled decl: {declKind} {decl.Spelling}");
         }
     }
 

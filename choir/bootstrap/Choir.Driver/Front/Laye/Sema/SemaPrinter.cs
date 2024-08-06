@@ -8,7 +8,7 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
         : base(context.UseColor)
     {
         Context = context;
-        ColorBase = CommandLine.Color.Green;
+        ColorBase = CommandLine.Color.Red;
     }
 
     public void PrintModuleHeader(Module module)
@@ -46,9 +46,25 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
                 Console.Write($"{C[ColorBase]}{typeQual.Qualifiers}");
             } break;
 
+            case SemaDeclBinding declBinding:
+            {
+                Console.Write($"{declBinding.BindingType.ToDebugString(C)} {C[ColorName]}{declBinding.Name}");
+            } break;
+
+            case SemaDeclParameter declParameter:
+            {
+                Console.Write($"{declParameter.ParamType.ToDebugString(C)} {C[ColorName]}{declParameter.Name}");
+            } break;
+
+            case SemaDeclFunction declFunction:
+            {
+                string parameters = string.Join(", ", declFunction.ParameterDecls.Select(d => $"{d.ParamType.ToDebugString(C)} {d.Name}"));
+                Console.Write($"{declFunction.ReturnType.ToDebugString(C)} {C[ColorName]}{declFunction.Name}({parameters})");
+            } break;
+
             case SemaDeclField declField:
             {
-                Console.Write($"{C[ColorName]}{declField.Name}");
+                Console.Write($"{declField.FieldType.ToDebugString(C)} {C[ColorName]}{declField.Name}");
             } break;
 
             case SemaDeclStruct declStruct:
@@ -60,7 +76,7 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
             {
                 if (declAlias.IsStrict)
                     Console.Write($"{C[ColorBase]}Strict ");
-                Console.Write($"{C[ColorName]}{declAlias.Name}");
+                Console.Write($"{C[ColorName]}{declAlias.Name} = {declAlias.AliasedType.ToDebugString(C)}");
             } break;
 
             case SemaType typeBuiltin:
