@@ -373,24 +373,39 @@ public partial class Parser(Module module)
         SyntaxTemplateArguments? templateArguments = null;
         if (At(TokenKind.Less) && CurrentLocation.Offset == lastNameLocation.Offset + lastNameLocation.Length)
         {
-            Consume(TokenKind.Less);
+            // What we'll want to do instead, soon, is see if we can just look for `<` and ignore
+            // the spacing, then parse a single expression with the precedence already set to `<`.
+            // We'll have to also explicitly stop on any operator token which starts with `>`,
+            // and also be prepared to split tokens at that character / keep track of testing and consume `>>`
+            // or `>>>` at once to close multiple lists.
+            // Splitting tokens is not ideal, especially since it's likely to mean ill-formed code in
+            // the first place, so we may keep track of nesting and only allow instances of the
+            // previous 3 mentioned tokens where it makes sense.
             templateArguments = ParseTemplateArguments();
-            Expect(TokenKind.Greater, "'>'");
         }
 
         return SyntaxNameref.Create(names[names.Count - 1].Location, kind, names, templateArguments);
     }
 
-    private SyntaxTemplateArguments ParseTemplateArguments() => new SyntaxTemplateArguments(ParseDelimited(
-        ParseTemplateArgument,
-        TokenKind.Comma,
-        "a type or expression",
-        TokenKind.Greater,
-        TokenKind.GreaterGreater,
-        TokenKind.GreaterGreaterGreater,
-        TokenKind.GreaterGreaterEqual,
-        TokenKind.GreaterGreaterGreaterEqual
-    ));
+    private SyntaxTemplateArguments ParseTemplateArguments()
+    {
+        Expect(TokenKind.Less, "'<'");
+
+        var args = new SyntaxTemplateArguments(ParseDelimited(
+            ParseTemplateArgument,
+            TokenKind.Comma,
+            "a type or expression",
+            TokenKind.Greater,
+            TokenKind.GreaterGreater,
+            TokenKind.GreaterGreaterGreater,
+            TokenKind.GreaterGreaterEqual,
+            TokenKind.GreaterGreaterGreaterEqual
+        ));
+        
+        Expect(TokenKind.Greater, "'>'");
+
+        return args;
+    }
 
     private SyntaxNode ParseTemplateArgument()
     {

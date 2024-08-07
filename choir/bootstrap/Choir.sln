@@ -5,8 +5,6 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Choir.Driver", "Choir.Driver\Choir.Driver.csproj", "{DD9B31A6-AE2F-4288-8B3B-0425277FC803}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Choir.Tests", "Choir.Tests\Choir.Tests.csproj", "{95626E75-86DB-4F0D-AF8B-4659A7F0BA1C}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -20,9 +18,5 @@ Global
 		{DD9B31A6-AE2F-4288-8B3B-0425277FC803}.Debug|x64.Build.0 = Debug|x64
 		{DD9B31A6-AE2F-4288-8B3B-0425277FC803}.Release|x64.ActiveCfg = Release|x64
 		{DD9B31A6-AE2F-4288-8B3B-0425277FC803}.Release|x64.Build.0 = Release|x64
-		{95626E75-86DB-4F0D-AF8B-4659A7F0BA1C}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{95626E75-86DB-4F0D-AF8B-4659A7F0BA1C}.Debug|x64.Build.0 = Debug|Any CPU
-		{95626E75-86DB-4F0D-AF8B-4659A7F0BA1C}.Release|x64.ActiveCfg = Release|Any CPU
-		{95626E75-86DB-4F0D-AF8B-4659A7F0BA1C}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
