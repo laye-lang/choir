@@ -21,8 +21,8 @@ jobs:
       with:
         dotnet-version: 8.0.x
     - name: Restore dependencies
-      run: dotnet restore ./choir/bootstrap/Choir.sln -r ubuntu-18.04-x64
+      run: dotnet restore ./choir/bootstrap/Choir.sln -r linux-x64
     - name: Build
-      run: dotnet build ./choir/bootstrap/Choir.Driver --no-restore -r ubuntu-18.04-x64
+      run: dotnet build ./choir/bootstrap/Choir.Driver --no-restore -r linux-x64
 #    - name: Test
-#      run: dotnet test --no-build --verbosity normal -r ubuntu-18.04-x64 --project ./choir/bootstrap/Choir.Driver
+#      run: dotnet test --no-build --verbosity normal -r linux-x64 --project ./choir/bootstrap/Choir.Driver
