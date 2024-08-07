@@ -140,6 +140,7 @@ public enum TokenKind : ushort
     //TokenStrict,
     Template,
     Alias,
+    Delegate,
     Test,
     Import,
     Export,
@@ -151,6 +152,7 @@ public enum TokenKind : ushort
     New,
     Delete,
     Cast,
+    Eval,
     Is,
     
     Sizeof,

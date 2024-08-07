@@ -2,6 +2,13 @@ using System.Numerics;
 
 namespace Choir.Front.Laye.Sema;
 
+public sealed class SemaDeclTemplateParameters(IReadOnlyList<SemaDeclTemplateParameter> templateParams)
+    : BaseSemaNode
+{
+    public IReadOnlyList<SemaDeclTemplateParameter> TemplateParams { get; } = templateParams;
+    public override IEnumerable<BaseSemaNode> Children { get; } = templateParams;
+}
+
 public sealed class SemaDeclImportQuery(Location location)
     : SemaDecl(location)
 {
@@ -53,7 +60,12 @@ public sealed class SemaDeclFunction(Location location, string name, SemaTypeQua
     public string Name { get; } = name;
     public SemaTypeQual ReturnType { get; } = returnType;
     public IReadOnlyList<SemaDeclParameter> ParameterDecls { get; } = parameterDecls;
-    public IReadOnlyList<SemaDeclTemplateParameter> TemplateParams { get; init; } = [];
+    public SemaDeclTemplateParameters? TemplateParameters { get; init; }
+    public SemaStmt? Body { get; init; }
+    
+    public Linkage Linkage { get; init; } = Linkage.Internal;
+    public string? ForeignSymbolName { get; init; }
+    public CallingConvention CallingConvention { get; init; } = CallingConvention.Laye;
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -62,6 +74,34 @@ public sealed class SemaDeclFunction(Location location, string name, SemaTypeQua
             yield return ReturnType;
             foreach (var param in ParameterDecls)
                 yield return param;
+            if (TemplateParameters is not null)
+                yield return TemplateParameters;
+            if (Body is not null)
+                yield return Body;
+        }
+    }
+}
+
+public sealed class SemaDeclDelegate(Location location, string name, SemaTypeQual returnType, SemaDeclParameter[] parameterDecls)
+    : SemaDecl(location)
+{
+    public string Name { get; } = name;
+    public SemaTypeQual ReturnType { get; } = returnType;
+    public IReadOnlyList<SemaDeclParameter> ParameterDecls { get; } = parameterDecls;
+    public SemaDeclTemplateParameters? TemplateParameters { get; init; }
+    
+    public Linkage Linkage { get; init; } = Linkage.Internal;
+    public CallingConvention CallingConvention { get; init; } = CallingConvention.Laye;
+
+    public override IEnumerable<BaseSemaNode> Children
+    {
+        get
+        {
+            yield return ReturnType;
+            foreach (var param in ParameterDecls)
+                yield return param;
+            if (TemplateParameters is not null)
+                yield return TemplateParameters;
         }
     }
 }
@@ -91,7 +131,9 @@ public sealed class SemaDeclStruct(Location location, string name, SemaDeclField
     public string Name { get; } = name;
     public IReadOnlyList<SemaDeclField> FieldDecls { get; } = fields;
     public IReadOnlyList<SemaDeclStruct> VariantDecls { get; } = variants;
-    public IReadOnlyList<SemaDeclTemplateParameter> TemplateParams { get; init; } = [];
+    public SemaDeclTemplateParameters? TemplateParameters { get; init; }
+    
+    public Linkage Linkage { get; init; } = Linkage.Internal;
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -101,6 +143,8 @@ public sealed class SemaDeclStruct(Location location, string name, SemaDeclField
                 yield return @field;
             foreach (var variant in VariantDecls)
                 yield return variant;
+            if (TemplateParameters is not null)
+                yield return TemplateParameters;
         }
     }
 }
@@ -117,6 +161,8 @@ public sealed class SemaDeclEnum(Location location, string name, SemaDeclEnumVar
 {
     public string Name { get; } = name;
     public IReadOnlyList<SemaDeclEnumVariant> Variants { get; } = variants;
+    
+    public Linkage Linkage { get; init; } = Linkage.Internal;
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -134,13 +180,17 @@ public sealed class SemaDeclAlias(Location location, string name, SemaTypeQual a
     public string Name { get; } = name;
     public bool IsStrict { get; } = isStrict;
     public SemaTypeQual AliasedType { get; } = alaisedType;
-    public IReadOnlyList<SemaDeclTemplateParameter> TemplateParams { get; init; } = [];
+    public SemaDeclTemplateParameters? TemplateParameters { get; init; }
+    
+    public Linkage Linkage { get; init; } = Linkage.Internal;
 
     public override IEnumerable<BaseSemaNode> Children
     {
         get
         {
             yield return AliasedType;
+            if (TemplateParameters is not null)
+                yield return TemplateParameters;
         }
     }
 }

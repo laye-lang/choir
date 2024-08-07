@@ -2,6 +2,14 @@ using Choir.CommandLine;
 
 namespace Choir.Front.Laye.Sema;
 
+public enum Linkage
+{
+    Internal,
+    Exported,
+    Imported,
+    ReExported,
+}
+
 [Flags]
 public enum TypeQualifiers
 {
@@ -17,6 +25,14 @@ public enum ValueCategory
 
 public enum ExprDependence
 {
+}
+
+public enum CallingConvention
+{
+    CDecl,
+    Laye,
+    StdCall,
+    FastCall,
 }
 
 public abstract class BaseSemaNode
@@ -89,11 +105,6 @@ public abstract class SemaExpr(Location location, SemaTypeQual type) : BaseSemaN
 }
 
 public abstract class SemaPattern(Location location) : BaseSemaNode
-{
-    public Location Location { get; } = location;
-}
-
-public abstract class SemaAttribute(Location location) : BaseSemaNode
 {
     public Location Location { get; } = location;
 }

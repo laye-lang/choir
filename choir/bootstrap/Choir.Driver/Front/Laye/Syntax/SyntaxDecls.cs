@@ -67,3 +67,21 @@ public sealed class SyntaxImport(SyntaxToken tokenImport) : SyntaxNode(tokenImpo
         }
     }
 }
+
+public sealed class SyntaxBinding(SyntaxNode bindingType, SyntaxToken tokenName, SyntaxToken tokenSemiColon)
+    : SyntaxNode(tokenName.Location)
+{
+    public SyntaxNode BindingType { get; } = bindingType;
+    public SyntaxToken TokenName { get; } = tokenName;
+    public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
+
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return BindingType;
+            yield return TokenName;
+            yield return TokenSemiColon;
+        }
+    }
+}

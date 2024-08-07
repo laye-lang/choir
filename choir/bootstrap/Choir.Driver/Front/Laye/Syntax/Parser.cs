@@ -21,6 +21,13 @@ public partial class Parser(Module module)
         return importDecl. ImportKind == ImportKind.FilePath && importDecl.ModuleNameText.EndsWith(".h", StringComparison.InvariantCultureIgnoreCase);
     }
 
+    private static bool DefinitelyStartsAnExpression(TokenKind kind) => kind switch
+    {
+        TokenKind.LiteralFloat or TokenKind.LiteralInteger or
+        TokenKind.LiteralRune or TokenKind.LiteralString => true,
+        _ => false,
+    };
+
     public Module Module { get; } = module;
     public SourceFile SourceFile { get; } = module.SourceFile;
     public ChoirContext Context { get; } = module.Context;
@@ -203,12 +210,18 @@ public partial class Parser(Module module)
             Context.Diag.Error(CurrentToken.Location, $"expected '{keywordText}'");
     }
 
-    private IReadOnlyList<T> ParseDelimited<T>(Func<T> parser, TokenKind tokenDelimiter)
+    private IReadOnlyList<T> ParseDelimited<T>(Func<T> parser, TokenKind tokenDelimiter, string expected, params TokenKind[] closers)
         where T : SyntaxNode
     {
         var results = new List<T>();
         do
         {
+            if (At(closers))
+            {
+                Context.Diag.Error($"expected {expected}");
+                break;
+            }
+
             results.Add(parser());
         } while (TryAdvance(tokenDelimiter));
         return [.. results];
@@ -251,13 +264,15 @@ public partial class Parser(Module module)
 
             default:
             {
-                Context.Diag.ICE(CurrentLocation, "parser is not finished please don't do that");
-                throw new UnreachableException();
+                var declType = ParseType();
+                ExpectIdentifier(out var tokenName);
+                ExpectSemiColon(out var tokenSemiColon);
+                return new SyntaxBinding(declType, tokenName, tokenSemiColon);
             }
         }
     }
 
-    private IReadOnlyList<SyntaxImportQuery> ParseImportQueries() => ParseDelimited(ParseImportQuery, TokenKind.Comma);
+    private IReadOnlyList<SyntaxImportQuery> ParseImportQueries() => ParseDelimited(ParseImportQuery, TokenKind.Comma, "an identifier or '*'", TokenKind.SemiColon, TokenKind.OpenBrace, TokenKind.CloseBrace);
     private SyntaxImportQuery ParseImportQuery()
     {
         if (TryAdvance(TokenKind.Star, out var tokenStar))
@@ -346,7 +361,90 @@ public partial class Parser(Module module)
             kind = NamerefKind.Global;
         }
 
-        var names = ParseDelimited(() => { ExpectIdentifier(out var tokenName); return tokenName; }, TokenKind.ColonColon);
-        return SyntaxNameref.Create(names[names.Count - 1].Location, kind, names);
+        var names = ParseDelimited(
+            () => { ExpectIdentifier(out var tokenName); return tokenName; },
+            TokenKind.ColonColon,
+            "an identifier"
+        );
+        Debug.Assert(names.Count > 0);
+
+        var lastNameLocation = names[names.Count - 1].Location;
+
+        SyntaxTemplateArguments? templateArguments = null;
+        if (At(TokenKind.Less) && CurrentLocation.Offset == lastNameLocation.Offset + lastNameLocation.Length)
+        {
+            Consume(TokenKind.Less);
+            templateArguments = ParseTemplateArguments();
+            Expect(TokenKind.Greater, "'>'");
+        }
+
+        return SyntaxNameref.Create(names[names.Count - 1].Location, kind, names, templateArguments);
+    }
+
+    private SyntaxTemplateArguments ParseTemplateArguments() => new SyntaxTemplateArguments(ParseDelimited(
+        ParseTemplateArgument,
+        TokenKind.Comma,
+        "a type or expression",
+        TokenKind.Greater,
+        TokenKind.GreaterGreater,
+        TokenKind.GreaterGreaterGreater,
+        TokenKind.GreaterGreaterEqual,
+        TokenKind.GreaterGreaterGreaterEqual
+    ));
+
+    private SyntaxNode ParseTemplateArgument()
+    {
+        // for now, since we don't have the type scanner in place, just assume it's type arguments
+        // unless it's obviously not, like literal values.
+        // Replace this trivial check for a call to the scanner for more reliable parses.
+
+        if (DefinitelyStartsAnExpression(CurrentToken.Kind))
+            return ParseExpr();
+        
+        return ParseType();
+    }
+
+    private SyntaxNode ParseType()
+    {
+        switch (CurrentToken.Kind)
+        {
+
+            case TokenKind.Global:
+            case TokenKind.Identifier:
+            {
+                var typeNameref = ParseNameref();
+                return typeNameref;
+            }
+
+            default:
+            {
+                Context.Diag.ICE("need to return a default syntax node when no type was parseable");
+                throw new UnreachableException();
+            }
+        }
+    }
+    
+    private SyntaxNode ParseExpr()
+    {
+        return ParsePrimaryExpr();
+    }
+
+    private SyntaxNode ParsePrimaryExpr()
+    {
+        var currentToken = CurrentToken;
+        switch (CurrentToken.Kind)
+        {
+            case TokenKind.LiteralInteger:
+            {
+                Advance();
+                return currentToken;
+            }
+
+            default:
+            {
+                Context.Diag.ICE("need to return a default syntax node when no expression was parseable");
+                throw new UnreachableException();
+            }
+        }
     }
 }
