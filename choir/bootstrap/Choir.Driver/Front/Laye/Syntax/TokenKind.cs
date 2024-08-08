@@ -189,7 +189,8 @@ public static class TokenKindExtensions
         TokenKind.Greater or TokenKind.GreaterEqual => 20,
 
         TokenKind.Ampersand or TokenKind.Pipe or TokenKind.Tilde or
-        TokenKind.LessLess or TokenKind.GreaterGreater => 30,
+        TokenKind.LessLess or TokenKind.GreaterGreater or
+        TokenKind.GreaterGreaterGreater => 30,
 
         TokenKind.Plus or TokenKind.Minus => 40,
 

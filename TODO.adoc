@@ -1,0 +1,89 @@
+= Laye Front End to Choir TODO List
+
+== Syntax
+
+* [ ] Syntactic scopes
+* [ ] Primary Expressions
+    * [x] Nameref
+        * [x] Experimental Precendence Parsing for Template Arguments
+    * [ ] Integer Literals
+    * [ ] Float Literals
+        * [ ] Float storage
+        * [ ] Float lexing
+        * [ ] Float parsing
+    * [ ] String Literals
+    * [ ] Rune Literals
+    * [ ] Bool Literals
+    * [ ] Grouped Expression
+    * [ ] (Invalid) Empty Expression
+    * [ ] Cast
+    * [ ] Constructor
+    * [ ] Unary Operator Expressions
+        * [ ] Negation (-)
+        * [ ] Identity (+)
+        * [ ] Bitwise Complement (~)
+        * [ ] Address Of (&)
+        * [ ] Dereference (*)
+        * [ ] Bool Not (not)
+        * [ ] (Maybe) Ternary (if/then/else)
+    * [ ] (Maybe) Do Expression
+* [ ] Primary Expression Continuations
+    * [ ] (Maybe) Ternary (?:)
+    * [ ] Field Access
+    * [ ] Invocation
+    * [ ] Element Index Acecss
+* [ ] Secondary Expressions
+    * [ ] Binary
+        * [ ] All Possible Operators
+        * [ ] Fallback to Declarations
+            * [ ] Fallback to Binding
+            * [ ] Fallback to Function (Trivial)
+            * [ ] Fallback to Function (Advanced)
+* [ ] Type Expressions
+    * [ ] Var
+    * [ ] Sized Primitives
+    * [ ] Additional C Primitives
+    * [ ] (Maybe) Tuples
+* [ ] Type Expression Continuations
+    * [ ] Slice
+    * [ ] Array
+    * [ ] Buffer
+    * [ ] Pointer
+    * [ ] Reference
+    * [ ] Nilable
+    * [ ] (Likely) Error Pair
+    * [ ] (Maybe) Dictionary
+* [ ] Statements
+    * [ ] Compound
+    * [ ] Assert
+    * [ ] Return
+    * [ ] If
+    * [ ] For
+    * [ ] For (Each)
+    * [ ] While
+    * [ ] Do/While
+    * [ ] Defer
+    * [ ] Break
+    * [ ] Continue
+    * [ ] Yield
+    * [ ] Goto
+    * [ ] Xyzzy
+    * [ ] Simple Assignment
+    * [ ] Operator Assignment
+    * [ ] Expression Statement (if all else fails)
+* [ ] Declarations
+    * [ ] Struct
+    * [ ] Enum
+    * [ ] Alias
+    * [ ] Test
+    * [ ] (Maybe) Module
+    * [ ] Template Parameters
+    * [ ] Declaration Attributes
+        * [ ] Export
+        * [ ] Foreign
+        * [ ] Callconv
+        * [ ] Inline
+        * [ ] Discardable
+        * [ ] (Maybe) Pure/Impure
+* [ ] Stress Test
+    * [ ] Template Arguments

@@ -10,6 +10,7 @@ public partial class Parser(Module module)
     {
         Default,
         CheckForDeclarations,
+        TemplateArguments,
     }
 
     public static void ParseSyntax(Module module)
@@ -231,6 +232,44 @@ public partial class Parser(Module module)
             Context.Diag.Error(CurrentToken.Location, $"expected '{keywordText}'");
     }
 
+    private void ExpectTemplateArgumentClose(out SyntaxToken tokenGreater)
+    {
+        tokenGreater = CurrentToken;
+
+        // easy
+        if (TryAdvance(TokenKind.Greater)) return;
+
+        if (!At(TokenKind.GreaterGreater, TokenKind.GreaterGreaterGreater, TokenKind.GreaterEqual, TokenKind.GreaterGreaterEqual, TokenKind.GreaterGreaterGreaterEqual))
+        {
+            tokenGreater = new SyntaxToken(TokenKind.Missing, new Location(CurrentLocation.Offset, 0, SourceFile.FileId));
+            Context.Diag.Error(CurrentToken.Location, $"expected '>'");
+            return;
+        }
+
+        tokenGreater = new SyntaxToken(TokenKind.Greater, new Location(CurrentLocation.Offset, 1, SourceFile.FileId));
+
+        TokenKind newTokenKind;
+        switch (CurrentToken.Kind)
+        {
+            default:
+            {
+                Context.Diag.ICE("Checked for tokens which start with `>`, but ended up at a token that doesn't.");
+                throw new UnreachableException();
+            }
+
+            case TokenKind.GreaterEqual: newTokenKind = TokenKind.Equal; break;
+            case TokenKind.GreaterGreater: newTokenKind = TokenKind.Greater; break;
+            case TokenKind.GreaterGreaterEqual: newTokenKind = TokenKind.GreaterEqual; break;
+            case TokenKind.GreaterGreaterGreater: newTokenKind = TokenKind.GreaterGreater; break;
+            case TokenKind.GreaterGreaterGreaterEqual: newTokenKind = TokenKind.GreaterGreaterEqual; break;
+        }
+
+        var newTokenLocation = new Location(CurrentLocation.Offset + 1, CurrentLocation.Length - 1, SourceFile.FileId);
+        var newToken = new SyntaxToken(newTokenKind, newTokenLocation);
+
+        _tokens[_position] = newToken;
+    }
+
     private IReadOnlyList<T> ParseDelimited<T>(Func<T> parser, TokenKind tokenDelimiter, string expected, params TokenKind[] closers)
         where T : SyntaxNode
     {
@@ -299,7 +338,7 @@ public partial class Parser(Module module)
         else
         {
             if (At("as")) CurrentToken.Kind = TokenKind.As;
-            var queryNameref = ParseNameref();
+            var queryNameref = ParseNamerefNoTemplateArguments();
 
             SyntaxToken? tokenAlias = null;
             if (TryAdvance("as", TokenKind.As, out SyntaxToken? tokenAs))
@@ -458,9 +497,9 @@ public partial class Parser(Module module)
         return new SyntaxStmtCompound(tokenOpenBrace.Location, [.. body]);
     }
 
-    private SyntaxNameref ParseNameref()
+    private SyntaxToken[] ParseNamerefImpl(out NamerefKind kind)
     {
-        NamerefKind kind = NamerefKind.Default;
+        kind = NamerefKind.Default;
         if (TryAdvance(TokenKind.ColonColon))
             kind = NamerefKind.Implicit;
         else if (TryAdvance(TokenKind.Global))
@@ -476,9 +515,46 @@ public partial class Parser(Module module)
         );
         Debug.Assert(names.Count > 0);
 
-        var lastNameLocation = names[names.Count - 1].Location;
+        return [.. names];
+    }
+
+    private SyntaxNameref ParseNamerefNoTemplateArguments()
+    {
+        var names = ParseNamerefImpl(out var kind);
+        return SyntaxNameref.Create(names[names.Length - 1].Location, kind, names, new([]));
+    }
+
+    private SyntaxNode ParseNamerefWithTemplateArgumentCheck()
+    {
+        var names = ParseNamerefImpl(out var kind);
+        var lastNameLocation = names[names.Length - 1].Location;
 
         SyntaxTemplateArguments? templateArguments = null;
+        if (TryAdvance(TokenKind.Less, out var tokenLess))
+        {
+            var arg = ParseTemplateArgument();
+            if (!At(TokenKind.Comma, TokenKind.Greater, TokenKind.GreaterGreater, TokenKind.GreaterGreaterGreater, TokenKind.GreaterEqual, TokenKind.GreaterGreaterEqual, TokenKind.GreaterGreaterGreaterEqual))
+            {
+                var nameref = SyntaxNameref.Create(lastNameLocation, kind, names, new([]));
+                var binary = new SyntaxExprBinary(nameref, arg, tokenLess);
+                return ParseBinaryExpr(ExprParseContext.Default, binary, TokenKind.Less.GetBinaryOperatorPrecedence());
+            }
+
+            var args = new List<SyntaxNode>() { arg };
+            if (TryAdvance(TokenKind.Comma))
+            {
+                do
+                {
+                    arg = ParseTemplateArgument();
+                    args.Add(arg);
+                } while (TryAdvance(TokenKind.Comma));
+            }
+
+            ExpectTemplateArgumentClose(out var tokenGreater);
+            templateArguments = new([.. args]);
+        }
+
+#if false
         if (At(TokenKind.Less) && CurrentLocation.Offset == lastNameLocation.Offset + lastNameLocation.Length)
         {
             // What we'll want to do instead, soon, is see if we can just look for `<` and ignore
@@ -491,10 +567,12 @@ public partial class Parser(Module module)
             // previous 3 mentioned tokens where it makes sense.
             templateArguments = ParseTemplateArguments();
         }
+#endif
 
-        return SyntaxNameref.Create(names[names.Count - 1].Location, kind, names, templateArguments);
+        return SyntaxNameref.Create(lastNameLocation, kind, names, templateArguments);
     }
 
+#if false
     private SyntaxTemplateArguments ParseTemplateArguments()
     {
         Expect(TokenKind.Less, "'<'");
@@ -514,20 +592,17 @@ public partial class Parser(Module module)
 
         return args;
     }
+#endif
 
     private SyntaxNode ParseTemplateArgument()
     {
-        // for now, since we don't have the type scanner in place, just assume it's type arguments
-        // unless it's obviously not, like literal values.
-        // Replace this trivial check for a call to the scanner for more reliable parses.
-
-        if (IsDefinitelyExprStart(CurrentToken.Kind))
-            return ParseExpr(ExprParseContext.Default);
-        
-        return ParseType();
+        if (IsDefinitelyTypeStart(CurrentToken.Kind))
+            return ParseType();
+    
+        return ParseExpr(ExprParseContext.TemplateArguments);
     }
 
-    private SyntaxNode ParseTypeSuffix(SyntaxNode typeNode)
+    private SyntaxNode ParseTypeContinuation(SyntaxNode typeNode)
     {
         var currentToken = CurrentToken;
         
@@ -558,7 +633,7 @@ public partial class Parser(Module module)
             }
         }
 
-        return ParseTypeSuffix(typeNode);
+        return ParseTypeContinuation(typeNode);
     }
 
     private SyntaxNode ParseType()
@@ -579,9 +654,9 @@ public partial class Parser(Module module)
             case TokenKind.OpenParen:
             {
                 Advance();
-                var nestedType = ParseType();
+                var innerType = ParseType();
                 Expect(TokenKind.CloseParen, "')'");
-                return new SyntaxGrouped(nestedType);
+                return new SyntaxGrouped(innerType);
             }
 
             case TokenKind.Void: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeVoid); break;
@@ -605,7 +680,7 @@ public partial class Parser(Module module)
             case TokenKind.ColonColon:
             case TokenKind.Identifier:
             {
-                typeNode = ParseNameref();
+                typeNode = ParseNamerefWithTemplateArgumentCheck();
             } break;
 
             default:
@@ -623,7 +698,7 @@ public partial class Parser(Module module)
             }
         }
 
-        return ParseTypeSuffix(typeNode);
+        return ParseTypeContinuation(typeNode);
     }
     
     private SyntaxNode ParseExpr(ExprParseContext parseContext)
@@ -632,14 +707,14 @@ public partial class Parser(Module module)
         return ParseBinaryExpr(parseContext, primary);
     }
 
-    private SyntaxNode ParsePrimaryExprSuffix(SyntaxNode primary)
+    private SyntaxNode ParsePrimaryExprContinuation(SyntaxNode primary)
     {
         var currentToken = CurrentToken;
         switch (CurrentToken.Kind)
         {
             default: return primary;
 
-            // mut suffix applies to any type any time
+            // mut applies to any type any time
             case TokenKind.Mut when primary.CanBeType:
             // `type* mut` and `type& mut` are always pointer/reference types
             case TokenKind.Star or TokenKind.Ampersand when PeekAt(1, TokenKind.Mut) && primary.CanBeType:
@@ -647,7 +722,7 @@ public partial class Parser(Module module)
             case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.CloseBracket && primary.CanBeType:
             // `type[*]` and `type[*:` are always buffer types
             case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind is TokenKind.CloseBracket or TokenKind.Colon && primary.CanBeType:
-                return ParseTypeSuffix(primary);
+                return ParseTypeContinuation(primary);
         }
     }
 
@@ -682,12 +757,20 @@ public partial class Parser(Module module)
                 throw new UnreachableException();
             }
 
+            case TokenKind.OpenParen:
+            {
+                Advance();
+                var innerExpr = ParseExpr(ExprParseContext.Default);
+                Expect(TokenKind.CloseParen, "')'");
+                return new SyntaxGrouped(innerExpr);
+            }
+
             case TokenKind.Global:
             case TokenKind.ColonColon:
             case TokenKind.Identifier:
             {
-                var nameref = ParseNameref();
-                return ParsePrimaryExprSuffix(nameref);
+                var nameref = ParseNamerefWithTemplateArgumentCheck();
+                return ParsePrimaryExprContinuation(nameref);
             }
 
             case TokenKind.LiteralInteger:
@@ -706,8 +789,12 @@ public partial class Parser(Module module)
 
     private SyntaxNode ParseBinaryExpr(ExprParseContext parseContext, SyntaxNode lhs, int precedence = 0)
     {
-        int nextPrecedence = 0;
-        while (AtBinaryOperatorWithPrecedence(precedence))
+        // if we're parsing template arguments, ensure we never allow arguments with
+        // precedence less than or equal to `<` and `>`.
+        if (parseContext == ExprParseContext.TemplateArguments)
+            precedence = Math.Max(precedence, TokenKind.Plus.GetBinaryOperatorPrecedence());
+
+        while (AtBinaryOperatorWithPrecedence(precedence, out int nextPrecedence))
         {
             var tokenOperator = CurrentToken;
             Advance();
@@ -738,7 +825,7 @@ public partial class Parser(Module module)
             var rhs = ParsePrimaryExpr();
 
             int rhsPrecedence = nextPrecedence;
-            while (AtBinaryOperatorWithPrecedence(rhsPrecedence))
+            while (AtBinaryOperatorWithPrecedence(rhsPrecedence, out nextPrecedence))
                 rhs = ParseBinaryExpr(parseContext, rhs, rhsPrecedence);
                 
             lhs = new SyntaxExprBinary(lhs, rhs, tokenOperator);
@@ -746,8 +833,10 @@ public partial class Parser(Module module)
 
         return lhs;
 
-        bool AtBinaryOperatorWithPrecedence(int checkPrecedence)
+        bool AtBinaryOperatorWithPrecedence(int checkPrecedence, out int nextPrecedence)
         {
+            nextPrecedence = 0;
+
             if (!CurrentToken.Kind.CanBeBinaryOperator())
                 return false;
             

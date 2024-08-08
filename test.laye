@@ -3,5 +3,5 @@ i32 main(i32 argc, i8[*][*] argv) {
   bar* baz;
   i8[*] arg;
   // TODO(local): test out the precedence parsing for templates
-  vec<2, f32> v;
+  vec<2+1, f32> v;
 }
