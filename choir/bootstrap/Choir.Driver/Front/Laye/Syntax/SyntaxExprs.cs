@@ -1,3 +1,5 @@
+using Choir.Front.Laye.Sema;
+
 namespace Choir.Front.Laye.Syntax;
 
 public enum NamerefKind
@@ -44,6 +46,7 @@ public sealed class SyntaxNameref : SyntaxNode
     public IReadOnlyList<SyntaxToken> Names { get; }
     public SyntaxTemplateArguments? TemplateArguments { get; }
 
+    public override bool CanBeType { get; } = true;
     public override IEnumerable<SyntaxNode> Children
     {
         get
@@ -62,4 +65,59 @@ public sealed class SyntaxNameref : SyntaxNode
         Names = names;
         TemplateArguments = templateArguments;
     }
+}
+
+public sealed class SyntaxExprBinary(SyntaxNode lhs, SyntaxNode rhs, SyntaxToken tokenOperator)
+    : SyntaxNode(tokenOperator.Location)
+{
+    public SyntaxNode Left { get; } = lhs;
+    public SyntaxNode Right { get; } = rhs;
+    public SyntaxToken TokenOperator { get; } = tokenOperator;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [lhs, tokenOperator, rhs];
+}
+
+public sealed class SyntaxQualMut(SyntaxNode inner, SyntaxToken tokenMut)
+    : SyntaxNode(inner.Location)
+{
+    public SyntaxNode Inner { get; } = inner;
+    public SyntaxToken TokenMut { get; } = tokenMut;
+
+    public override bool CanBeType { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner, tokenMut];
+}
+
+public sealed class SyntaxTypeBuiltIn(Location location, SemaTypeBuiltIn type)
+    : SyntaxNode(location)
+{
+    public SemaTypeBuiltIn Type { get; } = type;
+
+    public override bool CanBeType { get; } = true;
+}
+
+public sealed class SyntaxTypePointer(SyntaxNode inner)
+    : SyntaxNode(inner.Location)
+{
+    public SyntaxNode Inner { get; } = inner;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
+
+    public override bool CanBeType { get; } = true;
+}
+
+public sealed class SyntaxTypeReference(SyntaxNode inner)
+    : SyntaxNode(inner.Location)
+{
+    public SyntaxNode Inner { get; } = inner;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
+
+    public override bool CanBeType { get; } = true;
+}
+
+public sealed class SyntaxTypeBuffer(SyntaxNode inner)
+    : SyntaxNode(inner.Location)
+{
+    public SyntaxNode Inner { get; } = inner;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
+
+    public override bool CanBeType { get; } = true;
 }

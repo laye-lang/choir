@@ -1,10 +1,17 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using ClangSharp;
 
 namespace Choir.Front.Laye.Syntax;
 
 public partial class Parser(Module module)
 {
+    private enum ExprParseContext
+    {
+        Default,
+        CheckForDeclarations,
+    }
+
     public static void ParseSyntax(Module module)
     {
         if (module.TopLevelSyntax.Any())
@@ -21,10 +28,24 @@ public partial class Parser(Module module)
         return importDecl. ImportKind == ImportKind.FilePath && importDecl.ModuleNameText.EndsWith(".h", StringComparison.InvariantCultureIgnoreCase);
     }
 
-    private static bool DefinitelyStartsAnExpression(TokenKind kind) => kind switch
+    private static bool IsDefinitelyTypeStart(TokenKind kind) => kind switch
     {
         TokenKind.LiteralFloat or TokenKind.LiteralInteger or
         TokenKind.LiteralRune or TokenKind.LiteralString => true,
+        _ => false,
+    };
+
+    private static bool IsDefinitelyExprStart(TokenKind kind) => kind switch
+    {
+        TokenKind.Mut or TokenKind.Var or
+        TokenKind.Void or TokenKind.NoReturn or
+        TokenKind.Bool or TokenKind.BoolSized or
+        TokenKind.Int or TokenKind.IntSized or
+        TokenKind.FloatSized or TokenKind.BuiltinFFIBool or
+        TokenKind.BuiltinFFIChar or TokenKind.BuiltinFFIShort or
+        TokenKind.BuiltinFFIInt or TokenKind.BuiltinFFILong or
+        TokenKind.BuiltinFFILongLong or TokenKind.BuiltinFFIFloat or
+        TokenKind.BuiltinFFIDouble or TokenKind.BuiltinFFILongDouble => true,
         _ => false,
     };
 
@@ -265,9 +286,19 @@ public partial class Parser(Module module)
             default:
             {
                 var declType = ParseType();
-                ExpectIdentifier(out var tokenName);
-                ExpectSemiColon(out var tokenSemiColon);
-                return new SyntaxBinding(declType, tokenName, tokenSemiColon);
+                if (At(TokenKind.Identifier))
+                {
+                    if (PeekAt(1, TokenKind.OpenParen))
+                        return ParseFunctionDeclStartingAtName(declType);
+                        
+                    return ParseBindingDeclStartingAtName(declType);
+                }
+                else
+                {
+                    // for now, just let this parser try to parse something.
+                    // we'll handle recovery later
+                    return ParseBindingDeclStartingAtName(declType);
+                }
             }
         }
     }
@@ -350,6 +381,30 @@ public partial class Parser(Module module)
         };
     }
 
+    private SyntaxBinding ParseBindingDeclStartingAtName(SyntaxNode bindingType)
+    {
+        ExpectIdentifier(out var tokenName);
+        ExpectSemiColon(out var tokenSemiColon);
+        return new SyntaxBinding(bindingType, tokenName, tokenSemiColon);
+    }
+
+    private SyntaxNode ParseFunctionParameter()
+    {
+        var paramType = ParseType();
+        ExpectIdentifier(out var tokenName);
+        return new SyntaxParam(paramType, tokenName);
+    }
+
+    private SyntaxFunction ParseFunctionDeclStartingAtName(SyntaxNode bindingType)
+    {
+        ExpectIdentifier(out var tokenName);
+        Expect(TokenKind.OpenParen, "'('");
+        var parameters = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", TokenKind.CloseParen, TokenKind.SemiColon);
+        Expect(TokenKind.CloseParen, "')'");
+        ExpectSemiColon(out var tokenSemiColon);
+        return new SyntaxFunction(bindingType, tokenName, parameters);
+    }
+
     private SyntaxNameref ParseNameref()
     {
         NamerefKind kind = NamerefKind.Default;
@@ -413,42 +468,179 @@ public partial class Parser(Module module)
         // unless it's obviously not, like literal values.
         // Replace this trivial check for a call to the scanner for more reliable parses.
 
-        if (DefinitelyStartsAnExpression(CurrentToken.Kind))
-            return ParseExpr();
+        if (IsDefinitelyExprStart(CurrentToken.Kind))
+            return ParseExpr(false);
         
         return ParseType();
     }
 
-    private SyntaxNode ParseType()
+    private SyntaxNode ParseTypeSuffix(SyntaxNode typeNode)
     {
+        var currentToken = CurrentToken;
+        
         switch (CurrentToken.Kind)
         {
+            default: return typeNode;
+            
+            case TokenKind.Mut: break;
+
+            //case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && (Peek(2).Kind == TokenKind.CloseBracket || Peek(2).Kind == TokenKind.Colon):
+            case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind == TokenKind.CloseBracket:
+            {
+                for (int i = 0; i < 3; i++) Advance();
+                typeNode = new SyntaxTypeBuffer(typeNode);
+            } break;
+        }
+
+        if (TryAdvance(TokenKind.Mut, out var tokenMut))
+        {
+            typeNode = new SyntaxQualMut(typeNode, tokenMut);
+            while (TryAdvance(TokenKind.Mut, out var leadingMut)) {
+                Context.Diag.Error(leadingMut.Location, "duplicate 'mut' qualifier");
+            }
+        }
+
+        return ParseTypeSuffix(typeNode);
+    }
+
+    private SyntaxNode ParseType()
+    {
+        var currentToken = CurrentToken;
+
+        SyntaxToken? tokenMut = null;
+        if (TryAdvance(TokenKind.Mut, out tokenMut))
+        {
+            while (TryAdvance(TokenKind.Mut, out var leadingMut)) {
+                Context.Diag.Error(leadingMut.Location, "duplicate 'mut' qualifier");
+            }
+        }
+
+        SyntaxNode typeNode;
+        switch (CurrentToken.Kind)
+        {
+            case TokenKind.Void: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeVoid); break;
+            case TokenKind.NoReturn: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeNoReturn); break;
+            case TokenKind.Bool: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeBool); break;
+            case TokenKind.BoolSized: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeBoolSized((int)currentToken.IntegerValue)); break;
+            case TokenKind.Int: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeInt); break;
+            case TokenKind.IntSized: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeIntSized((int)currentToken.IntegerValue)); break;
+            case TokenKind.FloatSized: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFloatSized((int)currentToken.IntegerValue)); break;
+            case TokenKind.BuiltinFFIBool: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFFIBool); break;
+            case TokenKind.BuiltinFFIChar: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFFIChar); break;
+            case TokenKind.BuiltinFFIShort: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFFIShort); break;
+            case TokenKind.BuiltinFFIInt: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFFIInt); break;
+            case TokenKind.BuiltinFFILong: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFFILong); break;
+            case TokenKind.BuiltinFFILongLong: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFFILongLong); break;
+            case TokenKind.BuiltinFFIFloat: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFFIFloat); break;
+            case TokenKind.BuiltinFFIDouble: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFFIDouble); break;
+            case TokenKind.BuiltinFFILongDouble: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeFFILongDouble); break;
 
             case TokenKind.Global:
+            case TokenKind.ColonColon:
             case TokenKind.Identifier:
             {
-                var typeNameref = ParseNameref();
-                return typeNameref;
-            }
+                typeNode = ParseNameref();
+            } break;
 
             default:
             {
-                Context.Diag.ICE("need to return a default syntax node when no type was parseable");
+                Context.Diag.ICE($"need to return a default syntax node when no type was parseable (at token kind {CurrentToken.Kind})");
                 throw new UnreachableException();
             }
         }
+
+        if (tokenMut is not null || TryAdvance(TokenKind.Mut, out tokenMut))
+        {
+            typeNode = new SyntaxQualMut(typeNode, tokenMut);
+            while (TryAdvance(TokenKind.Mut, out var leadingMut)) {
+                Context.Diag.Error(leadingMut.Location, "duplicate 'mut' qualifier");
+            }
+        }
+
+        return ParseTypeSuffix(typeNode);
     }
     
-    private SyntaxNode ParseExpr()
+    private SyntaxNode ParseExpr(bool couldBeDecl)
     {
         return ParsePrimaryExpr();
     }
 
-    private SyntaxNode ParsePrimaryExpr()
+    private SyntaxNode ParsePrimaryExprSuffix(SyntaxNode primary)
     {
         var currentToken = CurrentToken;
         switch (CurrentToken.Kind)
         {
+            default: return primary;
+
+            case TokenKind.Mut when primary.CanBeType:
+            {
+                TryAdvance(TokenKind.Mut, out var tokenMut);
+                var qualifiedType = new SyntaxQualMut(primary, tokenMut!);
+                
+                while (TryAdvance(TokenKind.Mut, out var trailingMut)) {
+                    Context.Diag.Error(trailingMut.Location, "duplicate 'mut' qualifier");
+                }
+
+                return ParseTypeSuffix(qualifiedType);
+            }
+
+            case TokenKind.Star when PeekAt(1, TokenKind.Mut):
+            {
+                TryAdvance(TokenKind.Star);
+                var pointerType = new SyntaxTypePointer(primary);
+                
+                TryAdvance(TokenKind.Mut, out var tokenMut);
+                var qualifiedType = new SyntaxQualMut(pointerType, tokenMut!);
+                
+                while (TryAdvance(TokenKind.Mut, out var trailingMut)) {
+                    Context.Diag.Error(trailingMut.Location, "duplicate 'mut' qualifier");
+                }
+
+                return ParseTypeSuffix(qualifiedType);
+            }
+        }
+    }
+
+    private SyntaxNode ParsePrimaryExpr()
+    {
+        if (IsDefinitelyTypeStart(CurrentToken.Kind))
+            return ParseType();
+
+        var currentToken = CurrentToken;
+        switch (CurrentToken.Kind)
+        {
+            case TokenKind.Mut:
+            case TokenKind.Var:
+            case TokenKind.Void:
+            case TokenKind.NoReturn:
+            case TokenKind.Bool:
+            case TokenKind.BoolSized:
+            case TokenKind.Int:
+            case TokenKind.IntSized:
+            case TokenKind.FloatSized:
+            case TokenKind.BuiltinFFIBool:
+            case TokenKind.BuiltinFFIChar:
+            case TokenKind.BuiltinFFIShort:
+            case TokenKind.BuiltinFFIInt:
+            case TokenKind.BuiltinFFILong:
+            case TokenKind.BuiltinFFILongLong:
+            case TokenKind.BuiltinFFIFloat:
+            case TokenKind.BuiltinFFIDouble:
+            case TokenKind.BuiltinFFILongDouble:
+            {
+                Context.Diag.ICE($"a token which definitely starts a type (kind {CurrentToken.Kind}) made it to the primary expression parser");
+                throw new UnreachableException();
+            }
+
+            case TokenKind.Global:
+            case TokenKind.ColonColon:
+            case TokenKind.Identifier:
+            {
+                var nameref = ParseNameref();
+                return ParsePrimaryExprSuffix(nameref);
+            }
+
+
             case TokenKind.LiteralInteger:
             {
                 Advance();
@@ -457,9 +649,75 @@ public partial class Parser(Module module)
 
             default:
             {
-                Context.Diag.ICE("need to return a default syntax node when no expression was parseable");
+                Context.Diag.ICE($"need to return a default syntax node when no expression was parseable (at token kind {CurrentToken.Kind})");
                 throw new UnreachableException();
             }
+        }
+    }
+
+    private SyntaxNode ParseBinaryExpr(ExprParseContext parseContext, SyntaxNode lhs, int precedence = 0)
+    {
+        int nextPrecedence = 0;
+        while (AtBinaryOperatorWithPrecedence(precedence))
+        {
+            var tokenOperator = CurrentToken;
+            Advance();
+
+            if (parseContext == ExprParseContext.CheckForDeclarations &&
+                tokenOperator.Kind is TokenKind.Star or TokenKind.Ampersand && At(TokenKind.Identifier))
+            {
+                if (PeekAt(1, TokenKind.Equal, TokenKind.SemiColon))
+                {
+                    // this is now a binding declaration
+                    SyntaxNode bindingType = CreateTypeNodeFromOperator(lhs, tokenOperator);
+                    return ParseBindingDeclStartingAtName(bindingType);
+                }
+
+                if (PeekAt(1, TokenKind.OpenParen))
+                {
+                    // we have some work to do to determine if this is a function
+                    if (PeekAt(2, TokenKind.CloseParen) && PeekAt(3, TokenKind.SemiColon, TokenKind.OpenBrace, TokenKind.EqualGreater))
+                    {
+                        // this is a function declaration/definition with no parameters
+                        SyntaxNode returnType = CreateTypeNodeFromOperator(lhs, tokenOperator);
+                        return ParseFunctionDeclStartingAtName(returnType);
+                    }
+                }
+            }
+
+            var rhs = ParsePrimaryExpr();
+
+            int rhsPrecedence = nextPrecedence;
+            while (AtBinaryOperatorWithPrecedence(rhsPrecedence))
+                rhs = ParseBinaryExpr(parseContext, rhs, rhsPrecedence);
+                
+            lhs = new SyntaxExprBinary(lhs, rhs, tokenOperator);
+        }
+
+        return lhs;
+
+        bool AtBinaryOperatorWithPrecedence(int checkPrecedence)
+        {
+            if (!CurrentToken.Kind.CanBeBinaryOperator())
+                return false;
+            
+            int currentTokenPrecedence = CurrentToken.Kind.GetBinaryOperatorPrecedence();
+            if (currentTokenPrecedence >= checkPrecedence)
+            {
+                nextPrecedence = currentTokenPrecedence;
+                return true;
+            }
+
+            return false;
+        }
+
+        static SyntaxNode CreateTypeNodeFromOperator(SyntaxNode inner, SyntaxToken tokenOperator)
+        {
+            if (tokenOperator.Kind == TokenKind.Star)
+                return new SyntaxTypePointer(inner);
+            else if (tokenOperator.Kind == TokenKind.Ampersand)
+                return new SyntaxTypeReference(inner);
+            else throw new UnreachableException();
         }
     }
 }

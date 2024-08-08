@@ -72,6 +72,11 @@ public sealed class TypeStorage
             _layeAliasTypes[declAlias] = aliasType = new SemaTypeAlias(declAlias);
         return aliasType;
     }
+
+    public SemaTypeArray LayeArrayType(SemaTypeQual elementType, int length)
+    {
+        return new SemaTypeArray(elementType, [length]);
+    }
 }
 
 public sealed class ChoirContext
@@ -100,6 +105,7 @@ public sealed class ChoirContext
 
     public DiagnosticLocationStyle DiagnosticLocationStyle { get; set; } = DiagnosticLocationStyle.LineColumn;
 
+    public List<string> IncludeDirectories { get; set; } = [];
     public TypeStorage Types { get; } = new();
 
     public ChoirContext(bool useColor)

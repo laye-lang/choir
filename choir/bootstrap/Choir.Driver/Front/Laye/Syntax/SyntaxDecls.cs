@@ -68,6 +68,28 @@ public sealed class SyntaxImport(SyntaxToken tokenImport) : SyntaxNode(tokenImpo
     }
 }
 
+public sealed class SyntaxFunction(SyntaxNode returnType, SyntaxToken tokenName, IReadOnlyList<SyntaxNode> parameters)
+    : SyntaxNode(tokenName.Location)
+{
+    public SyntaxNode ReturnType { get; } = returnType;
+    public SyntaxToken TokenName { get; } = tokenName;
+    public IReadOnlyList<SyntaxNode> Params { get; } = parameters;
+    public SyntaxToken? TokenSemiColon { get; } = null;
+
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return ReturnType;
+            yield return TokenName;
+            foreach (var param in Params)
+                yield return param;
+            if (TokenSemiColon is not null)
+                yield return TokenSemiColon;
+        }
+    }
+}
+
 public sealed class SyntaxBinding(SyntaxNode bindingType, SyntaxToken tokenName, SyntaxToken tokenSemiColon)
     : SyntaxNode(tokenName.Location)
 {
@@ -82,6 +104,22 @@ public sealed class SyntaxBinding(SyntaxNode bindingType, SyntaxToken tokenName,
             yield return BindingType;
             yield return TokenName;
             yield return TokenSemiColon;
+        }
+    }
+}
+
+public sealed class SyntaxParam(SyntaxNode paramType, SyntaxToken tokenName)
+    : SyntaxNode(tokenName.Location)
+{
+    public SyntaxNode ParamType { get; } = paramType;
+    public SyntaxToken TokenName { get; } = tokenName;
+
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return ParamType;
+            yield return TokenName;
         }
     }
 }

@@ -46,7 +46,7 @@ public partial class Parser
             
             using var index = ClangSharp.Index.Create();
 
-            string[] clangArgs = [$"-I{Environment.CurrentDirectory}"];
+            string[] clangArgs = [$"-I{Environment.CurrentDirectory}", ..(Context.IncludeDirectories.Select(i => $"-I{i}"))];
             var translationUnit = CXTranslationUnit.Parse(index.Handle, file.FullName, clangArgs, [], CXTranslationUnit_None | CXTranslationUnit_SkipFunctionBodies | CXTranslationUnit_DetailedPreprocessingRecord | CXTranslationUnit_CacheCompletionResults);
 
             var hasErrored = translationUnit.DiagnosticSet.Any(d => d.Severity >= CXDiagnosticSeverity.CXDiagnostic_Error);
@@ -163,6 +163,18 @@ public partial class Parser
             case CXTypeKind.CXType_ULongLong: return cModule.Context.Types.LayeTypeFFILongLong.Qualified(Location.Nowhere, qualifiers);
             case CXTypeKind.CXType_Int128:
             case CXTypeKind.CXType_UInt128: return cModule.Context.Types.LayeTypeIntSized(128).Qualified(Location.Nowhere, qualifiers);
+            case CXTypeKind.CXType_Float16: return cModule.Context.Types.LayeTypeFloatSized(16).Qualified(Location.Nowhere, qualifiers);
+            case CXTypeKind.CXType_Float: return cModule.Context.Types.LayeTypeFFIFloat.Qualified(Location.Nowhere, qualifiers);
+            case CXTypeKind.CXType_Double: return cModule.Context.Types.LayeTypeFFIDouble.Qualified(Location.Nowhere, qualifiers);
+            case CXTypeKind.CXType_LongDouble: return cModule.Context.Types.LayeTypeFFILongDouble.Qualified(Location.Nowhere, qualifiers);
+
+            case CXTypeKind.CXType_ConstantArray:
+            {
+                var typeConstantArray = (ConstantArrayType)type;
+                var elementType = CreateCBindingSema(cModule, typeConstantArray.ElementType);
+                if (elementType is null) return null;
+                return cModule.Context.Types.LayeArrayType(elementType, (int)typeConstantArray.Size).Qualified(Location.Nowhere, qualifiers);
+            }
 
             case CXTypeKind.CXType_Pointer:
             {
@@ -170,6 +182,15 @@ public partial class Parser
                 var elementType = CreateCBindingSema(cModule, typePointer.PointeeType);
                 if (elementType is null) return null;
                 return new SemaTypePointer(elementType).Qualified(Location.Nowhere);
+            }
+
+            case CXTypeKind.CXType_Enum:
+            {
+                var typeEnum = (EnumType)type;
+                // var underlyingIntegerType = typeEnum.Decl.IntegerType;
+                //return new SemaTypeEnum();
+                Console.WriteLine($"Unhandled enum type: {typeKind} ({type})");
+                return null;
             }
 
             case CXTypeKind.CXType_Elaborated:

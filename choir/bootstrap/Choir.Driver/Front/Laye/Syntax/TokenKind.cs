@@ -98,6 +98,7 @@ public enum TokenKind : ushort
     IntSized,
     FloatSized,
 
+    BuiltinFFIBool,
     BuiltinFFIChar,
     BuiltinFFIShort,
     BuiltinFFIInt,
@@ -139,6 +140,7 @@ public enum TokenKind : ushort
     Enum,
     //TokenStrict,
     Template,
+    Module,
     Alias,
     Delegate,
     Test,
@@ -171,4 +173,13 @@ public enum TokenKind : ushort
     Callconv,
     Pure,
     Discardable,
+}
+
+public static class TokenKindExtensions
+{
+    public static bool CanBeBinaryOperator(this TokenKind kind) => kind.GetBinaryOperatorPrecedence() >= 0;
+    public static int GetBinaryOperatorPrecedence(this TokenKind kind) => kind switch
+    {
+        _ => -1,
+    };
 }

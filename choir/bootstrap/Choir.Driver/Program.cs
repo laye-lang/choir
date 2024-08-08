@@ -71,6 +71,12 @@ public static class Program
                 options.DriverStage = ChoirDriverStage.Parse;
             else if (arg == "--sema")
                 options.DriverStage = ChoirDriverStage.Sema;
+            else if (arg == "-I")
+            {
+                if (!args.Shift(out var includeDirectory))
+                    diag.Error($"argument to '{arg}' is missing (expected 1 value)");
+                else options.IncludeDirectories.Add(includeDirectory);
+            }
             else
             {
                 var inputFileInfo = new FileInfo(arg);

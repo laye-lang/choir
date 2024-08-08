@@ -108,7 +108,10 @@ public sealed class ChoirDriver
     private ChoirDriver(ChoirDriverOptions options)
     {
         Options = options;
-        Context = new(options.OutputColoring);
+        Context = new(options.OutputColoring)
+        {
+            IncludeDirectories = options.IncludeDirectories,
+        };
     }
 
     public int Execute()
@@ -142,4 +145,5 @@ public sealed class ChoirDriverOptions
     public List<InputFileInfo> InputFiles { get; set; } = [];
     public ChoirDriverStage DriverStage { get; set; } = ChoirDriverStage.Compile;
     public bool OutputColoring { get; set; }
+    public List<string> IncludeDirectories { get; set; } = [];
 }
