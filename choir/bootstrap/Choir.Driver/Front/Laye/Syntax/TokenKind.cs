@@ -180,6 +180,21 @@ public static class TokenKindExtensions
     public static bool CanBeBinaryOperator(this TokenKind kind) => kind.GetBinaryOperatorPrecedence() >= 0;
     public static int GetBinaryOperatorPrecedence(this TokenKind kind) => kind switch
     {
+        TokenKind.Or or TokenKind.Xor => 5,
+        TokenKind.And => 6,
+
+        TokenKind.EqualEqual or TokenKind.BangEqual => 10,
+
+        TokenKind.Less or TokenKind.LessEqual or
+        TokenKind.Greater or TokenKind.GreaterEqual => 20,
+
+        TokenKind.Ampersand or TokenKind.Pipe or TokenKind.Tilde or
+        TokenKind.LessLess or TokenKind.GreaterGreater => 30,
+
+        TokenKind.Plus or TokenKind.Minus => 40,
+
+        TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 40,
+
         _ => -1,
     };
 }

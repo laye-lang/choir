@@ -72,6 +72,11 @@ public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
                 }
             } break;
 
+            case SyntaxTypeBuiltIn builtin:
+            {
+                Console.Write(builtin.Type.ToDebugString(C));
+            } break;
+
             case SyntaxNameref nameref:
             {
                 Console.Write($"{C[ColorBase]}{nameref.NamerefKind}");

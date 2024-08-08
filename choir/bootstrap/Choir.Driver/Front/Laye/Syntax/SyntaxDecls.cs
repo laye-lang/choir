@@ -38,7 +38,7 @@ public sealed class SyntaxImportQueryNamed(SyntaxNameref query, SyntaxToken? tok
     }
 }
 
-public sealed class SyntaxImport(SyntaxToken tokenImport) : SyntaxNode(tokenImport.Location)
+public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(tokenImport.Location)
 {
     public required ImportKind ImportKind { get; init; }
     public SyntaxToken TokenImport { get; } = tokenImport;
@@ -53,6 +53,7 @@ public sealed class SyntaxImport(SyntaxToken tokenImport) : SyntaxNode(tokenImpo
     public bool IsAliased => TokenAlias is not null;
     public string AliasNameText => TokenAlias?.TextValue ?? "";
 
+    public override bool IsDecl { get; } = true;
     public override IEnumerable<SyntaxNode> Children
     {
         get
@@ -68,14 +69,17 @@ public sealed class SyntaxImport(SyntaxToken tokenImport) : SyntaxNode(tokenImpo
     }
 }
 
-public sealed class SyntaxFunction(SyntaxNode returnType, SyntaxToken tokenName, IReadOnlyList<SyntaxNode> parameters)
+public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxToken tokenName, IReadOnlyList<SyntaxNode> parameters)
     : SyntaxNode(tokenName.Location)
 {
     public SyntaxNode ReturnType { get; } = returnType;
     public SyntaxToken TokenName { get; } = tokenName;
     public IReadOnlyList<SyntaxNode> Params { get; } = parameters;
-    public SyntaxToken? TokenSemiColon { get; } = null;
 
+    public SyntaxNode? Body { get; init; } = null;
+    public SyntaxToken? TokenSemiColon { get; init; } = null;
+
+    public override bool IsDecl { get; } = true;
     public override IEnumerable<SyntaxNode> Children
     {
         get
@@ -84,19 +88,22 @@ public sealed class SyntaxFunction(SyntaxNode returnType, SyntaxToken tokenName,
             yield return TokenName;
             foreach (var param in Params)
                 yield return param;
+            if (Body is not null)
+                yield return Body;
             if (TokenSemiColon is not null)
                 yield return TokenSemiColon;
         }
     }
 }
 
-public sealed class SyntaxBinding(SyntaxNode bindingType, SyntaxToken tokenName, SyntaxToken tokenSemiColon)
+public sealed class SyntaxDeclBinding(SyntaxNode bindingType, SyntaxToken tokenName, SyntaxToken tokenSemiColon)
     : SyntaxNode(tokenName.Location)
 {
     public SyntaxNode BindingType { get; } = bindingType;
     public SyntaxToken TokenName { get; } = tokenName;
     public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
 
+    public override bool IsDecl { get; } = true;
     public override IEnumerable<SyntaxNode> Children
     {
         get
@@ -108,12 +115,13 @@ public sealed class SyntaxBinding(SyntaxNode bindingType, SyntaxToken tokenName,
     }
 }
 
-public sealed class SyntaxParam(SyntaxNode paramType, SyntaxToken tokenName)
+public sealed class SyntaxDeclParam(SyntaxNode paramType, SyntaxToken tokenName)
     : SyntaxNode(tokenName.Location)
 {
     public SyntaxNode ParamType { get; } = paramType;
     public SyntaxToken TokenName { get; } = tokenName;
 
+    public override bool IsDecl { get; } = true;
     public override IEnumerable<SyntaxNode> Children
     {
         get

@@ -67,6 +67,14 @@ public sealed class SyntaxNameref : SyntaxNode
     }
 }
 
+public sealed class SyntaxGrouped(SyntaxNode inner)
+    : SyntaxNode(inner.Location)
+{
+    public SyntaxNode Inner { get; } = inner;
+    public override bool CanBeType => Inner.CanBeType;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
+}
+
 public sealed class SyntaxExprBinary(SyntaxNode lhs, SyntaxNode rhs, SyntaxToken tokenOperator)
     : SyntaxNode(tokenOperator.Location)
 {

@@ -23,19 +23,12 @@ public partial class Parser(Module module)
             module.AddTopLevelSyntax(topLevelNode);
     }
 
-    private static bool IsImportDeclForCHeader(SyntaxImport importDecl)
+    private static bool IsImportDeclForCHeader(SyntaxDeclImport importDecl)
     {
         return importDecl. ImportKind == ImportKind.FilePath && importDecl.ModuleNameText.EndsWith(".h", StringComparison.InvariantCultureIgnoreCase);
     }
 
     private static bool IsDefinitelyTypeStart(TokenKind kind) => kind switch
-    {
-        TokenKind.LiteralFloat or TokenKind.LiteralInteger or
-        TokenKind.LiteralRune or TokenKind.LiteralString => true,
-        _ => false,
-    };
-
-    private static bool IsDefinitelyExprStart(TokenKind kind) => kind switch
     {
         TokenKind.Mut or TokenKind.Var or
         TokenKind.Void or TokenKind.NoReturn or
@@ -49,6 +42,13 @@ public partial class Parser(Module module)
         _ => false,
     };
 
+    private static bool IsDefinitelyExprStart(TokenKind kind) => kind switch
+    {
+        TokenKind.LiteralFloat or TokenKind.LiteralInteger or
+        TokenKind.LiteralRune or TokenKind.LiteralString => true,
+        _ => false,
+    };
+
     public Module Module { get; } = module;
     public SourceFile SourceFile { get; } = module.SourceFile;
     public ChoirContext Context { get; } = module.Context;
@@ -58,7 +58,7 @@ public partial class Parser(Module module)
     private int _position = 0;
     private bool _hasOnlyReadImports = true;
 
-    private readonly List<SyntaxImport> _cHeaderImports = [];
+    private readonly List<SyntaxDeclImport> _cHeaderImports = [];
     
     private bool IsAtEnd => _position >= _tokens.Length - 1;
     private SyntaxToken EndOfFileToken => _tokens[_tokens.Length - 1];
@@ -286,19 +286,7 @@ public partial class Parser(Module module)
             default:
             {
                 var declType = ParseType();
-                if (At(TokenKind.Identifier))
-                {
-                    if (PeekAt(1, TokenKind.OpenParen))
-                        return ParseFunctionDeclStartingAtName(declType);
-                        
-                    return ParseBindingDeclStartingAtName(declType);
-                }
-                else
-                {
-                    // for now, just let this parser try to parse something.
-                    // we'll handle recovery later
-                    return ParseBindingDeclStartingAtName(declType);
-                }
+                return ParseBindingOrFunctionDeclStartingAtName(declType);
             }
         }
     }
@@ -321,7 +309,7 @@ public partial class Parser(Module module)
         }
     }
 
-    public SyntaxImport ParseImportDeclaration()
+    public SyntaxDeclImport ParseImportDeclaration()
     {
         Debug.Assert(CurrentToken.Kind == TokenKind.Import);
         Advance(out var tokenImport);
@@ -343,7 +331,7 @@ public partial class Parser(Module module)
                 ExpectIdentifier(out tokenAlias);
 
             ExpectSemiColon(out tokenSemiColon);
-            return new SyntaxImport(tokenImport)
+            return new SyntaxDeclImport(tokenImport)
             {
                 ImportKind = tokenModuleName.Kind == TokenKind.LiteralString ? ImportKind.FilePath : ImportKind.Library,
                 Queries = [],
@@ -368,7 +356,7 @@ public partial class Parser(Module module)
             ExpectIdentifier(out tokenAlias);
 
         ExpectSemiColon(out tokenSemiColon);
-        return new SyntaxImport(tokenImport)
+        return new SyntaxDeclImport(tokenImport)
         {
             ImportKind = tokenPath.Kind == TokenKind.LiteralString ? ImportKind.FilePath
                        : tokenPath.Kind == TokenKind.Identifier ? ImportKind.Library : ImportKind.Invalid,
@@ -381,28 +369,93 @@ public partial class Parser(Module module)
         };
     }
 
-    private SyntaxBinding ParseBindingDeclStartingAtName(SyntaxNode bindingType)
+    private SyntaxNode ParseBindingOrFunctionDeclStartingAtName(SyntaxNode declType)
+    {
+        if (PeekAt(1, TokenKind.OpenParen))
+            return ParseFunctionDeclStartingAtName(declType);
+            
+        return ParseBindingDeclStartingAtName(declType);
+    }
+
+    private SyntaxDeclBinding ParseBindingDeclStartingAtName(SyntaxNode bindingType)
     {
         ExpectIdentifier(out var tokenName);
         ExpectSemiColon(out var tokenSemiColon);
-        return new SyntaxBinding(bindingType, tokenName, tokenSemiColon);
+        return new SyntaxDeclBinding(bindingType, tokenName, tokenSemiColon);
     }
 
     private SyntaxNode ParseFunctionParameter()
     {
         var paramType = ParseType();
         ExpectIdentifier(out var tokenName);
-        return new SyntaxParam(paramType, tokenName);
+        return new SyntaxDeclParam(paramType, tokenName);
     }
 
-    private SyntaxFunction ParseFunctionDeclStartingAtName(SyntaxNode bindingType)
+    private SyntaxDeclFunction ParseFunctionDeclStartingAtName(SyntaxNode returnType)
     {
         ExpectIdentifier(out var tokenName);
         Expect(TokenKind.OpenParen, "'('");
         var parameters = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", TokenKind.CloseParen, TokenKind.SemiColon);
         Expect(TokenKind.CloseParen, "')'");
+
+        if (At(TokenKind.OpenBrace))
+        {
+            var body = ParseStmtCompound();
+            return new SyntaxDeclFunction(returnType, tokenName, parameters)
+            {
+                Body = body,
+            };
+        }
+
         ExpectSemiColon(out var tokenSemiColon);
-        return new SyntaxFunction(bindingType, tokenName, parameters);
+        return new SyntaxDeclFunction(returnType, tokenName, parameters)
+        {
+            TokenSemiColon = tokenSemiColon,
+        };
+    }
+
+    private SyntaxNode ParseSyntaxInStmtContext()
+    {
+        // if it's *definitely* a type, we *definitely* want to return a binding/function declaration
+        if (IsDefinitelyTypeStart(CurrentToken.Kind))
+        {
+            var declType = ParseType();
+            return ParseBindingOrFunctionDeclStartingAtName(declType);
+        }
+
+        var currentToken = CurrentToken;
+        switch (CurrentToken.Kind)
+        {
+            default:
+            {
+                var syntax = ParseExpr(ExprParseContext.CheckForDeclarations);
+                if (syntax.IsDecl) return syntax;
+
+                if (syntax.CanBeType && At(TokenKind.Identifier))
+                    return ParseBindingOrFunctionDeclStartingAtName(syntax);
+
+                Context.Diag.Note(syntax.Location, syntax.GetType().Name);
+
+                Context.Diag.ICE("we have a lot of work to do in the stmt/decl/expr parser...");
+                throw new UnreachableException();
+            }
+        }
+    }
+
+    private SyntaxStmtCompound ParseStmtCompound()
+    {
+        Expect(TokenKind.OpenBrace, "'{'", out var tokenOpenBrace);
+
+        var body = new List<SyntaxNode>();
+        while (!IsAtEnd && !At(TokenKind.CloseBrace))
+        {
+            var stmt = ParseSyntaxInStmtContext();
+            body.Add(stmt);
+        }
+        
+        Expect(TokenKind.CloseBrace, "'}'");
+
+        return new SyntaxStmtCompound(tokenOpenBrace.Location, [.. body]);
     }
 
     private SyntaxNameref ParseNameref()
@@ -469,7 +522,7 @@ public partial class Parser(Module module)
         // Replace this trivial check for a call to the scanner for more reliable parses.
 
         if (IsDefinitelyExprStart(CurrentToken.Kind))
-            return ParseExpr(false);
+            return ParseExpr(ExprParseContext.Default);
         
         return ParseType();
     }
@@ -484,12 +537,17 @@ public partial class Parser(Module module)
             
             case TokenKind.Mut: break;
 
-            //case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && (Peek(2).Kind == TokenKind.CloseBracket || Peek(2).Kind == TokenKind.Colon):
             case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind == TokenKind.CloseBracket:
             {
                 for (int i = 0; i < 3; i++) Advance();
                 typeNode = new SyntaxTypeBuffer(typeNode);
             } break;
+            
+            case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind == TokenKind.Colon:
+            {
+                Context.Diag.Fatal("todo: parse [*:<terminator>] type suffix");
+                throw new UnreachableException();
+            }
         }
 
         if (TryAdvance(TokenKind.Mut, out var tokenMut))
@@ -518,6 +576,14 @@ public partial class Parser(Module module)
         SyntaxNode typeNode;
         switch (CurrentToken.Kind)
         {
+            case TokenKind.OpenParen:
+            {
+                Advance();
+                var nestedType = ParseType();
+                Expect(TokenKind.CloseParen, "')'");
+                return new SyntaxGrouped(nestedType);
+            }
+
             case TokenKind.Void: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeVoid); break;
             case TokenKind.NoReturn: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeNoReturn); break;
             case TokenKind.Bool: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeBool); break;
@@ -560,9 +626,10 @@ public partial class Parser(Module module)
         return ParseTypeSuffix(typeNode);
     }
     
-    private SyntaxNode ParseExpr(bool couldBeDecl)
+    private SyntaxNode ParseExpr(ExprParseContext parseContext)
     {
-        return ParsePrimaryExpr();
+        var primary = ParsePrimaryExpr();
+        return ParseBinaryExpr(parseContext, primary);
     }
 
     private SyntaxNode ParsePrimaryExprSuffix(SyntaxNode primary)
@@ -572,32 +639,15 @@ public partial class Parser(Module module)
         {
             default: return primary;
 
+            // mut suffix applies to any type any time
             case TokenKind.Mut when primary.CanBeType:
-            {
-                TryAdvance(TokenKind.Mut, out var tokenMut);
-                var qualifiedType = new SyntaxQualMut(primary, tokenMut!);
-                
-                while (TryAdvance(TokenKind.Mut, out var trailingMut)) {
-                    Context.Diag.Error(trailingMut.Location, "duplicate 'mut' qualifier");
-                }
-
-                return ParseTypeSuffix(qualifiedType);
-            }
-
-            case TokenKind.Star when PeekAt(1, TokenKind.Mut):
-            {
-                TryAdvance(TokenKind.Star);
-                var pointerType = new SyntaxTypePointer(primary);
-                
-                TryAdvance(TokenKind.Mut, out var tokenMut);
-                var qualifiedType = new SyntaxQualMut(pointerType, tokenMut!);
-                
-                while (TryAdvance(TokenKind.Mut, out var trailingMut)) {
-                    Context.Diag.Error(trailingMut.Location, "duplicate 'mut' qualifier");
-                }
-
-                return ParseTypeSuffix(qualifiedType);
-            }
+            // `type* mut` and `type& mut` are always pointer/reference types
+            case TokenKind.Star or TokenKind.Ampersand when PeekAt(1, TokenKind.Mut) && primary.CanBeType:
+            // `type[]` is always a slice type
+            case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.CloseBracket && primary.CanBeType:
+            // `type[*]` and `type[*:` are always buffer types
+            case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind is TokenKind.CloseBracket or TokenKind.Colon && primary.CanBeType:
+                return ParseTypeSuffix(primary);
         }
     }
 
@@ -640,7 +690,6 @@ public partial class Parser(Module module)
                 return ParsePrimaryExprSuffix(nameref);
             }
 
-
             case TokenKind.LiteralInteger:
             {
                 Advance();
@@ -664,7 +713,8 @@ public partial class Parser(Module module)
             Advance();
 
             if (parseContext == ExprParseContext.CheckForDeclarations &&
-                tokenOperator.Kind is TokenKind.Star or TokenKind.Ampersand && At(TokenKind.Identifier))
+                tokenOperator.Kind is TokenKind.Star or TokenKind.Ampersand && At(TokenKind.Identifier) &&
+                lhs.CanBeType)
             {
                 if (PeekAt(1, TokenKind.Equal, TokenKind.SemiColon))
                 {
