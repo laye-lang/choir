@@ -273,12 +273,14 @@ public partial class Parser(Module module)
     private IReadOnlyList<T> ParseDelimited<T>(Func<T> parser, TokenKind tokenDelimiter, string expected, params TokenKind[] closers)
         where T : SyntaxNode
     {
+        if (At(closers)) return [];
+
         var results = new List<T>();
         do
         {
             if (At(closers))
             {
-                Context.Diag.Error($"expected {expected}");
+                Context.Diag.Error(CurrentLocation, $"expected {expected}");
                 break;
             }
 
@@ -423,7 +425,7 @@ public partial class Parser(Module module)
         return new SyntaxDeclBinding(bindingType, tokenName, tokenSemiColon);
     }
 
-    private SyntaxNode ParseFunctionParameter()
+    private SyntaxDeclParam ParseFunctionParameter()
     {
         var paramType = ParseType();
         ExpectIdentifier(out var tokenName);
@@ -434,20 +436,52 @@ public partial class Parser(Module module)
     {
         ExpectIdentifier(out var tokenName);
         Expect(TokenKind.OpenParen, "'('");
-        var parameters = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", TokenKind.CloseParen, TokenKind.SemiColon);
+        var paramDecls = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", TokenKind.CloseParen, TokenKind.SemiColon);
         Expect(TokenKind.CloseParen, "')'");
 
         if (At(TokenKind.OpenBrace))
         {
             var body = ParseStmtCompound();
-            return new SyntaxDeclFunction(returnType, tokenName, parameters)
+            return new SyntaxDeclFunction(returnType, tokenName, paramDecls)
             {
                 Body = body,
             };
         }
 
         ExpectSemiColon(out var tokenSemiColon);
-        return new SyntaxDeclFunction(returnType, tokenName, parameters)
+        return new SyntaxDeclFunction(returnType, tokenName, paramDecls)
+        {
+            TokenSemiColon = tokenSemiColon,
+        };
+    }
+
+    private SyntaxDeclFunction ParseFunctionDeclStartingWithinParameters(SyntaxNode returnType, SyntaxToken tokenName, SyntaxNode firstParamType)
+    {
+        Consume(TokenKind.Identifier, out var tokenFirstParamName);
+
+        var firstParam = new SyntaxDeclParam(firstParamType, tokenFirstParamName);
+
+        SyntaxDeclParam[] paramDecls;
+        if (Consume(TokenKind.Comma))
+        {
+            var remainingParams = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", TokenKind.CloseParen, TokenKind.SemiColon);
+            paramDecls = [firstParam, .. remainingParams];
+        }
+        else paramDecls = [firstParam];
+
+        Expect(TokenKind.CloseParen, "')'");
+
+        if (At(TokenKind.OpenBrace))
+        {
+            var body = ParseStmtCompound();
+            return new SyntaxDeclFunction(returnType, tokenName, paramDecls)
+            {
+                Body = body,
+            };
+        }
+
+        ExpectSemiColon(out var tokenSemiColon);
+        return new SyntaxDeclFunction(returnType, tokenName, paramDecls)
         {
             TokenSemiColon = tokenSemiColon,
         };
@@ -707,6 +741,20 @@ public partial class Parser(Module module)
         return ParseBinaryExpr(parseContext, primary);
     }
 
+    private SyntaxNode ParseExprCallFromFirstArg(SyntaxNode callee, SyntaxNode firstArg)
+    {
+        SyntaxNode[] args;
+        if (TryAdvance(TokenKind.Comma))
+        {
+            var remainingArgs = ParseDelimited(() => ParseExpr(ExprParseContext.Default), TokenKind.Comma, "an expression", TokenKind.CloseParen, TokenKind.SemiColon);
+            args = [firstArg, .. remainingArgs];
+        }
+        else args = [firstArg];
+
+        Expect(TokenKind.CloseParen, "')'");
+        return new SyntaxExprCall(callee, args);
+    }
+
     private SyntaxNode ParsePrimaryExprContinuation(SyntaxNode primary)
     {
         var currentToken = CurrentToken;
@@ -799,8 +847,10 @@ public partial class Parser(Module module)
             var tokenOperator = CurrentToken;
             Advance();
 
+            SyntaxNode? rhs = null;
             if (parseContext == ExprParseContext.CheckForDeclarations &&
-                tokenOperator.Kind is TokenKind.Star or TokenKind.Ampersand && At(TokenKind.Identifier) &&
+                tokenOperator.Kind is TokenKind.Star or TokenKind.Ampersand &&
+                At(TokenKind.Identifier) &&
                 lhs.CanBeType)
             {
                 if (PeekAt(1, TokenKind.Equal, TokenKind.SemiColon))
@@ -819,10 +869,33 @@ public partial class Parser(Module module)
                         SyntaxNode returnType = CreateTypeNodeFromOperator(lhs, tokenOperator);
                         return ParseFunctionDeclStartingAtName(returnType);
                     }
+
+                    if (IsDefinitelyTypeStart(Peek(2).Kind))
+                    {
+                        // this is a function declaration/definition, since the next token
+                        // within the open paren *must* start a type.
+                        SyntaxNode returnType = CreateTypeNodeFromOperator(lhs, tokenOperator);
+                        return ParseFunctionDeclStartingAtName(returnType);
+                    }
+
+                    Consume(TokenKind.Identifier, out var tokenIdent);
+                    Consume(TokenKind.OpenParen, out var tokenOpenParen);
+
+                    var firstParamOrArg = ParseExpr(ExprParseContext.Default);
+                    if (firstParamOrArg.CanBeType && At(TokenKind.Identifier))
+                    {
+                        // this should be a parameter declaration
+                        SyntaxNode returnType = CreateTypeNodeFromOperator(lhs, tokenOperator);
+                        return ParseFunctionDeclStartingWithinParameters(returnType, tokenIdent, firstParamOrArg);
+                    }
+
+                    // otherwise we give up, it's an invocation on the RHS
+                    var syntaxCallee = SyntaxNameref.Create(tokenIdent);
+                    rhs = ParseExprCallFromFirstArg(syntaxCallee, firstParamOrArg);
                 }
             }
-
-            var rhs = ParsePrimaryExpr();
+            
+            rhs ??= ParsePrimaryExpr();
 
             int rhsPrecedence = nextPrecedence;
             while (AtBinaryOperatorWithPrecedence(rhsPrecedence, out nextPrecedence))

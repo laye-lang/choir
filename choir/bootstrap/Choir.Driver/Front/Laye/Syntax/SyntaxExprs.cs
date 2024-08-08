@@ -75,6 +75,14 @@ public sealed class SyntaxGrouped(SyntaxNode inner)
     public override IEnumerable<SyntaxNode> Children { get; } = [inner];
 }
 
+public sealed class SyntaxExprCall(SyntaxNode callee, IReadOnlyList<SyntaxNode> args)
+    : SyntaxNode(callee.Location)
+{
+    public SyntaxNode Callee { get; } = callee;
+    public IReadOnlyList<SyntaxNode> Args { get; } = args;
+    public override IEnumerable<SyntaxNode> Children { get; } = [callee, ..args];
+}
+
 public sealed class SyntaxExprBinary(SyntaxNode lhs, SyntaxNode rhs, SyntaxToken tokenOperator)
     : SyntaxNode(tokenOperator.Location)
 {

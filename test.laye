@@ -1,7 +1,6 @@
 i32 main(i32 argc, i8[*][*] argv) {
-  int foo;
-  bar* baz;
-  i8[*] arg;
-  // TODO(local): test out the precedence parsing for templates
-  vec<2+1, f32> v;
+  foo* bar(int a);
+  foo* bar(baz a);
+  foo* bar(i);
+  // bar* baz(i32 a, i32 b);
 }
