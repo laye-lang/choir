@@ -1,6 +1,5 @@
 i32 main(i32 argc, i8[*][*] argv) {
-  foo* bar(int a);
-  foo* bar(baz a);
-  foo* bar(i);
-  // bar* baz(i32 a, i32 b);
+    ::vec<(1+1)*2, f32>* bar(vec<(3-1)*2 - 1, f32> a);
+    ::vec<(1+1)*2, f32>** bar(i32 i);
+    bar* baz(i32 a, i32 b);
 }

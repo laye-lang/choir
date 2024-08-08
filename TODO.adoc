@@ -14,7 +14,7 @@
     * [ ] String Literals
     * [ ] Rune Literals
     * [ ] Bool Literals
-    * [ ] Grouped Expression
+    * [x] Grouped Expression
     * [ ] (Invalid) Empty Expression
     * [ ] Cast
     * [ ] Constructor
@@ -34,6 +34,7 @@
     * [ ] Element Index Acecss
 * [ ] Secondary Expressions
     * [ ] Binary
+        * [ ] Actual proper ordering and precedence please
         * [ ] All Possible Operators
         * [ ] Fallback to Declarations
             * [ ] Fallback to Binding
@@ -70,7 +71,9 @@
     * [ ] Xyzzy
     * [ ] Simple Assignment
     * [ ] Operator Assignment
-    * [ ] Expression Statement (if all else fails)
+    * [ ] Operator Assignment Errors
+    * [x] Expression Statement
+    * [ ] Expression Statement Errors
 * [ ] Declarations
     * [ ] Struct
     * [ ] Enum

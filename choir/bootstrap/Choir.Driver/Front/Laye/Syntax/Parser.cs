@@ -507,10 +507,12 @@ public partial class Parser(Module module)
                 if (syntax.CanBeType && At(TokenKind.Identifier))
                     return ParseBindingOrFunctionDeclStartingAtName(syntax);
 
-                Context.Diag.Note(syntax.Location, syntax.GetType().Name);
+                // if (CurrentToken.Kind.IsAssignmentOperator())
+                // {
+                // }
 
-                Context.Diag.ICE("we have a lot of work to do in the stmt/decl/expr parser...");
-                throw new UnreachableException();
+                ExpectSemiColon(out var tokenSemiColon);
+                return new SyntaxStmtExpr(syntax, tokenSemiColon);
             }
         }
     }
@@ -555,7 +557,7 @@ public partial class Parser(Module module)
     private SyntaxNameref ParseNamerefNoTemplateArguments()
     {
         var names = ParseNamerefImpl(out var kind);
-        return SyntaxNameref.Create(names[names.Length - 1].Location, kind, names, new([]));
+        return SyntaxNameref.Create(names[names.Length - 1].Location, kind, names, null);
     }
 
     private SyntaxNode ParseNamerefWithTemplateArgumentCheck()
@@ -569,7 +571,7 @@ public partial class Parser(Module module)
             var arg = ParseTemplateArgument();
             if (!At(TokenKind.Comma, TokenKind.Greater, TokenKind.GreaterGreater, TokenKind.GreaterGreaterGreater, TokenKind.GreaterEqual, TokenKind.GreaterGreaterEqual, TokenKind.GreaterGreaterGreaterEqual))
             {
-                var nameref = SyntaxNameref.Create(lastNameLocation, kind, names, new([]));
+                var nameref = SyntaxNameref.Create(lastNameLocation, kind, names, null);
                 var binary = new SyntaxExprBinary(nameref, arg, tokenLess);
                 return ParseBinaryExpr(ExprParseContext.Default, binary, TokenKind.Less.GetBinaryOperatorPrecedence());
             }
@@ -657,6 +659,18 @@ public partial class Parser(Module module)
                 Context.Diag.Fatal("todo: parse [*:<terminator>] type suffix");
                 throw new UnreachableException();
             }
+
+            case TokenKind.Star:
+            {
+                Advance();
+                typeNode = new SyntaxTypePointer(typeNode);
+            } break;
+
+            case TokenKind.Ampersand:
+            {
+                Advance();
+                typeNode = new SyntaxTypeReference(typeNode);
+            } break;
         }
 
         if (TryAdvance(TokenKind.Mut, out var tokenMut))
@@ -764,6 +778,8 @@ public partial class Parser(Module module)
 
             // mut applies to any type any time
             case TokenKind.Mut when primary.CanBeType:
+            // `type**`, `type*&`, `type&&` and `type&*` are always pointer/reference types
+            case TokenKind.Star or TokenKind.Ampersand when PeekAt(1, TokenKind.Star, TokenKind.Ampersand) && primary.CanBeType:
             // `type* mut` and `type& mut` are always pointer/reference types
             case TokenKind.Star or TokenKind.Ampersand when PeekAt(1, TokenKind.Mut) && primary.CanBeType:
             // `type[]` is always a slice type
@@ -829,7 +845,7 @@ public partial class Parser(Module module)
 
             default:
             {
-                Context.Diag.ICE($"need to return a default syntax node when no expression was parseable (at token kind {CurrentToken.Kind})");
+                Context.Diag.ICE(CurrentLocation, $"need to return a default syntax node when no expression was parseable (at token kind {CurrentToken.Kind})");
                 throw new UnreachableException();
             }
         }
@@ -842,7 +858,7 @@ public partial class Parser(Module module)
         if (parseContext == ExprParseContext.TemplateArguments)
             precedence = Math.Max(precedence, TokenKind.Plus.GetBinaryOperatorPrecedence());
 
-        while (AtBinaryOperatorWithPrecedence(precedence, out int nextPrecedence))
+        while (AtBinaryOperatorWithPrecedence(precedence, false, out int nextPrecedence))
         {
             var tokenOperator = CurrentToken;
             Advance();
@@ -898,15 +914,20 @@ public partial class Parser(Module module)
             rhs ??= ParsePrimaryExpr();
 
             int rhsPrecedence = nextPrecedence;
-            while (AtBinaryOperatorWithPrecedence(rhsPrecedence, out nextPrecedence))
-                rhs = ParseBinaryExpr(parseContext, rhs, rhsPrecedence);
+            bool isTokenOperatorRightAssoc = tokenOperator.Kind.IsRightAssociativeBinaryOperator();
+
+            while (AtBinaryOperatorWithPrecedence(rhsPrecedence, isTokenOperatorRightAssoc, out nextPrecedence))
+            {
+                //rhsPrecedence = nextPrecedence;
+                rhs = ParseBinaryExpr(ExprParseContext.Default, rhs, rhsPrecedence);
+            }
                 
             lhs = new SyntaxExprBinary(lhs, rhs, tokenOperator);
         }
 
         return lhs;
 
-        bool AtBinaryOperatorWithPrecedence(int checkPrecedence, out int nextPrecedence)
+        bool AtBinaryOperatorWithPrecedence(int checkPrecedence, bool isRightAssoc, out int nextPrecedence)
         {
             nextPrecedence = 0;
 

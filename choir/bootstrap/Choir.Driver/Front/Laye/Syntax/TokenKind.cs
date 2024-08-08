@@ -180,22 +180,37 @@ public static class TokenKindExtensions
     public static bool CanBeBinaryOperator(this TokenKind kind) => kind.GetBinaryOperatorPrecedence() >= 0;
     public static int GetBinaryOperatorPrecedence(this TokenKind kind) => kind switch
     {
+        TokenKind.QuestionQuestion => 4,
+
         TokenKind.Or or TokenKind.Xor => 5,
         TokenKind.And => 6,
 
         TokenKind.EqualEqual or TokenKind.BangEqual => 10,
 
         TokenKind.Less or TokenKind.LessEqual or
-        TokenKind.Greater or TokenKind.GreaterEqual => 20,
+        TokenKind.Greater or TokenKind.GreaterEqual or
+        TokenKind.LessColon or TokenKind.LessEqualColon or
+        TokenKind.ColonGreater or TokenKind.ColonGreaterEqual => 20,
 
         TokenKind.Ampersand or TokenKind.Pipe or TokenKind.Tilde or
         TokenKind.LessLess or TokenKind.GreaterGreater or
         TokenKind.GreaterGreaterGreater => 30,
 
-        TokenKind.Plus or TokenKind.Minus => 40,
+        TokenKind.Plus or TokenKind.Minus or
+        TokenKind.PlusPipe or TokenKind.MinusPipe or
+        TokenKind.PlusPercent or TokenKind.MinusPercent => 40,
 
-        TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 40,
+        TokenKind.Star or TokenKind.Slash or TokenKind.Percent or
+        TokenKind.SlashColon or TokenKind.PercentColon => 50,
+
+        TokenKind.Caret => 60,
 
         _ => -1,
+    };
+
+    public static bool IsRightAssociativeBinaryOperator(this TokenKind kind) => kind switch
+    {
+        TokenKind.QuestionQuestion or TokenKind.Caret => true,
+        _ => false,
     };
 }
