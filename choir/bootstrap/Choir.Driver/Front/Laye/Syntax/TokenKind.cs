@@ -213,4 +213,57 @@ public static class TokenKindExtensions
         TokenKind.QuestionQuestion or TokenKind.Caret => true,
         _ => false,
     };
+
+    public static bool IsAssignmentOperator(this TokenKind kind) => kind switch
+    {
+        TokenKind.Equal or
+        TokenKind.TildeEqual or
+        TokenKind.BangEqual or
+        TokenKind.PercentEqual or
+        TokenKind.PercentColonEqual or
+        TokenKind.AmpersandEqual or
+        TokenKind.StarEqual or
+        TokenKind.MinusEqual or
+        TokenKind.MinusPercentEqual or
+        TokenKind.MinusPipeEqual or
+        TokenKind.PlusEqual or
+        TokenKind.PlusPercentEqual or
+        TokenKind.PlusPipeEqual or
+        TokenKind.PipeEqual or
+        TokenKind.ColonGreaterEqual or
+        TokenKind.LessLessEqual or
+        TokenKind.GreaterGreaterEqual or
+        TokenKind.GreaterGreaterGreaterEqual or
+        TokenKind.SlashEqual or
+        TokenKind.SlashColonEqual or
+        TokenKind.QuestionQuestionEqual or
+        TokenKind.CaretEqual => true,
+        _ => false,
+    };
+
+    public static TokenKind GetOperatorFromAssignmentOperator(this TokenKind kind) => kind switch
+    {
+        TokenKind.TildeEqual => TokenKind.Tilde,
+        TokenKind.BangEqual => TokenKind.Bang,
+        TokenKind.PercentEqual => TokenKind.Percent,
+        TokenKind.PercentColonEqual => TokenKind.PercentColon,
+        TokenKind.AmpersandEqual => TokenKind.Ampersand,
+        TokenKind.StarEqual => TokenKind.Star,
+        TokenKind.MinusEqual => TokenKind.Minus,
+        TokenKind.MinusPercentEqual => TokenKind.MinusPercent,
+        TokenKind.MinusPipeEqual => TokenKind.MinusPipe,
+        TokenKind.PlusEqual => TokenKind.Plus,
+        TokenKind.PlusPercentEqual => TokenKind.PlusPercent,
+        TokenKind.PlusPipeEqual => TokenKind.PlusPipe,
+        TokenKind.PipeEqual => TokenKind.Pipe,
+        TokenKind.ColonGreaterEqual => TokenKind.ColonGreater,
+        TokenKind.LessLessEqual => TokenKind.LessLess,
+        TokenKind.GreaterGreaterEqual => TokenKind.GreaterGreater,
+        TokenKind.GreaterGreaterGreaterEqual => TokenKind.GreaterGreaterGreater,
+        TokenKind.SlashEqual => TokenKind.Slash,
+        TokenKind.SlashColonEqual => TokenKind.SlashColon,
+        TokenKind.QuestionQuestionEqual => TokenKind.QuestionQuestion,
+        TokenKind.CaretEqual => TokenKind.Caret,
+        _ => kind,
+    };
 }

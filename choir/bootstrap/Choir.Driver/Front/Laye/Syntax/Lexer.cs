@@ -195,6 +195,28 @@ public sealed class Lexer(SourceFile sourceFile)
                 ReadIdentifier(ref tokenInfo);
                 if (_keywordTokensKinds.TryGetValue(tokenInfo.TextValue, out var keywordKind))
                     tokenInfo.Kind = keywordKind;
+                else if (tokenInfo.TextValue[0] is 'b' or 'i' or 'f' && tokenInfo.TextValue.AsSpan()[1..].All(SyntaxFacts.IsNumericLiteralDigit))
+                {
+                    tokenInfo.Kind = tokenInfo.TextValue[0] switch
+                    {
+                        'b' => TokenKind.BoolSized,
+                        'i' => TokenKind.IntSized,
+                        'f' => TokenKind.FloatSized,
+                        _ => throw new UnreachableException(),
+                    };
+
+                    if (tokenInfo.TextValue.Length > 6)
+                    {
+                        Context.Diag.Error(new Location(tokenInfo.Position, 1, SourceFile.FileId), "sized primitive bit width must be in the range [1, 65536).");
+                        break;
+                    }
+
+                    int bitWidth = int.Parse(tokenInfo.TextValue.AsSpan()[1..]);
+                    if (bitWidth is < 1 or >= 65536)
+                        Context.Diag.Error(new Location(tokenInfo.Position, 1, SourceFile.FileId), "sized primitive bit width must be in the range [1, 65536).");
+
+                    tokenInfo.IntegerValue = bitWidth;
+                }
             } break;
 
             case >= '0' and <= '9':

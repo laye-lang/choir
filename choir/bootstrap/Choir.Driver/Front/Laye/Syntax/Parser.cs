@@ -138,6 +138,13 @@ public partial class Parser(Module module)
         return false;
     }
 
+    public SyntaxToken Consume()
+    {
+        var result = CurrentToken;
+        Advance();
+        return result;
+    }
+
     private bool Consume(TokenKind kind)
     {
         if (CurrentToken.Kind != kind)
@@ -204,11 +211,18 @@ public partial class Parser(Module module)
         return false;
     }
 
-    private void Expect(TokenKind kind, string expected)
+    private SyntaxToken Expect(TokenKind kind, string expected)
     {
-        if (!Consume(kind))
+        if (!Consume(kind, out var token))
             Context.Diag.Error(CurrentLocation, $"expected {expected}");
+        return token;
     }
+
+    // private void Expect(TokenKind kind, string expected)
+    // {
+    //     if (!Consume(kind))
+    //         Context.Diag.Error(CurrentLocation, $"expected {expected}");
+    // }
 
     private void Expect(TokenKind kind, string expected, out SyntaxToken token)
     {
@@ -216,8 +230,9 @@ public partial class Parser(Module module)
             Context.Diag.Error(CurrentLocation, $"expected {expected}");
     }
 
-    private void ExpectSemiColon() => Expect(TokenKind.SemiColon, "';'");
+    private SyntaxToken ExpectSemiColon() { Expect(TokenKind.SemiColon, "';'", out var token); return token; }
     private void ExpectSemiColon(out SyntaxToken token) => Expect(TokenKind.SemiColon, "';'", out token);
+    private SyntaxToken ExpectIdentifier() { Expect(TokenKind.Identifier, "an identifier", out var token); return token; }
     private void ExpectIdentifier(out SyntaxToken token) => Expect(TokenKind.Identifier, "an identifier", out token);
 
     private void ExpectContextualKeyword(string keywordText, TokenKind contextualKind)
@@ -270,9 +285,16 @@ public partial class Parser(Module module)
         _tokens[_position] = newToken;
     }
 
-    private IReadOnlyList<T> ParseDelimited<T>(Func<T> parser, TokenKind tokenDelimiter, string expected, params TokenKind[] closers)
+    private void SyncThrough(params TokenKind[] kinds)
+    {
+        while (!At(kinds)) Advance();
+        if (At(kinds)) Advance();
+    }
+
+    private IReadOnlyList<T> ParseDelimited<T>(Func<T> parser, TokenKind tokenDelimiter, string expected, bool allowTrailing, params TokenKind[] closers)
         where T : SyntaxNode
     {
+        Debug.Assert(!allowTrailing || closers.Length > 0, "if `allowTrailing` is specified, it must also specify closers");
         if (At(closers)) return [];
 
         var results = new List<T>();
@@ -280,7 +302,8 @@ public partial class Parser(Module module)
         {
             if (At(closers))
             {
-                Context.Diag.Error(CurrentLocation, $"expected {expected}");
+                if (!allowTrailing)
+                    Context.Diag.Error(CurrentLocation, $"expected {expected}");
                 break;
             }
 
@@ -326,13 +349,22 @@ public partial class Parser(Module module)
 
             default:
             {
+                int position = _position;
                 var declType = ParseType();
+                if (position == _position)
+                {
+                    Context.Diag.Error(CurrentLocation, "expected a declaration");
+                    var token = CurrentToken;
+                    SyncThrough(TokenKind.SemiColon, TokenKind.CloseBrace);
+                    return new SyntaxExprEmpty(token);
+                }
+
                 return ParseBindingOrFunctionDeclStartingAtName(declType);
             }
         }
     }
 
-    private IReadOnlyList<SyntaxImportQuery> ParseImportQueries() => ParseDelimited(ParseImportQuery, TokenKind.Comma, "an identifier or '*'", TokenKind.SemiColon, TokenKind.OpenBrace, TokenKind.CloseBrace);
+    private IReadOnlyList<SyntaxImportQuery> ParseImportQueries() => ParseDelimited(ParseImportQuery, TokenKind.Comma, "an identifier or '*'", false, TokenKind.SemiColon, TokenKind.OpenBrace, TokenKind.CloseBrace);
     private SyntaxImportQuery ParseImportQuery()
     {
         if (TryAdvance(TokenKind.Star, out var tokenStar))
@@ -421,8 +453,18 @@ public partial class Parser(Module module)
     private SyntaxDeclBinding ParseBindingDeclStartingAtName(SyntaxNode bindingType)
     {
         ExpectIdentifier(out var tokenName);
+
+        SyntaxToken? tokenAssign = null;
+        SyntaxNode? initializer = null;
+        if (CurrentToken.Kind.IsAssignmentOperator())
+        {
+            tokenAssign = CurrentToken;
+            Advance();
+            initializer = ParseExpr(ExprParseContext.Default);
+        }
+        
         ExpectSemiColon(out var tokenSemiColon);
-        return new SyntaxDeclBinding(bindingType, tokenName, tokenSemiColon);
+        return new SyntaxDeclBinding(bindingType, tokenName, tokenAssign, initializer, tokenSemiColon);
     }
 
     private SyntaxDeclParam ParseFunctionParameter()
@@ -436,12 +478,12 @@ public partial class Parser(Module module)
     {
         ExpectIdentifier(out var tokenName);
         Expect(TokenKind.OpenParen, "'('");
-        var paramDecls = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", TokenKind.CloseParen, TokenKind.SemiColon);
+        var paramDecls = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", false, TokenKind.CloseParen, TokenKind.SemiColon);
         Expect(TokenKind.CloseParen, "')'");
 
         if (At(TokenKind.OpenBrace))
         {
-            var body = ParseStmtCompound();
+            var body = ParseCompound();
             return new SyntaxDeclFunction(returnType, tokenName, paramDecls)
             {
                 Body = body,
@@ -464,7 +506,7 @@ public partial class Parser(Module module)
         SyntaxDeclParam[] paramDecls;
         if (Consume(TokenKind.Comma))
         {
-            var remainingParams = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", TokenKind.CloseParen, TokenKind.SemiColon);
+            var remainingParams = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", false, TokenKind.CloseParen, TokenKind.SemiColon);
             paramDecls = [firstParam, .. remainingParams];
         }
         else paramDecls = [firstParam];
@@ -473,7 +515,7 @@ public partial class Parser(Module module)
 
         if (At(TokenKind.OpenBrace))
         {
-            var body = ParseStmtCompound();
+            var body = ParseCompound();
             return new SyntaxDeclFunction(returnType, tokenName, paramDecls)
             {
                 Body = body,
@@ -485,6 +527,24 @@ public partial class Parser(Module module)
         {
             TokenSemiColon = tokenSemiColon,
         };
+    }
+
+    private SyntaxNode ParseStmtContinue(SyntaxNode expr)
+    {
+        SyntaxToken tokenSemiColon;
+
+        if (CurrentToken.Kind.IsAssignmentOperator())
+        {
+            var tokenAssign = CurrentToken;
+            Advance();
+
+            var rhs = ParseExpr(ExprParseContext.Default);
+            ExpectSemiColon(out tokenSemiColon);
+            return new SyntaxStmtAssign(expr, tokenAssign, rhs, tokenSemiColon);
+        }
+        
+        ExpectSemiColon(out tokenSemiColon);
+        return new SyntaxStmtExpr(expr, tokenSemiColon);
     }
 
     private SyntaxNode ParseSyntaxInStmtContext()
@@ -499,25 +559,111 @@ public partial class Parser(Module module)
         var currentToken = CurrentToken;
         switch (CurrentToken.Kind)
         {
+            case TokenKind.OpenBrace:
+            case TokenKind.Assert:
+            case TokenKind.Break:
+            case TokenKind.Continue:
+            case TokenKind.Defer:
+            case TokenKind.Do:
+            case TokenKind.For:
+            case TokenKind.Goto:
+            case TokenKind.If:
+            case TokenKind.Return:
+            case TokenKind.While:
+            case TokenKind.Xyzzy:
+            case TokenKind.Yield:
+                return ParseStmt();
+
             default:
             {
+                int position = _position;
                 var syntax = ParseExpr(ExprParseContext.CheckForDeclarations);
-                if (syntax.IsDecl) return syntax;
+                if (syntax is SyntaxExprEmpty syntaxEmpty) return new SyntaxStmtExpr(syntax, syntaxEmpty.TokenSemiColon);
+                if (position == _position)
+                {
+                    Context.Diag.Error(CurrentLocation, "expected an expression");
+                    var token = CurrentToken;
+                    SyncThrough(TokenKind.SemiColon, TokenKind.CloseBrace);
+                    return new SyntaxExprEmpty(token);
+                }
 
+                if (syntax.IsDecl) return syntax;
                 if (syntax.CanBeType && At(TokenKind.Identifier))
                     return ParseBindingOrFunctionDeclStartingAtName(syntax);
 
-                // if (CurrentToken.Kind.IsAssignmentOperator())
-                // {
-                // }
-
-                ExpectSemiColon(out var tokenSemiColon);
-                return new SyntaxStmtExpr(syntax, tokenSemiColon);
+                return ParseStmtContinue(syntax);
             }
         }
     }
 
-    private SyntaxStmtCompound ParseStmtCompound()
+    private SyntaxNode ParseStmt()
+    {
+        var currentToken = CurrentToken;
+        switch (CurrentToken.Kind)
+        {
+            case TokenKind.OpenBrace: return ParseCompound();
+
+            case TokenKind.Assert:
+            {
+                var tokenAssert = Consume();
+                var condition = ParseExpr(ExprParseContext.Default);
+                SyntaxToken? message = null;
+                if (TryAdvance(TokenKind.Comma, out var tokenComma)) message = Expect(TokenKind.LiteralString, "a literal string");
+                var tokenSemiColon = ExpectSemiColon();
+                return new SyntaxStmtAssert(tokenAssert, condition, tokenComma, message, tokenSemiColon);
+            }
+
+            case TokenKind.Break:
+            {
+                var tokenBreak = Consume();
+                TryAdvance(TokenKind.Identifier, out var tokenLabel);
+                ExpectSemiColon(out var tokenSemiColon);
+                return new SyntaxStmtBreak(tokenBreak, tokenLabel, tokenSemiColon);
+            }
+
+            case TokenKind.Continue:
+            {
+                var tokenContinue = Consume();
+                TryAdvance(TokenKind.Identifier, out var tokenLabel);
+                ExpectSemiColon(out var tokenSemiColon);
+                return new SyntaxStmtContinue(tokenContinue, tokenLabel, tokenSemiColon);
+            }
+
+            case TokenKind.Defer: throw new UnreachableException();
+            case TokenKind.Do: throw new UnreachableException();
+            case TokenKind.For: throw new UnreachableException();
+
+            case TokenKind.Goto: return new SyntaxStmtGoto(Consume(), ExpectIdentifier(), ExpectSemiColon());
+
+            case TokenKind.If: return ParseIf();
+
+            case TokenKind.Return:
+            {
+                var tokenReturn = Consume();
+                SyntaxNode? value = At(TokenKind.SemiColon) ? null : ParseExpr(ExprParseContext.Default);
+                ExpectSemiColon(out var tokenSemiColon);
+                return new SyntaxStmtReturn(tokenReturn, value, tokenSemiColon);
+            }
+
+            case TokenKind.While: throw new UnreachableException();
+
+            case TokenKind.Xyzzy: return new SyntaxStmtXyzzy(Consume(), ExpectSemiColon());
+
+            case TokenKind.Yield:
+            {
+                Context.Diag.ICE("yield syntax/semantics is currently undecided and unimplemented");
+                throw new UnreachableException();
+            }
+
+            default:
+            {
+                var expr = ParseExpr(ExprParseContext.Default);
+                return ParseStmtContinue(expr);
+            }
+        }
+    }
+
+    private SyntaxCompound ParseCompound()
     {
         Expect(TokenKind.OpenBrace, "'{'", out var tokenOpenBrace);
 
@@ -530,7 +676,43 @@ public partial class Parser(Module module)
         
         Expect(TokenKind.CloseBrace, "'}'");
 
-        return new SyntaxStmtCompound(tokenOpenBrace.Location, [.. body]);
+        return new SyntaxCompound(tokenOpenBrace.Location, [.. body]);
+    }
+
+    private SyntaxIf ParseIf()
+    {
+        var primaries = new List<SyntaxIfPrimary>
+        {
+            ParseIfPrimary()
+        };
+
+        while (TryAdvance(TokenKind.Else, out var tokenElse))
+        {
+            if (At(TokenKind.If))
+                primaries.Add(ParseIfPrimary());
+            else
+            {
+                var elseBody = ParseStmt();
+                return new SyntaxIf([.. primaries], tokenElse, elseBody);
+            }
+        }
+        
+        return new SyntaxIf([.. primaries], null, null);
+
+        SyntaxIfPrimary ParseIfPrimary()
+        {
+            Debug.Assert(At(TokenKind.If));
+
+            var tokenIf = CurrentToken;
+            Advance();
+
+            Expect(TokenKind.OpenParen, "'('");
+            var condition = ParseExpr(ExprParseContext.Default);
+            Expect(TokenKind.CloseParen, "')'");
+
+            var body = ParseStmt();
+            return new SyntaxIfPrimary(tokenIf, condition, body);
+        }
     }
 
     private SyntaxToken[] ParseNamerefImpl(out NamerefKind kind)
@@ -547,7 +729,8 @@ public partial class Parser(Module module)
         var names = ParseDelimited(
             () => { ExpectIdentifier(out var tokenName); return tokenName; },
             TokenKind.ColonColon,
-            "an identifier"
+            "an identifier",
+            false
         );
         Debug.Assert(names.Count > 0);
 
@@ -590,45 +773,8 @@ public partial class Parser(Module module)
             templateArguments = new([.. args]);
         }
 
-#if false
-        if (At(TokenKind.Less) && CurrentLocation.Offset == lastNameLocation.Offset + lastNameLocation.Length)
-        {
-            // What we'll want to do instead, soon, is see if we can just look for `<` and ignore
-            // the spacing, then parse a single expression with the precedence already set to `<`.
-            // We'll have to also explicitly stop on any operator token which starts with `>`,
-            // and also be prepared to split tokens at that character / keep track of testing and consume `>>`
-            // or `>>>` at once to close multiple lists.
-            // Splitting tokens is not ideal, especially since it's likely to mean ill-formed code in
-            // the first place, so we may keep track of nesting and only allow instances of the
-            // previous 3 mentioned tokens where it makes sense.
-            templateArguments = ParseTemplateArguments();
-        }
-#endif
-
         return SyntaxNameref.Create(lastNameLocation, kind, names, templateArguments);
     }
-
-#if false
-    private SyntaxTemplateArguments ParseTemplateArguments()
-    {
-        Expect(TokenKind.Less, "'<'");
-
-        var args = new SyntaxTemplateArguments(ParseDelimited(
-            ParseTemplateArgument,
-            TokenKind.Comma,
-            "a type or expression",
-            TokenKind.Greater,
-            TokenKind.GreaterGreater,
-            TokenKind.GreaterGreaterGreater,
-            TokenKind.GreaterGreaterEqual,
-            TokenKind.GreaterGreaterGreaterEqual
-        ));
-        
-        Expect(TokenKind.Greater, "'>'");
-
-        return args;
-    }
-#endif
 
     private SyntaxNode ParseTemplateArgument()
     {
@@ -640,25 +786,43 @@ public partial class Parser(Module module)
 
     private SyntaxNode ParseTypeContinuation(SyntaxNode typeNode)
     {
-        var currentToken = CurrentToken;
-        
         switch (CurrentToken.Kind)
         {
             default: return typeNode;
             
             case TokenKind.Mut: break;
 
+            case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.CloseBracket:
+            {
+                for (int i = 0; i < 2; i++) Advance();
+                typeNode = new SyntaxTypeSlice(typeNode);
+            } break;
+
             case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind == TokenKind.CloseBracket:
             {
                 for (int i = 0; i < 3; i++) Advance();
-                typeNode = new SyntaxTypeBuffer(typeNode);
+                typeNode = new SyntaxTypeBuffer(typeNode, null);
             } break;
             
             case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind == TokenKind.Colon:
             {
-                Context.Diag.Fatal("todo: parse [*:<terminator>] type suffix");
-                throw new UnreachableException();
-            }
+                for (int i = 0; i < 3; i++) Advance();
+                var terminatorExpr = ParseExpr(ExprParseContext.Default);
+                Expect(TokenKind.CloseBracket, "']'");
+                typeNode = new SyntaxTypeBuffer(typeNode, terminatorExpr);
+            } break;
+            
+            case TokenKind.OpenBracket:
+            {
+                var tokenOpenBracket = CurrentToken;
+                Advance();
+
+                var indices = ParseDelimited(() => ParseExpr(ExprParseContext.Default), TokenKind.Comma, "an expression", false, TokenKind.CloseBracket, TokenKind.SemiColon);
+
+                Expect(TokenKind.CloseBracket, "']'", out var tokenCloseBracket);
+                // the index node represents both expression forms of indexing as well as the array type, (hopefully) for simplicity
+                typeNode = new SyntaxIndex(typeNode, tokenOpenBracket, indices, tokenCloseBracket);
+            } break;
 
             case TokenKind.Star:
             {
@@ -670,6 +834,12 @@ public partial class Parser(Module module)
             {
                 Advance();
                 typeNode = new SyntaxTypeReference(typeNode);
+            } break;
+
+            case TokenKind.Question:
+            {
+                Advance();
+                typeNode = new SyntaxTypeNilable(typeNode);
             } break;
         }
 
@@ -707,6 +877,7 @@ public partial class Parser(Module module)
                 return new SyntaxGrouped(innerType);
             }
 
+            case TokenKind.Var: Advance(); typeNode = currentToken; break;
             case TokenKind.Void: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeVoid); break;
             case TokenKind.NoReturn: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeNoReturn); break;
             case TokenKind.Bool: Advance(); typeNode = new SyntaxTypeBuiltIn(currentToken.Location, Context.Types.LayeTypeBool); break;
@@ -755,12 +926,12 @@ public partial class Parser(Module module)
         return ParseBinaryExpr(parseContext, primary);
     }
 
-    private SyntaxNode ParseExprCallFromFirstArg(SyntaxNode callee, SyntaxNode firstArg)
+    private SyntaxExprCall ParseExprCallFromFirstArg(SyntaxNode callee, SyntaxNode firstArg)
     {
         SyntaxNode[] args;
         if (TryAdvance(TokenKind.Comma))
         {
-            var remainingArgs = ParseDelimited(() => ParseExpr(ExprParseContext.Default), TokenKind.Comma, "an expression", TokenKind.CloseParen, TokenKind.SemiColon);
+            var remainingArgs = ParseDelimited(() => ParseExpr(ExprParseContext.Default), TokenKind.Comma, "an expression", false, TokenKind.CloseParen, TokenKind.SemiColon);
             args = [firstArg, .. remainingArgs];
         }
         else args = [firstArg];
@@ -769,9 +940,14 @@ public partial class Parser(Module module)
         return new SyntaxExprCall(callee, args);
     }
 
+    private SyntaxConstructorInit ParseConstructorInit()
+    {
+        var exprValue = ParseExpr(ExprParseContext.Default);
+        return new(exprValue.Location, exprValue);
+    }
+
     private SyntaxNode ParsePrimaryExprContinuation(SyntaxNode primary)
     {
-        var currentToken = CurrentToken;
         switch (CurrentToken.Kind)
         {
             default: return primary;
@@ -782,11 +958,47 @@ public partial class Parser(Module module)
             case TokenKind.Star or TokenKind.Ampersand when PeekAt(1, TokenKind.Star, TokenKind.Ampersand) && primary.CanBeType:
             // `type* mut` and `type& mut` are always pointer/reference types
             case TokenKind.Star or TokenKind.Ampersand when PeekAt(1, TokenKind.Mut) && primary.CanBeType:
-            // `type[]` is always a slice type
-            case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.CloseBracket && primary.CanBeType:
             // `type[*]` and `type[*:` are always buffer types
             case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind is TokenKind.CloseBracket or TokenKind.Colon && primary.CanBeType:
                 return ParseTypeContinuation(primary);
+                
+            // while `type[]` is always a slice type, it could also be an array/dynamic index missing its indices
+            // so just in case, we return the slice type without falling back to the type-only parser.
+            // if sema encounters a slice type in an expression-only context, it should know what to report.
+            case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.CloseBracket && primary.CanBeType:
+            {
+                for (int i = 0; i < 2; i++) Advance();
+                return ParsePrimaryExprContinuation(new SyntaxTypeSlice(primary));
+            }
+            
+            case TokenKind.OpenParen:
+            {
+                var tokenOpenParen = CurrentToken;
+                Advance();
+
+                var indices = ParseDelimited(() => ParseExpr(ExprParseContext.Default), TokenKind.Comma, "an expression", false, TokenKind.CloseParen, TokenKind.SemiColon);
+
+                Expect(TokenKind.CloseParen, "')'", out var tokenCloseParen);
+                return ParsePrimaryExprContinuation(new SyntaxCall(primary, tokenOpenParen, indices, tokenCloseParen));
+            }
+            
+            case TokenKind.OpenBracket:
+            {
+                var tokenOpenBracket = CurrentToken;
+                Advance();
+
+                var indices = ParseDelimited(() => ParseExpr(ExprParseContext.Default), TokenKind.Comma, "an expression", false, TokenKind.CloseBracket, TokenKind.SemiColon);
+
+                Expect(TokenKind.CloseBracket, "']'", out var tokenCloseBracket);
+                return ParsePrimaryExprContinuation(new SyntaxIndex(primary, tokenOpenBracket, indices, tokenCloseBracket));
+            }
+
+            case TokenKind.Dot:
+            {
+                Advance();
+                ExpectIdentifier(out var fieldName);
+                return ParsePrimaryExprContinuation(new SyntaxExprField(primary, fieldName));
+            }
         }
     }
 
@@ -821,6 +1033,13 @@ public partial class Parser(Module module)
                 throw new UnreachableException();
             }
 
+            case TokenKind.SemiColon:
+            {
+                var tokenSemiColon = CurrentToken;
+                Advance();
+                return new SyntaxExprEmpty(tokenSemiColon);
+            }
+
             case TokenKind.OpenParen:
             {
                 Advance();
@@ -837,16 +1056,76 @@ public partial class Parser(Module module)
                 return ParsePrimaryExprContinuation(nameref);
             }
 
+            case TokenKind.True:
+            case TokenKind.False:
+            case TokenKind.LiteralString:
+            case TokenKind.LiteralRune:
             case TokenKind.LiteralInteger:
+            case TokenKind.LiteralFloat:
             {
                 Advance();
                 return currentToken;
             }
 
+            case TokenKind.Cast:
+            {
+                var tokenCast = CurrentToken;
+                Advance();
+
+                Expect(TokenKind.OpenParen, "'('");
+
+                SyntaxNode? targetType = null;
+                if (!At(TokenKind.CloseParen))
+                    targetType = ParseType();
+
+                Expect(TokenKind.CloseParen, "')'");
+
+                var expr = ParsePrimaryExpr();
+                return new SyntaxExprCast(tokenCast, targetType, expr);
+            }
+
+            case TokenKind.Plus:
+            case TokenKind.Minus:
+            case TokenKind.Star:
+            case TokenKind.Ampersand:
+            case TokenKind.Tilde:
+            case TokenKind.Not:
+            {
+                var tokenOperator = CurrentToken;
+                Advance();
+                var expr = ParsePrimaryExpr();
+                return new SyntaxExprUnary(tokenOperator, expr);
+            }
+
+            case TokenKind.If:
+            {
+                var exprIf = ParseIf();
+                if (exprIf.ElseBody is null)
+                    Context.Diag.Error(exprIf.Location, "`if` in expression context requires `else` with no condition");
+                return exprIf;
+            }
+
+            case TokenKind.Do when PeekAt(1, TokenKind.OpenBrace):
+            {
+                Advance();
+                return ParseCompound();
+            }
+
+            case TokenKind.OpenBrace:
+            {
+                var tokenOpenBrace = CurrentToken;
+                Advance();
+
+                var inits = ParseDelimited(ParseConstructorInit, TokenKind.Comma, "initializer", true, TokenKind.CloseBrace, TokenKind.SemiColon);
+
+                Expect(TokenKind.CloseBrace, "'}'", out var tokenCloseBrace);
+                return new SyntaxExprConstructor(tokenOpenBrace, inits, tokenCloseBrace);
+            }
+
             default:
             {
-                Context.Diag.ICE(CurrentLocation, $"need to return a default syntax node when no expression was parseable (at token kind {CurrentToken.Kind})");
-                throw new UnreachableException();
+                Context.Diag.Error(CurrentLocation, "expected an expression");
+                return new SyntaxToken(TokenKind.Missing, new Location(CurrentLocation.Offset, 1, SourceFile.FileId));
             }
         }
     }
@@ -858,7 +1137,7 @@ public partial class Parser(Module module)
         if (parseContext == ExprParseContext.TemplateArguments)
             precedence = Math.Max(precedence, TokenKind.Plus.GetBinaryOperatorPrecedence());
 
-        while (AtBinaryOperatorWithPrecedence(precedence, false, out int nextPrecedence))
+        while (CurrentToken.Kind.CanBeBinaryOperator() && CurrentToken.Kind.GetBinaryOperatorPrecedence() >= precedence)
         {
             var tokenOperator = CurrentToken;
             Advance();
@@ -913,36 +1192,19 @@ public partial class Parser(Module module)
             
             rhs ??= ParsePrimaryExpr();
 
-            int rhsPrecedence = nextPrecedence;
             bool isTokenOperatorRightAssoc = tokenOperator.Kind.IsRightAssociativeBinaryOperator();
-
-            while (AtBinaryOperatorWithPrecedence(rhsPrecedence, isTokenOperatorRightAssoc, out nextPrecedence))
+            while (CurrentToken.Kind.CanBeBinaryOperator() && (
+                    CurrentToken.Kind.GetBinaryOperatorPrecedence() > tokenOperator.Kind.GetBinaryOperatorPrecedence() ||
+                    (isTokenOperatorRightAssoc && CurrentToken.Kind.GetBinaryOperatorPrecedence() == tokenOperator.Kind.GetBinaryOperatorPrecedence())
+                ))
             {
-                //rhsPrecedence = nextPrecedence;
-                rhs = ParseBinaryExpr(ExprParseContext.Default, rhs, rhsPrecedence);
+                rhs = ParseBinaryExpr(ExprParseContext.Default, rhs, CurrentToken.Kind.GetBinaryOperatorPrecedence());
             }
                 
             lhs = new SyntaxExprBinary(lhs, rhs, tokenOperator);
         }
 
         return lhs;
-
-        bool AtBinaryOperatorWithPrecedence(int checkPrecedence, bool isRightAssoc, out int nextPrecedence)
-        {
-            nextPrecedence = 0;
-
-            if (!CurrentToken.Kind.CanBeBinaryOperator())
-                return false;
-            
-            int currentTokenPrecedence = CurrentToken.Kind.GetBinaryOperatorPrecedence();
-            if (currentTokenPrecedence >= checkPrecedence)
-            {
-                nextPrecedence = currentTokenPrecedence;
-                return true;
-            }
-
-            return false;
-        }
 
         static SyntaxNode CreateTypeNodeFromOperator(SyntaxNode inner, SyntaxToken tokenOperator)
         {

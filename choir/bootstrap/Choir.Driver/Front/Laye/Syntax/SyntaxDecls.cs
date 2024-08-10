@@ -96,11 +96,13 @@ public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxToken tokenN
     }
 }
 
-public sealed class SyntaxDeclBinding(SyntaxNode bindingType, SyntaxToken tokenName, SyntaxToken tokenSemiColon)
+public sealed class SyntaxDeclBinding(SyntaxNode bindingType, SyntaxToken tokenName, SyntaxToken? tokenAssign, SyntaxNode? initializer, SyntaxToken tokenSemiColon)
     : SyntaxNode(tokenName.Location)
 {
     public SyntaxNode BindingType { get; } = bindingType;
     public SyntaxToken TokenName { get; } = tokenName;
+    public SyntaxToken? TokenAssign { get; } = tokenAssign;
+    public SyntaxNode? Initializer { get; } = initializer;
     public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
 
     public override bool IsDecl { get; } = true;
@@ -110,6 +112,10 @@ public sealed class SyntaxDeclBinding(SyntaxNode bindingType, SyntaxToken tokenN
         {
             yield return BindingType;
             yield return TokenName;
+            if (TokenAssign is not null)
+                yield return TokenAssign;
+            if (Initializer is not null)
+                yield return Initializer;
             yield return TokenSemiColon;
         }
     }

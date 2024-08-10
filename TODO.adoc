@@ -2,63 +2,69 @@
 
 == Syntax
 
+* [ ] Avoid infinite loops
 * [ ] Syntactic scopes
+* [x] Sized types
 * [ ] Primary Expressions
     * [x] Nameref
         * [x] Experimental Precendence Parsing for Template Arguments
-    * [ ] Integer Literals
+    * [x] Integer Literals
     * [ ] Float Literals
         * [ ] Float storage
         * [ ] Float lexing
         * [ ] Float parsing
-    * [ ] String Literals
-    * [ ] Rune Literals
-    * [ ] Bool Literals
+        * [x] Add to AST
+    * [x] String Literals
+    * [x] Rune Literals
+    * [x] Bool Literals
     * [x] Grouped Expression
-    * [ ] (Invalid) Empty Expression
-    * [ ] Cast
+    * [x] (Invalid) Empty Expression
+    * [x] Cast
     * [ ] Constructor
-    * [ ] Unary Operator Expressions
-        * [ ] Negation (-)
-        * [ ] Identity (+)
-        * [ ] Bitwise Complement (~)
-        * [ ] Address Of (&)
-        * [ ] Dereference (*)
-        * [ ] Bool Not (not)
-        * [ ] (Maybe) Ternary (if/then/else)
-    * [ ] (Maybe) Do Expression
-* [ ] Primary Expression Continuations
-    * [ ] (Maybe) Ternary (?:)
-    * [ ] Field Access
-    * [ ] Invocation
-    * [ ] Element Index Acecss
+        * [ ] Initializer "Target"s
+        * [x] Simple value initializers
+    * [x] Unary Operator Expressions
+        * [x] Negation (-)
+        * [x] Identity (+)
+        * [x] Bitwise Complement (~)
+        * [x] Address Of (&)
+        * [x] Dereference (*)
+        * [x] Bool Not (not)
+    * [x] (Maybe) Ternary (if/then/else)
+    * [x] (Maybe) Do Expression (Compound)
+    * [ ] (Maybe) Do Expression (Monad Things)
+* [x] Primary Expression Continuations
+    * [x] Field Access
+    * [x] Invocation
+    * [x] Element Index Acecss
+    * [ ] (Unlikely) Ternary (?:)
 * [ ] Secondary Expressions
-    * [ ] Binary
-        * [ ] Actual proper ordering and precedence please
-        * [ ] All Possible Operators
-        * [ ] Fallback to Declarations
-            * [ ] Fallback to Binding
-            * [ ] Fallback to Function (Trivial)
-            * [ ] Fallback to Function (Advanced)
+    * [x] Binary
+        * [x] Actual proper ordering and precedence please
+        * [x] All Possible Operators
+        * [x] Fallback to Declarations
+            * [x] Fallback to Binding
+            * [x] Fallback to Function (Trivial)
+            * [x] Fallback to Function (Advanced)
 * [ ] Type Expressions
-    * [ ] Var
-    * [ ] Sized Primitives
+    * [x] Var
+    * [x] Sized Primitives
     * [ ] Additional C Primitives
+        * [ ] Float128
     * [ ] (Maybe) Tuples
 * [ ] Type Expression Continuations
-    * [ ] Slice
-    * [ ] Array
-    * [ ] Buffer
-    * [ ] Pointer
-    * [ ] Reference
-    * [ ] Nilable
+    * [x] Slice
+    * [x] Array
+    * [x] Buffer
+    * [x] Pointer
+    * [x] Reference
+    * [x] Nilable
     * [ ] (Likely) Error Pair
-    * [ ] (Maybe) Dictionary
 * [ ] Statements
-    * [ ] Compound
+    * [x] Compound
     * [ ] Assert
     * [ ] Return
-    * [ ] If
+    * [x] If
     * [ ] For
     * [ ] For (Each)
     * [ ] While
@@ -69,8 +75,8 @@
     * [ ] Yield
     * [ ] Goto
     * [ ] Xyzzy
-    * [ ] Simple Assignment
-    * [ ] Operator Assignment
+    * [x] Simple Assignment
+    * [x] Operator Assignment
     * [ ] Operator Assignment Errors
     * [x] Expression Statement
     * [ ] Expression Statement Errors
@@ -79,7 +85,6 @@
     * [ ] Enum
     * [ ] Alias
     * [ ] Test
-    * [ ] (Maybe) Module
     * [ ] Template Parameters
     * [ ] Declaration Attributes
         * [ ] Export
@@ -88,5 +93,6 @@
         * [ ] Inline
         * [ ] Discardable
         * [ ] (Maybe) Pure/Impure
+    * [ ] (Maybe) Module
 * [ ] Stress Test
     * [ ] Template Arguments

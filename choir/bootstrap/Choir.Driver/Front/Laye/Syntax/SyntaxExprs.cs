@@ -9,6 +9,11 @@ public enum NamerefKind
     Implicit,
 }
 
+public sealed class SyntaxExprEmpty(SyntaxToken tokenSemiColon) : SyntaxNode(tokenSemiColon.Location)
+{
+    public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
+}
+
 public sealed class SyntaxTemplateArguments(IReadOnlyList<SyntaxNode> templateArguments)
     : SyntaxNode(templateArguments.Count == 0 ? Location.Nowhere : templateArguments[templateArguments.Count - 1].Location)
 {
@@ -93,6 +98,108 @@ public sealed class SyntaxExprBinary(SyntaxNode lhs, SyntaxNode rhs, SyntaxToken
     public override IEnumerable<SyntaxNode> Children { get; } = [lhs, tokenOperator, rhs];
 }
 
+public sealed class SyntaxExprUnary(SyntaxToken tokenOperator, SyntaxNode operand)
+    : SyntaxNode(tokenOperator.Location)
+{
+    public SyntaxToken TokenOperator { get; } = tokenOperator;
+    public SyntaxNode Operand { get; } = operand;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOperator, operand];
+}
+
+public sealed class SyntaxExprCast(SyntaxToken tokenCast, SyntaxNode? targetType, SyntaxNode expr)
+    : SyntaxNode(tokenCast.Location)
+{
+    public SyntaxToken TokenCast { get; } = tokenCast;
+    public SyntaxNode? TargetType { get; } = targetType;
+    public SyntaxNode Expr { get; } = expr;
+
+    public bool IsAutoCast => TargetType is null;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return TokenCast;
+            if (TargetType is not null)
+                yield return TargetType;
+            yield return Expr;
+        }
+    }
+}
+
+public class SyntaxConstructorInit(Location location, SyntaxNode value)
+    : SyntaxNode(location)
+{
+    public SyntaxNode Value { get; } = value;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return Value;
+        }
+    }
+}
+
+public sealed class SyntaxExprConstructor(SyntaxToken tokenOpenBrace, IReadOnlyList<SyntaxConstructorInit> inits, SyntaxToken tokenCloseBrace)
+    : SyntaxNode(tokenOpenBrace.Location)
+{
+    public SyntaxToken TokenOpenBrace { get; } = tokenOpenBrace;
+    public IReadOnlyList<SyntaxConstructorInit> Inits { get; } = inits;
+    public SyntaxToken TokenCloseBrace { get; } = tokenCloseBrace;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOpenBrace, ..inits, tokenCloseBrace];
+}
+
+public sealed class SyntaxExprField(SyntaxNode operand, SyntaxToken tokenFieldName)
+    : SyntaxNode(tokenFieldName.Location)
+{
+    public SyntaxNode Operand { get; } = operand;
+    public SyntaxToken TokenFieldName { get; } = tokenFieldName;
+    public string FieldNameText => TokenFieldName.TextValue;
+    public override IEnumerable<SyntaxNode> Children { get; } = [operand, tokenFieldName];
+}
+
+public sealed class SyntaxIndex(SyntaxNode operand, SyntaxToken tokenOpenBracket, IReadOnlyList<SyntaxNode> indices, SyntaxToken tokenCloseBracket)
+    : SyntaxNode(tokenOpenBracket.Location)
+{
+    public SyntaxToken TokenOpenBracket { get; } = tokenOpenBracket;
+    public SyntaxNode Operand { get; } = operand;
+    public IReadOnlyList<SyntaxNode> Indices { get; } = indices;
+    public SyntaxToken TokenCloseBracket { get; } = tokenCloseBracket;
+
+    public override bool CanBeType => Operand.CanBeType;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return Operand;
+            yield return TokenOpenBracket;
+            foreach (var index in Indices)
+                yield return index;
+            yield return TokenCloseBracket;
+        }
+    }
+}
+
+public sealed class SyntaxCall(SyntaxNode callee, SyntaxToken tokenOpenParen, IReadOnlyList<SyntaxNode> args, SyntaxToken tokenCloseParen)
+    : SyntaxNode(tokenOpenParen.Location)
+{
+    public SyntaxToken TokenOpenParen { get; } = tokenOpenParen;
+    public SyntaxNode Callee { get; } = callee;
+    public IReadOnlyList<SyntaxNode> Args { get; } = args;
+    public SyntaxToken TokenCloseParen { get; } = tokenCloseParen;
+
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return Callee;
+            yield return TokenOpenParen;
+            foreach (var index in Args)
+                yield return index;
+            yield return TokenCloseParen;
+        }
+    }
+}
+
 public sealed class SyntaxQualMut(SyntaxNode inner, SyntaxToken tokenMut)
     : SyntaxNode(inner.Location)
 {
@@ -115,25 +222,44 @@ public sealed class SyntaxTypePointer(SyntaxNode inner)
     : SyntaxNode(inner.Location)
 {
     public SyntaxNode Inner { get; } = inner;
-    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
 
     public override bool CanBeType { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
 }
 
 public sealed class SyntaxTypeReference(SyntaxNode inner)
     : SyntaxNode(inner.Location)
 {
     public SyntaxNode Inner { get; } = inner;
-    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
 
     public override bool CanBeType { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
 }
 
-public sealed class SyntaxTypeBuffer(SyntaxNode inner)
+public sealed class SyntaxTypeBuffer(SyntaxNode inner, SyntaxNode? terminatorExpr)
     : SyntaxNode(inner.Location)
 {
     public SyntaxNode Inner { get; } = inner;
-    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
-
+    public SyntaxNode? TerminatorExpr { get; } = terminatorExpr;
+    
     public override bool CanBeType { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = terminatorExpr is not null ? [inner, terminatorExpr] : [inner];
+}
+
+public sealed class SyntaxTypeSlice(SyntaxNode inner)
+    : SyntaxNode(inner.Location)
+{
+    public SyntaxNode Inner { get; } = inner;
+    
+    public override bool CanBeType { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
+}
+
+public sealed class SyntaxTypeNilable(SyntaxNode inner)
+    : SyntaxNode(inner.Location)
+{
+    public SyntaxNode Inner { get; } = inner;
+    
+    public override bool CanBeType { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
 }
