@@ -67,6 +67,16 @@ public sealed class SyntaxStmtReturn(SyntaxToken tokenReturn, SyntaxNode? value,
     public override IEnumerable<SyntaxNode> Children { get; } = value is null ? [tokenReturn, tokenSemiColon] : [tokenReturn, value, tokenSemiColon];
 }
 
+public sealed class SyntaxStmtYield(SyntaxToken tokenYield, SyntaxNode value, SyntaxToken tokenSemiColon)
+    : SyntaxNode(tokenYield.Location)
+{
+    public SyntaxToken TokenYield { get; } = tokenYield;
+    public SyntaxNode Value { get; } = value;
+    public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenYield, value, tokenSemiColon];
+}
+
 public sealed class SyntaxStmtBreak(SyntaxToken tokenBreak, SyntaxToken? target, SyntaxToken tokenSemiColon)
     : SyntaxNode(tokenBreak.Location)
 {

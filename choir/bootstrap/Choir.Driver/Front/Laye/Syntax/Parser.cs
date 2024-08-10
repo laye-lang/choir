@@ -649,11 +649,8 @@ public partial class Parser(Module module)
 
             case TokenKind.Xyzzy: return new SyntaxStmtXyzzy(Consume(), ExpectSemiColon());
 
-            case TokenKind.Yield:
-            {
-                Context.Diag.ICE("yield syntax/semantics is currently undecided and unimplemented");
-                throw new UnreachableException();
-            }
+            case TokenKind.Yield when !PeekAt(1, TokenKind.Break, TokenKind.Return):
+                return new SyntaxStmtYield(Consume(), ParseExpr(ExprParseContext.Default), ExpectSemiColon());
 
             default:
             {
