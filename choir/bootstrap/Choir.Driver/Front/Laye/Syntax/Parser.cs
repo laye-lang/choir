@@ -664,7 +664,18 @@ public partial class Parser(Module module)
                 return new SyntaxStmtDefer(tokenDefer, stmt);
             }
 
-            case TokenKind.Do: throw new UnreachableException();
+            case TokenKind.Do:
+            {
+                var tokenDo = Consume();
+                var body = ParseStmt();
+                Expect(TokenKind.While, "'while'", out var tokenWhile);
+                Expect(TokenKind.OpenParen, "'('", out var tokenOpenParen);
+                var condition = ParseExpr(ExprParseContext.Default);
+                Expect(TokenKind.CloseParen, "')'", out var tokenCloseParen);
+                var tokenSemiColon = ExpectSemiColon();
+                return new SyntaxStmtDoLoop(tokenDo, body, tokenWhile, condition);
+            }
+
             case TokenKind.For: throw new UnreachableException();
 
             case TokenKind.Goto: return new SyntaxStmtGoto(Consume(), ExpectIdentifier(), ExpectSemiColon());

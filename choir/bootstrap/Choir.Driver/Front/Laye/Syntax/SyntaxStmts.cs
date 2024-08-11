@@ -183,3 +183,14 @@ public sealed class SyntaxStmtDefer(SyntaxToken tokenDefer, SyntaxNode stmt)
 
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenDefer, stmt];
 }
+
+public sealed class SyntaxStmtDoLoop(SyntaxToken tokenDo, SyntaxNode body, SyntaxToken tokenWhile, SyntaxNode condition)
+    : SyntaxNode(tokenDo.Location)
+{
+    public SyntaxToken TokenDo { get; } = tokenDo;
+    public SyntaxNode Body { get; } = body;
+    public SyntaxToken TokenWhile { get; } = tokenWhile;
+    public SyntaxNode Condition { get; } = condition;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenDo, body, tokenWhile, condition];
+}
