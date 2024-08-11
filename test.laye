@@ -1,10 +1,8 @@
 void main() {
-    defer foo();
-    defer {
-        bar();
-        baz();
+    while (true) {
+        foo();
+        while (false) {
+            bar();
+        } else baz();
     }
-
-    do foo(); while (bar + baz);
-    do { foo(); } while (true);
 }

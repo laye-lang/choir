@@ -194,3 +194,14 @@ public sealed class SyntaxStmtDoLoop(SyntaxToken tokenDo, SyntaxNode body, Synta
 
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenDo, body, tokenWhile, condition];
 }
+
+public sealed class SyntaxStmtWhileLoop(SyntaxToken tokenWhile, SyntaxNode condition, SyntaxNode body, SyntaxNode? elseBody)
+    : SyntaxNode(tokenWhile.Location)
+{
+    public SyntaxToken TokenWhile { get; } = tokenWhile;
+    public SyntaxNode Condition { get; } = condition;
+    public SyntaxNode Body { get; } = body;
+    public SyntaxNode? ElseBody { get; } = elseBody;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = elseBody is not null ? [tokenWhile, condition, body, elseBody] : [tokenWhile, condition, body];
+}

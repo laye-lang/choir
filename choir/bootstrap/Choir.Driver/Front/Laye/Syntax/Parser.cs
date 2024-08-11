@@ -693,7 +693,20 @@ public partial class Parser(Module module)
                 return new SyntaxStmtReturn(tokenReturn, value, tokenSemiColon);
             }
 
-            case TokenKind.While: throw new UnreachableException();
+            case TokenKind.While:
+            {
+                var tokenWhile = Consume();
+                Expect(TokenKind.OpenParen, "'('", out var tokenOpenParen);
+                var condition = ParseExpr(ExprParseContext.Default);
+                Expect(TokenKind.CloseParen, "')'", out var tokenCloseParen);
+                var body = ParseStmt();
+                if (TryAdvance(TokenKind.Else))
+                {
+                    var elseBody = ParseStmt();
+                    return new SyntaxStmtWhileLoop(tokenWhile, condition, body, elseBody);
+                }
+                return new SyntaxStmtWhileLoop(tokenWhile, condition, body, null);
+            }
 
             case TokenKind.Xyzzy: return new SyntaxStmtXyzzy(Consume(), ExpectSemiColon());
 
