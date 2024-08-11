@@ -74,6 +74,7 @@
         * [ ] (Maybe) Without condition
     * [x] Do/While
     * [x] Defer
+    * [ ] Discard
     * [x] Break
     * [x] Continue
     * [x] Yield

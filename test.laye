@@ -1,8 +1,2 @@
-void main() {
-    for (int foo = 10; foo < 20; foo++) {
-    }
-    
-    int foo;
-    for (foo = 30; foo > 20; foo--) {
-    }
-}
+export foreign "printf2" callconv(cdecl) inline discardable
+void my_printf_better();

@@ -7,6 +7,13 @@ public enum ImportKind
     Library,
 }
 
+public sealed class SyntaxTemplateParams(SyntaxToken tokenTemplate)
+    : SyntaxNode(tokenTemplate.Location)
+{
+    public SyntaxToken TokenTemplate { get; } = tokenTemplate;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenTemplate];
+}
+
 public abstract class SyntaxImportQuery(Location location) : SyntaxNode(location)
 {
 }
@@ -91,6 +98,9 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(token
 public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxToken tokenName, IReadOnlyList<SyntaxNode> parameters)
     : SyntaxNode(tokenName.Location)
 {
+    public required SyntaxTemplateParams? TemplateParams { get; init; }
+    public required IReadOnlyList<SyntaxAttrib> Attribs { get; init; }
+
     public SyntaxNode ReturnType { get; } = returnType;
     public SyntaxToken TokenName { get; } = tokenName;
     public IReadOnlyList<SyntaxNode> Params { get; } = parameters;
@@ -103,6 +113,10 @@ public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxToken tokenN
     {
         get
         {
+            if (TemplateParams is not null)
+                yield return TemplateParams;
+            foreach (var attrib in Attribs)
+                yield return attrib;
             yield return ReturnType;
             yield return TokenName;
             foreach (var param in Params)
@@ -118,6 +132,9 @@ public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxToken tokenN
 public sealed class SyntaxDeclBinding(SyntaxNode bindingType, SyntaxToken tokenName, SyntaxToken? tokenAssign, SyntaxNode? initializer, SyntaxToken? tokenSemiColon)
     : SyntaxNode(tokenName.Location)
 {
+    public required SyntaxTemplateParams? TemplateParams { get; init; }
+    public required IReadOnlyList<SyntaxAttrib> Attribs { get; init; }
+
     public SyntaxNode BindingType { get; } = bindingType;
     public SyntaxToken TokenName { get; } = tokenName;
     public SyntaxToken? TokenAssign { get; } = tokenAssign;
@@ -129,6 +146,10 @@ public sealed class SyntaxDeclBinding(SyntaxNode bindingType, SyntaxToken tokenN
     {
         get
         {
+            if (TemplateParams is not null)
+                yield return TemplateParams;
+            foreach (var attrib in Attribs)
+                yield return attrib;
             yield return BindingType;
             yield return TokenName;
             if (TokenAssign is not null)
