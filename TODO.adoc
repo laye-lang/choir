@@ -31,6 +31,10 @@
         * [x] Address Of (&)
         * [x] Dereference (*)
         * [x] Bool Not (not)
+    * [ ] Sizeof
+    * [ ] Alignof
+    * [ ] Offsetof
+    * [ ] Typeof
     * [x] (Maybe) Ternary (if/then/else)
     * [x] (Maybe) Do Expression (Compound)
     * [ ] (Maybe) Do Expression (Monad Things)
@@ -61,6 +65,7 @@
     * [x] Pointer
     * [x] Reference
     * [x] Nilable
+    * [ ] Typeof
     * [ ] (Likely) Error Pair
 * [ ] Statements
     * [x] Compound

@@ -7,11 +7,66 @@ public enum ImportKind
     Library,
 }
 
-public sealed class SyntaxTemplateParams(SyntaxToken tokenTemplate)
+public abstract class SyntaxTemplateParam(Location location) : SyntaxNode(location)
+{
+    public required SyntaxNode? DefaultValue { get; init; }
+}
+
+public sealed class SyntaxTemplateParamType(SyntaxToken tokenName)
+    : SyntaxTemplateParam(tokenName.Location)
+{
+    public SyntaxToken TokenName { get; } = tokenName;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return TokenName;
+            if (DefaultValue is not null)
+                yield return DefaultValue;
+        }
+    }
+}
+
+public sealed class SyntaxTemplateParamDuckType(SyntaxToken tokenVar, SyntaxToken tokenName)
+    : SyntaxTemplateParam(tokenName.Location)
+{
+    public SyntaxToken TokenVar { get; } = tokenVar;
+    public SyntaxToken TokenName { get; } = tokenName;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return TokenVar;
+            yield return TokenName;
+            if (DefaultValue is not null)
+                yield return DefaultValue;
+        }
+    }
+}
+
+public sealed class SyntaxTemplateParamValue(SyntaxNode type, SyntaxToken tokenName)
+    : SyntaxTemplateParam(tokenName.Location)
+{
+    public SyntaxNode Type { get; } = type;
+    public SyntaxToken TokenName { get; } = tokenName;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return Type;
+            yield return TokenName;
+            if (DefaultValue is not null)
+                yield return DefaultValue;
+        }
+    }
+}
+
+public sealed class SyntaxTemplateParams(SyntaxToken tokenTemplate, IReadOnlyList<SyntaxTemplateParam> templateParams)
     : SyntaxNode(tokenTemplate.Location)
 {
     public SyntaxToken TokenTemplate { get; } = tokenTemplate;
-    public override IEnumerable<SyntaxNode> Children { get; } = [tokenTemplate];
+    public IReadOnlyList<SyntaxTemplateParam> TemplateParams { get; } = templateParams;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenTemplate, .. templateParams];
 }
 
 public abstract class SyntaxImportQuery(Location location) : SyntaxNode(location)

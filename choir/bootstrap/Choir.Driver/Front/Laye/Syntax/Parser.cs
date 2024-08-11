@@ -10,7 +10,7 @@ public partial class Parser(Module module)
     {
         Default,
         CheckForDeclarations,
-        TemplateArguments,
+        WithinTemplate,
         ForLoopInitializer,
     }
 
@@ -336,9 +336,7 @@ public partial class Parser(Module module)
 
         SyntaxTemplateParams? templateParams = null;
         if (TryAdvance(TokenKind.Template, out var tokenTemplate))
-        {
-            throw new UnreachableException();
-        }
+            templateParams = ParseTemplateParams(tokenTemplate);
         
         var attribs = ParseDeclAttributes();
 
@@ -372,6 +370,42 @@ public partial class Parser(Module module)
                 }
 
                 return ParseBindingOrFunctionDeclStartingAtName(templateParams, attribs, declType);
+            }
+        }
+    }
+
+    private SyntaxTemplateParams ParseTemplateParams(SyntaxToken tokenTemplate)
+    {
+        Expect(TokenKind.Less, "'<'");
+        var templateParams = ParseDelimited(ParseTemplateParam, TokenKind.Comma, "an identifier or a type", false, TokenKind.Greater, TokenKind.SemiColon);
+        Expect(TokenKind.Greater, "'>'");
+        return new SyntaxTemplateParams(tokenTemplate, templateParams);
+
+        SyntaxTemplateParam ParseTemplateParam()
+        {
+            if (At(TokenKind.Identifier) && PeekAt(1, TokenKind.EndOfFile, TokenKind.Comma, TokenKind.Greater, TokenKind.Equal))
+            {
+                var tokenName = Consume();
+                return new SyntaxTemplateParamType(tokenName) { DefaultValue = TryParseDefaultValue(true) };
+            }
+            else if (TryAdvance(TokenKind.Var, out var tokenVar))
+            {
+                var tokenName = ExpectIdentifier();
+                return new SyntaxTemplateParamDuckType(tokenVar, tokenName) { DefaultValue = TryParseDefaultValue(true) };
+            }
+            else
+            {
+                var type = ParseType();
+                var tokenName = ExpectIdentifier();
+                return new SyntaxTemplateParamValue(type, tokenName) { DefaultValue = TryParseDefaultValue(false) };
+            }
+            
+            SyntaxNode? TryParseDefaultValue(bool isType)
+            {
+                if (!TryAdvance(TokenKind.Equal, out var tokenEqual))
+                    return null;
+                
+                return isType ? ParseType() : ParseExpr(ExprParseContext.WithinTemplate);
             }
         }
     }
@@ -995,7 +1029,7 @@ public partial class Parser(Module module)
         if (IsDefinitelyTypeStart(CurrentToken.Kind))
             return ParseType();
     
-        return ParseExpr(ExprParseContext.TemplateArguments);
+        return ParseExpr(ExprParseContext.WithinTemplate);
     }
 
     private SyntaxNode ParseTypeContinuation(SyntaxNode typeNode)
@@ -1118,7 +1152,7 @@ public partial class Parser(Module module)
 
             default:
             {
-                Context.Diag.ICE($"need to return a default syntax node when no type was parseable (at token kind {CurrentToken.Kind})");
+                Context.Diag.ICE(CurrentLocation, $"need to return a default syntax node when no type was parseable (at token kind {CurrentToken.Kind})");
                 throw new UnreachableException();
             }
         }
@@ -1355,7 +1389,7 @@ public partial class Parser(Module module)
     {
         // if we're parsing template arguments, ensure we never allow arguments with
         // precedence less than or equal to `<` and `>`.
-        if (parseContext == ExprParseContext.TemplateArguments)
+        if (parseContext == ExprParseContext.WithinTemplate)
             precedence = Math.Max(precedence, TokenKind.Plus.GetBinaryOperatorPrecedence());
 
         while (CurrentToken.Kind.CanBeBinaryOperator() && CurrentToken.Kind.GetBinaryOperatorPrecedence() >= precedence)
