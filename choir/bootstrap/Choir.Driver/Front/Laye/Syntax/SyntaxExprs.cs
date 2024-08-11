@@ -98,12 +98,20 @@ public sealed class SyntaxExprBinary(SyntaxNode lhs, SyntaxNode rhs, SyntaxToken
     public override IEnumerable<SyntaxNode> Children { get; } = [lhs, tokenOperator, rhs];
 }
 
-public sealed class SyntaxExprUnary(SyntaxToken tokenOperator, SyntaxNode operand)
+public sealed class SyntaxExprUnaryPrefix(SyntaxToken tokenOperator, SyntaxNode operand)
     : SyntaxNode(tokenOperator.Location)
 {
     public SyntaxToken TokenOperator { get; } = tokenOperator;
     public SyntaxNode Operand { get; } = operand;
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenOperator, operand];
+}
+
+public sealed class SyntaxExprUnaryPostfix(SyntaxNode operand, SyntaxToken tokenOperator)
+    : SyntaxNode(tokenOperator.Location)
+{
+    public SyntaxNode Operand { get; } = operand;
+    public SyntaxToken TokenOperator { get; } = tokenOperator;
+    public override IEnumerable<SyntaxNode> Children { get; } = [operand, tokenOperator];
 }
 
 public sealed class SyntaxExprCast(SyntaxToken tokenCast, SyntaxNode? targetType, SyntaxNode expr)

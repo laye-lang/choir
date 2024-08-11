@@ -1151,6 +1151,13 @@ public partial class Parser(Module module)
                 ExpectIdentifier(out var fieldName);
                 return ParsePrimaryExprContinuation(new SyntaxExprField(primary, fieldName));
             }
+
+            case TokenKind.PlusPlus:
+            case TokenKind.MinusMinus:
+            {
+                var tokenOperator = Consume();
+                return ParsePrimaryExprContinuation(new SyntaxExprUnaryPostfix(primary, tokenOperator));
+            }
         }
     }
 
@@ -1246,7 +1253,7 @@ public partial class Parser(Module module)
                 var tokenOperator = CurrentToken;
                 Advance();
                 var expr = ParsePrimaryExpr();
-                return new SyntaxExprUnary(tokenOperator, expr);
+                return new SyntaxExprUnaryPrefix(tokenOperator, expr);
             }
 
             case TokenKind.If:

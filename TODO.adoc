@@ -38,7 +38,7 @@
     * [x] Field Access
     * [x] Invocation
     * [x] Element Index Acecss
-    * [ ] ++, --
+    * [x] ++, --
     * [ ] (Unlikely) Ternary (?:)
 * [ ] Secondary Expressions
     * [x] Binary
@@ -67,11 +67,11 @@
     * [x] Assert
     * [x] Return
     * [x] If
-    * [ ] For
+    * [x] For
     * [ ] For (Each)
     * [ ] While
         * [x] With condition
-        * [ ] Without condition
+        * [ ] (Maybe) Without condition
     * [x] Do/While
     * [x] Defer
     * [x] Break
