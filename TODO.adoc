@@ -67,9 +67,9 @@
     * [x] If
     * [ ] For
     * [ ] For (Each)
-    * [ ] While
-    * [ ] Do/While
-    * [ ] Defer
+    * [x] While
+    * [x] Do/While
+    * [x] Defer
     * [x] Break
     * [x] Continue
     * [x] Yield
