@@ -1,2 +1,2 @@
-i32 main(i32 argc, i8[*][*] argv) {
+void main() {
 }

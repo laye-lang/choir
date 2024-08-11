@@ -195,7 +195,7 @@ public sealed class Lexer(SourceFile sourceFile)
                 ReadIdentifier(ref tokenInfo);
                 if (_keywordTokensKinds.TryGetValue(tokenInfo.TextValue, out var keywordKind))
                     tokenInfo.Kind = keywordKind;
-                else if (tokenInfo.TextValue[0] is 'b' or 'i' or 'f' && tokenInfo.TextValue.AsSpan()[1..].All(SyntaxFacts.IsNumericLiteralDigit))
+                else if (tokenInfo.TextValue[0] is 'b' or 'i' or 'f' && tokenInfo.TextValue.Length > 1 && tokenInfo.TextValue.AsSpan()[1..].All(SyntaxFacts.IsNumericLiteralDigit))
                 {
                     tokenInfo.Kind = tokenInfo.TextValue[0] switch
                     {

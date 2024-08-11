@@ -138,7 +138,6 @@ public enum TokenKind : ushort
     Struct,
     Variant,
     Enum,
-    //TokenStrict,
     Template,
     Module,
     Alias,
@@ -148,7 +147,10 @@ public enum TokenKind : ushort
     Export,
     From,
     As,
+    Static,
+    Strict,
     Operator,
+    CFlags,
 
     Mut,
     New,

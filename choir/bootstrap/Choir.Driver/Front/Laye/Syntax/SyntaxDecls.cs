@@ -38,6 +38,17 @@ public sealed class SyntaxImportQueryNamed(SyntaxNameref query, SyntaxToken? tok
     }
 }
 
+public sealed class SyntaxImportCFlags(SyntaxToken tokenCFlags, SyntaxToken tokenOpenBrace, IReadOnlyList<SyntaxToken> flags, SyntaxToken tokenCloseBrace)
+    : SyntaxNode(tokenCFlags.Location)
+{
+    public SyntaxToken TokenCFlags { get; } = tokenCFlags;
+    public SyntaxToken TokenOpenBrace { get; } = tokenOpenBrace;
+    public IReadOnlyList<SyntaxToken> Flags { get; } = flags;
+    public SyntaxToken TokenCloseBrace { get; } = tokenCloseBrace;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenCFlags, tokenOpenBrace, .. flags, tokenCloseBrace];
+}
+
 public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(tokenImport.Location)
 {
     public required ImportKind ImportKind { get; init; }
@@ -47,7 +58,8 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(token
     public required SyntaxToken TokenModuleName { get; init; }
     public SyntaxToken? TokenAs { get; init; }
     public SyntaxToken? TokenAlias { get; init; }
-    public required SyntaxToken TokenSemiColon { get; init; }
+    public required SyntaxImportCFlags? CFlags { get; init; }
+    public required SyntaxToken? TokenSemiColon { get; init; }
 
     public string ModuleNameText => TokenModuleName.TextValue;
     public bool IsAliased => TokenAlias is not null;
@@ -64,7 +76,14 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(token
             if (TokenFrom is not null)
                 yield return TokenFrom;
             yield return TokenModuleName;
-            yield return TokenSemiColon;
+            if (TokenAs is not null)
+                yield return TokenAs;
+            if (TokenAlias is not null)
+                yield return TokenAlias;
+            if (CFlags is not null)
+                yield return CFlags;
+            if (TokenSemiColon is not null)
+                yield return TokenSemiColon;
         }
     }
 }

@@ -22,6 +22,7 @@ public partial class Parser
     private void ParseImportedCHeaders()
     {
         if (_cHeaderImports.Count == 0) return;
+        if (Context.HasIssuedError) return;
 
         var tuBuilder = new StringBuilder();
         foreach (var cImport in _cHeaderImports)
@@ -46,7 +47,11 @@ public partial class Parser
             
             using var index = ClangSharp.Index.Create();
 
-            string[] clangArgs = [$"-I{Environment.CurrentDirectory}", ..(Context.IncludeDirectories.Select(i => $"-I{i}"))];
+            var cflags = _cHeaderImports
+                .Where(i => i.CFlags is not null)
+                .SelectMany(i => i.CFlags!.Flags.Select(f => f.TextValue))
+                .Distinct();
+            string[] clangArgs = [$"-I{Environment.CurrentDirectory}", ..(Context.IncludeDirectories.Select(i => $"-I{i}")), .. cflags];
             var translationUnit = CXTranslationUnit.Parse(index.Handle, file.FullName, clangArgs, [], CXTranslationUnit_None | CXTranslationUnit_SkipFunctionBodies | CXTranslationUnit_DetailedPreprocessingRecord | CXTranslationUnit_CacheCompletionResults);
 
             var hasErrored = translationUnit.DiagnosticSet.Any(d => d.Severity >= CXDiagnosticSeverity.CXDiagnostic_Error);

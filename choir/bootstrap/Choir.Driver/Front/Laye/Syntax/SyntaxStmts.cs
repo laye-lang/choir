@@ -57,6 +57,29 @@ public sealed class SyntaxIf(IReadOnlyList<SyntaxIfPrimary> conditions, SyntaxTo
     }
 }
 
+public sealed class SyntaxStaticIf(SyntaxToken tokenStatic, IReadOnlyList<SyntaxIfPrimary> conditions, SyntaxToken? tokenElse, SyntaxNode? elseBody)
+    : SyntaxNode(tokenStatic.Location)
+{
+    public SyntaxToken TokenStatic { get; } = tokenStatic;
+    public IReadOnlyList<SyntaxIfPrimary> Conditions { get; } = conditions;
+    public SyntaxToken? TokenElse { get; } = tokenElse;
+    public SyntaxNode? ElseBody { get; } = elseBody;
+
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return TokenStatic;
+            foreach (var condition in Conditions)
+                yield return condition;
+            if (TokenElse is not null)
+                yield return TokenElse;
+            if (ElseBody is not null)
+                yield return ElseBody;
+        }
+    }
+}
+
 public sealed class SyntaxStmtReturn(SyntaxToken tokenReturn, SyntaxNode? value, SyntaxToken tokenSemiColon)
     : SyntaxNode(tokenReturn.Location)
 {
@@ -150,4 +173,13 @@ public sealed class SyntaxStmtAssert(SyntaxToken tokenAssert, SyntaxNode conditi
             yield return TokenSemiColon;
         }
     }
+}
+
+public sealed class SyntaxStmtDefer(SyntaxToken tokenDefer, SyntaxNode stmt)
+    : SyntaxNode(tokenDefer.Location)
+{
+    public SyntaxToken TokenDefer { get; } = tokenDefer;
+    public SyntaxNode Stmt { get; } = stmt;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenDefer, stmt];
 }

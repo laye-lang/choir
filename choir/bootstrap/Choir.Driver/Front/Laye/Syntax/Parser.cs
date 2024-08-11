@@ -335,6 +335,9 @@ public partial class Parser(Module module)
 
         switch (CurrentToken.Kind)
         {
+            case TokenKind.Identifier when CurrentToken.TextValue == "static" && PeekAt(1, TokenKind.If):
+                return ParseStaticIf(true);
+
             case TokenKind.Import:
             {
                 var importDecl = ParseImportDeclaration();
@@ -389,7 +392,8 @@ public partial class Parser(Module module)
 
         SyntaxToken? tokenAs;
         SyntaxToken? tokenAlias = null;
-        SyntaxToken tokenSemiColon;
+        SyntaxImportCFlags? cflags = null;
+        SyntaxToken? tokenSemiColon = null;
 
         bool isQueryless = At(TokenKind.LiteralString) ||
             (At(TokenKind.Identifier) && PeekAt(1, TokenKind.SemiColon)) ||
@@ -403,16 +407,20 @@ public partial class Parser(Module module)
             if (TryAdvance("as", TokenKind.As, out tokenAs))
                 ExpectIdentifier(out tokenAlias);
 
-            ExpectSemiColon(out tokenSemiColon);
+            if (At("cflags"))
+                cflags = ParseCFlags();
+            else ExpectSemiColon(out tokenSemiColon);
+
             return new SyntaxDeclImport(tokenImport)
             {
                 ImportKind = tokenModuleName.Kind == TokenKind.LiteralString ? ImportKind.FilePath : ImportKind.Library,
                 Queries = [],
                 TokenFrom = null,
                 TokenModuleName = tokenModuleName,
-                TokenSemiColon = tokenSemiColon,
                 TokenAs = tokenAs,
                 TokenAlias = tokenAlias,
+                CFlags = cflags,
+                TokenSemiColon = tokenSemiColon,
             };
         }
 
@@ -428,7 +436,10 @@ public partial class Parser(Module module)
         if (TryAdvance("as", TokenKind.As, out tokenAs))
             ExpectIdentifier(out tokenAlias);
 
-        ExpectSemiColon(out tokenSemiColon);
+        if (At("cflags"))
+            cflags = ParseCFlags();
+        else ExpectSemiColon(out tokenSemiColon);
+
         return new SyntaxDeclImport(tokenImport)
         {
             ImportKind = tokenPath.Kind == TokenKind.LiteralString ? ImportKind.FilePath
@@ -436,10 +447,28 @@ public partial class Parser(Module module)
             Queries = queries,
             TokenFrom = tokenFrom,
             TokenModuleName = tokenPath,
-            TokenSemiColon = tokenSemiColon,
             TokenAs = tokenAs,
             TokenAlias = tokenAlias,
+            CFlags = cflags,
+            TokenSemiColon = tokenSemiColon,
         };
+
+        SyntaxImportCFlags ParseCFlags()
+        {
+            if (!TryAdvance("cflags", TokenKind.CFlags, out var tokenCFlags))
+                throw new UnreachableException();
+            
+            Expect(TokenKind.OpenBrace, "'{'", out var tokenOpenBrace);
+            var flags = ParseDelimited(() =>
+            {
+                if (!Consume(TokenKind.LiteralString, out var tokenFlag))
+                    Context.Diag.Error(CurrentLocation, "expected a string literal");
+                return tokenFlag;
+            }, TokenKind.Comma, "a string literal", true, TokenKind.CloseBrace);
+            Expect(TokenKind.CloseBrace, "'}'", out var tokenCloseBrace);
+            
+            return new SyntaxImportCFlags(tokenCFlags, tokenOpenBrace, [.. flags], tokenCloseBrace);
+        }
     }
 
     private SyntaxNode ParseBindingOrFunctionDeclStartingAtName(SyntaxNode declType)
@@ -556,7 +585,6 @@ public partial class Parser(Module module)
             return ParseBindingOrFunctionDeclStartingAtName(declType);
         }
 
-        var currentToken = CurrentToken;
         switch (CurrentToken.Kind)
         {
             case TokenKind.OpenBrace:
@@ -567,6 +595,7 @@ public partial class Parser(Module module)
             case TokenKind.Do:
             case TokenKind.For:
             case TokenKind.Goto:
+            case TokenKind.Identifier when CurrentToken.TextValue == "static" && PeekAt(1, TokenKind.If):
             case TokenKind.If:
             case TokenKind.Return:
             case TokenKind.While:
@@ -598,7 +627,6 @@ public partial class Parser(Module module)
 
     private SyntaxNode ParseStmt()
     {
-        var currentToken = CurrentToken;
         switch (CurrentToken.Kind)
         {
             case TokenKind.OpenBrace: return ParseCompound();
@@ -629,11 +657,20 @@ public partial class Parser(Module module)
                 return new SyntaxStmtContinue(tokenContinue, tokenLabel, tokenSemiColon);
             }
 
-            case TokenKind.Defer: throw new UnreachableException();
+            case TokenKind.Defer:
+            {
+                var tokenDefer = Consume();
+                var stmt = ParseStmt();
+                return new SyntaxStmtDefer(tokenDefer, stmt);
+            }
+
             case TokenKind.Do: throw new UnreachableException();
             case TokenKind.For: throw new UnreachableException();
 
             case TokenKind.Goto: return new SyntaxStmtGoto(Consume(), ExpectIdentifier(), ExpectSemiColon());
+
+            case TokenKind.Identifier when CurrentToken.TextValue == "static" && PeekAt(1, TokenKind.If):
+                return ParseStaticIf(false);
 
             case TokenKind.If: return ParseIf();
 
@@ -674,6 +711,70 @@ public partial class Parser(Module module)
         Expect(TokenKind.CloseBrace, "'}'");
 
         return new SyntaxCompound(tokenOpenBrace.Location, [.. body]);
+    }
+
+    private SyntaxStaticIf ParseStaticIf(bool isTopLevelOnly)
+    {
+        Debug.Assert(At("static") && PeekAt(1, TokenKind.If));
+        if (!TryAdvance("static", TokenKind.Static, out var tokenStatic))
+            throw new UnreachableException();
+
+        var primaries = new List<SyntaxIfPrimary>
+        {
+            ParseStaticIfPrimary()
+        };
+
+        while (TryAdvance(TokenKind.Else, out var tokenElse))
+        {
+            if (At(TokenKind.If))
+                primaries.Add(ParseStaticIfPrimary());
+            else
+            {
+                var elseBody = ParseStaticBody();
+                return new SyntaxStaticIf(tokenStatic, [.. primaries], tokenElse, elseBody);
+            }
+        }
+        
+        return new SyntaxStaticIf(tokenStatic, [.. primaries], null, null);
+
+        SyntaxIfPrimary ParseStaticIfPrimary()
+        {
+            Debug.Assert(At(TokenKind.If));
+
+            var tokenIf = CurrentToken;
+            Advance();
+
+            Expect(TokenKind.OpenParen, "'('");
+            var condition = ParseExpr(ExprParseContext.Default);
+            Expect(TokenKind.CloseParen, "')'");
+
+            SyntaxNode body = ParseStaticBody();
+            return new SyntaxIfPrimary(tokenIf, condition, body);
+        }
+
+        SyntaxNode ParseStaticBody()
+        {
+            if (At(TokenKind.OpenBrace))
+            {
+                var tokenOpenBrace = Consume();
+
+                var bodyNodes = new List<SyntaxNode>();
+                while (!IsAtEnd && !At(TokenKind.CloseBrace))
+                {
+                    if (isTopLevelOnly)
+                    {
+                        var stmt = ParseTopLevelSyntax();
+                        if (stmt is null) break;
+                        bodyNodes.Add(stmt);
+                    }
+                    else bodyNodes.Add(ParseSyntaxInStmtContext());
+                }
+                
+                Expect(TokenKind.CloseBrace, "'}'");
+                return new SyntaxCompound(tokenOpenBrace.Location, [.. bodyNodes]);
+            }
+            else return isTopLevelOnly ? (ParseTopLevelSyntax() ?? Expect(TokenKind.OpenBrace, "'{' or declaration")) : ParseStmt();
+        }
     }
 
     private SyntaxIf ParseIf()
