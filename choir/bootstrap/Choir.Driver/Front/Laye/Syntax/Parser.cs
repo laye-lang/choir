@@ -11,6 +11,7 @@ public partial class Parser(Module module)
         Default,
         CheckForDeclarations,
         TemplateArguments,
+        ForLoopInitializer,
     }
 
     public static void ParseSyntax(Module module)
@@ -476,10 +477,10 @@ public partial class Parser(Module module)
         if (PeekAt(1, TokenKind.OpenParen))
             return ParseFunctionDeclStartingAtName(declType);
             
-        return ParseBindingDeclStartingAtName(declType);
+        return ParseBindingDeclStartingAtName(declType, true);
     }
 
-    private SyntaxDeclBinding ParseBindingDeclStartingAtName(SyntaxNode bindingType)
+    private SyntaxDeclBinding ParseBindingDeclStartingAtName(SyntaxNode bindingType, bool consumeSemi)
     {
         ExpectIdentifier(out var tokenName);
 
@@ -492,7 +493,8 @@ public partial class Parser(Module module)
             initializer = ParseExpr(ExprParseContext.Default);
         }
         
-        ExpectSemiColon(out var tokenSemiColon);
+        SyntaxToken? tokenSemiColon = null;
+        if (consumeSemi) ExpectSemiColon(out tokenSemiColon);
         return new SyntaxDeclBinding(bindingType, tokenName, tokenAssign, initializer, tokenSemiColon);
     }
 
@@ -558,9 +560,9 @@ public partial class Parser(Module module)
         };
     }
 
-    private SyntaxNode ParseStmtContinue(SyntaxNode expr)
+    private SyntaxNode ParseStmtContinue(SyntaxNode expr, bool consumeSemi)
     {
-        SyntaxToken tokenSemiColon;
+        SyntaxToken? tokenSemiColon = null;
 
         if (CurrentToken.Kind.IsAssignmentOperator())
         {
@@ -568,11 +570,11 @@ public partial class Parser(Module module)
             Advance();
 
             var rhs = ParseExpr(ExprParseContext.Default);
-            ExpectSemiColon(out tokenSemiColon);
+            if (consumeSemi) ExpectSemiColon(out tokenSemiColon);
             return new SyntaxStmtAssign(expr, tokenAssign, rhs, tokenSemiColon);
         }
         
-        ExpectSemiColon(out tokenSemiColon);
+        if (consumeSemi) ExpectSemiColon(out tokenSemiColon);
         return new SyntaxStmtExpr(expr, tokenSemiColon);
     }
 
@@ -620,7 +622,7 @@ public partial class Parser(Module module)
                 if (syntax.CanBeType && At(TokenKind.Identifier))
                     return ParseBindingOrFunctionDeclStartingAtName(syntax);
 
-                return ParseStmtContinue(syntax);
+                return ParseStmtContinue(syntax, true);
             }
         }
     }
@@ -676,7 +678,35 @@ public partial class Parser(Module module)
                 return new SyntaxStmtDoLoop(tokenDo, body, tokenWhile, condition);
             }
 
-            case TokenKind.For: throw new UnreachableException();
+            case TokenKind.For:
+            {
+                var tokenFor = Consume();
+                Expect(TokenKind.OpenParen, "'('", out var tokenOpenParen);
+
+                SyntaxNode? initializer = null, condition = null, increment = null;
+                if (!At(TokenKind.SemiColon))
+                {
+                    initializer = ParseExpr(ExprParseContext.ForLoopInitializer);
+
+                    if (initializer.IsDecl) {}
+                    else if (initializer.CanBeType && At(TokenKind.Identifier))
+                        initializer = ParseBindingDeclStartingAtName(initializer, false);
+                    else if (CurrentToken.Kind.IsAssignmentOperator())
+                        initializer = ParseStmtContinue(initializer, false);
+                }
+                ExpectSemiColon();
+
+                if (!At(TokenKind.SemiColon))
+                    condition = ParseExpr(ExprParseContext.Default);
+                ExpectSemiColon();
+                
+                if (!At(TokenKind.CloseParen))
+                    increment = ParseExpr(ExprParseContext.Default);
+
+                Expect(TokenKind.CloseParen, "')'", out var tokenCloseParen);
+                var body = ParseStmt();
+                return new SyntaxStmtForLoop(tokenFor, initializer, condition, increment, body);
+            }
 
             case TokenKind.Goto: return new SyntaxStmtGoto(Consume(), ExpectIdentifier(), ExpectSemiColon());
 
@@ -716,7 +746,7 @@ public partial class Parser(Module module)
             default:
             {
                 var expr = ParseExpr(ExprParseContext.Default);
-                return ParseStmtContinue(expr);
+                return ParseStmtContinue(expr, true);
             }
         }
     }
@@ -1265,7 +1295,7 @@ public partial class Parser(Module module)
             Advance();
 
             SyntaxNode? rhs = null;
-            if (parseContext == ExprParseContext.CheckForDeclarations &&
+            if ((parseContext == ExprParseContext.CheckForDeclarations || parseContext == ExprParseContext.ForLoopInitializer) &&
                 tokenOperator.Kind is TokenKind.Star or TokenKind.Ampersand &&
                 At(TokenKind.Identifier) &&
                 lhs.CanBeType)
@@ -1274,10 +1304,10 @@ public partial class Parser(Module module)
                 {
                     // this is now a binding declaration
                     SyntaxNode bindingType = CreateTypeNodeFromOperator(lhs, tokenOperator);
-                    return ParseBindingDeclStartingAtName(bindingType);
+                    return ParseBindingDeclStartingAtName(bindingType, parseContext != ExprParseContext.CheckForDeclarations);
                 }
 
-                if (PeekAt(1, TokenKind.OpenParen))
+                if (parseContext == ExprParseContext.CheckForDeclarations && PeekAt(1, TokenKind.OpenParen))
                 {
                     // we have some work to do to determine if this is a function
                     if (PeekAt(2, TokenKind.CloseParen) && PeekAt(3, TokenKind.SemiColon, TokenKind.OpenBrace, TokenKind.EqualGreater))

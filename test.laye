@@ -1,2 +1,20 @@
 void main() {
+    for (int foo = 10; foo < 20; foo) {
+    }
+    
+    int foo;
+    for (foo = 10; foo < 20; foo) {
+    }
+
+    for (foo(); ; ) {
+    }
+
+    for (; foo(); ) {
+    }
+
+    for (; ; foo()) {
+    }
+
+    for (;;) {
+    }
 }

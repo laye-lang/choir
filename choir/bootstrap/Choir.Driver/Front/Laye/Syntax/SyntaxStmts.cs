@@ -1,22 +1,22 @@
 namespace Choir.Front.Laye.Syntax;
 
-public sealed class SyntaxStmtExpr(SyntaxNode expr, SyntaxToken tokenSemiColon)
+public sealed class SyntaxStmtExpr(SyntaxNode expr, SyntaxToken? tokenSemiColon)
     : SyntaxNode(expr.Location)
 {
     public SyntaxNode Expr { get; } = expr;
-    public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
-    public override IEnumerable<SyntaxNode> Children { get; } = [expr, tokenSemiColon];
+    public SyntaxToken? TokenSemiColon { get; } = tokenSemiColon;
+    public override IEnumerable<SyntaxNode> Children { get; } = tokenSemiColon is not null ? [expr, tokenSemiColon] : [expr];
 }
 
-public sealed class SyntaxStmtAssign(SyntaxNode lhs, SyntaxToken tokenAssignOp, SyntaxNode rhs, SyntaxToken tokenSemiColon)
+public sealed class SyntaxStmtAssign(SyntaxNode lhs, SyntaxToken tokenAssignOp, SyntaxNode rhs, SyntaxToken? tokenSemiColon)
     : SyntaxNode(tokenAssignOp.Location)
 {
     public SyntaxNode Left { get; } = lhs;
     public SyntaxToken TokenAssignOp { get; } = tokenAssignOp;
     public SyntaxNode Right { get; } = rhs;
-    public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
+    public SyntaxToken? TokenSemiColon { get; } = tokenSemiColon;
 
-    public override IEnumerable<SyntaxNode> Children { get; } = [lhs, tokenAssignOp, rhs, tokenSemiColon];
+    public override IEnumerable<SyntaxNode> Children { get; } = tokenSemiColon is not null ? [lhs, tokenAssignOp, rhs, tokenSemiColon] : [lhs, tokenAssignOp, rhs];
 }
 
 public sealed class SyntaxCompound(Location location, IReadOnlyList<SyntaxNode> body)
@@ -204,4 +204,29 @@ public sealed class SyntaxStmtWhileLoop(SyntaxToken tokenWhile, SyntaxNode condi
     public SyntaxNode? ElseBody { get; } = elseBody;
 
     public override IEnumerable<SyntaxNode> Children { get; } = elseBody is not null ? [tokenWhile, condition, body, elseBody] : [tokenWhile, condition, body];
+}
+
+public sealed class SyntaxStmtForLoop(SyntaxToken tokenFor, SyntaxNode? initializer, SyntaxNode? condition, SyntaxNode? increment, SyntaxNode body)
+    : SyntaxNode(tokenFor.Location)
+{
+    public SyntaxToken TokenFor { get; } = tokenFor;
+    public SyntaxNode? Initializer { get; } = initializer;
+    public SyntaxNode? Condition { get; } = condition;
+    public SyntaxNode? Increment { get; } = increment;
+    public SyntaxNode Body { get; } = body;
+
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return TokenFor;
+            if (Initializer is not null)
+                yield return Initializer;
+            if (Condition is not null)
+                yield return Condition;
+            if (Increment is not null)
+                yield return Increment;
+            yield return Body;
+        }
+    }
 }
