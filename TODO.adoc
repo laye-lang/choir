@@ -31,10 +31,11 @@
         * [x] Address Of (&)
         * [x] Dereference (*)
         * [x] Bool Not (not)
-    * [ ] Sizeof
-    * [ ] Alignof
-    * [ ] Offsetof
-    * [ ] Typeof
+    * [x] Sizeof
+    * [x] Alignof
+    * [x] Offsetof
+    * [x] Typeof
+    * [x] Lambdas
     * [x] (Maybe) Ternary (if/then/else)
     * [x] (Maybe) Do Expression (Compound)
     * [ ] (Maybe) Do Expression (Monad Things)
@@ -57,6 +58,7 @@
     * [x] Sized Primitives
     * [ ] Additional C Primitives
         * [ ] Float128
+    * [x] Typeof
     * [ ] (Maybe) Tuples
 * [ ] Type Expression Continuations
     * [x] Slice
@@ -65,7 +67,6 @@
     * [x] Pointer
     * [x] Reference
     * [x] Nilable
-    * [ ] Typeof
     * [ ] (Likely) Error Pair
 * [ ] Statements
     * [x] Compound
@@ -91,11 +92,12 @@
     * [x] Expression Statement
     * [ ] Expression Statement Errors
 * [ ] Declarations
+    * [ ] Function Parameters need default value support
     * [ ] Struct
     * [ ] Enum
     * [ ] Alias
     * [ ] Test
-    * [ ] Template Parameters
+    * [x] Template Parameters
     * [ ] Declaration Attributes
         * [x] Export
         * [x] Foreign

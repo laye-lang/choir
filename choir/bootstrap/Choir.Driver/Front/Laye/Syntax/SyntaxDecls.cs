@@ -233,3 +233,54 @@ public sealed class SyntaxDeclParam(SyntaxNode paramType, SyntaxToken tokenName)
         }
     }
 }
+
+public sealed class SyntaxDeclField(SyntaxNode fieldType, SyntaxToken tokenName)
+    : SyntaxNode(tokenName.Location)
+{
+    public SyntaxNode FieldType { get; } = fieldType;
+    public SyntaxToken TokenName { get; } = tokenName;
+
+    public override bool IsDecl { get; } = true;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return FieldType;
+            yield return TokenName;
+        }
+    }
+}
+
+public sealed class SyntaxDeclStruct(SyntaxToken tokenStructOrVariant, SyntaxToken tokenName, IReadOnlyList<SyntaxDeclField> fields, IReadOnlyList<SyntaxDeclStruct> variants)
+    : SyntaxNode(tokenName.Location)
+{
+    public SyntaxToken TokenStructOrVariant { get; } = tokenStructOrVariant;
+    public SyntaxToken TokenName { get; } = tokenName;
+    public IReadOnlyList<SyntaxDeclField> Fields { get; } = fields;
+    public IReadOnlyList<SyntaxDeclStruct> Variants { get; } = variants;
+
+    public bool IsVariant => TokenStructOrVariant.Kind == TokenKind.Variant;
+    public override bool IsDecl { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenStructOrVariant, tokenName, .. fields, .. variants];
+}
+
+public sealed class SyntaxDeclEnumVariant(SyntaxToken tokenName, SyntaxNode? value)
+    : SyntaxNode(tokenName.Location)
+{
+    public SyntaxToken TokenName { get; } = tokenName;
+    public SyntaxNode? Value { get; } = value;
+
+    public override bool IsDecl { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = value is not null ? [tokenName, value] : [tokenName];
+}
+
+public sealed class SyntaxDeclEnum(SyntaxToken tokenEnum, SyntaxToken tokenName, IReadOnlyList<SyntaxDeclEnumVariant> variants)
+    : SyntaxNode(tokenName.Location)
+{
+    public SyntaxToken TokenEnum { get; } = tokenEnum;
+    public SyntaxToken TokenName { get; } = tokenName;
+    public  IReadOnlyList<SyntaxDeclEnumVariant> Variants { get; } = variants;
+
+    public override bool IsDecl { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenEnum, tokenName, .. variants];
+}

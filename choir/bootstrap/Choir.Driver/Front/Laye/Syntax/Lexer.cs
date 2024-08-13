@@ -82,6 +82,7 @@ public sealed class Lexer(SourceFile sourceFile)
         {"sizeof", TokenKind.Sizeof},
         {"alignof", TokenKind.Alignof},
         {"offsetof", TokenKind.Offsetof},
+        {"typeof", TokenKind.Typeof},
         {"not", TokenKind.Not},
         {"and", TokenKind.And},
         {"or", TokenKind.Or},
@@ -144,7 +145,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
     private char Peek(int ahead)
     {
-        Debug.Assert(ahead >= 0);
+        Context.Assert(ahead >= 0, $"peeking ahead in the lexer should only ever look forward or at the current character. the caller requested {ahead} characters ahead, which is illegal.");
 
         int peekPosition = _position + ahead;
         if (peekPosition >= _textLength)
@@ -400,8 +401,8 @@ public sealed class Lexer(SourceFile sourceFile)
 
             default:
             {
-                Debug.Assert(!IsAtEnd);
-                Debug.Assert(CurrentCharacter != 0);
+                Context.Assert(!IsAtEnd, CurrentLocation, "the lexer reached the end of file in an unexpected place");
+                Context.Assert(CurrentCharacter != 0, CurrentLocation, "the lexer encountered an in-source NUL character in a location that is not supported");
 
                 if (SyntaxFacts.IsIdentifierStartCharacter(CurrentCharacter))
                     ReadIdentifier(ref tokenInfo);
@@ -478,7 +479,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
     private void ReadIdentifier(ref TokenInfo tokenInfo)
     {
-        Debug.Assert(SyntaxFacts.IsIdentifierStartCharacter(CurrentCharacter));
+        Context.Assert(SyntaxFacts.IsIdentifierStartCharacter(CurrentCharacter), CurrentLocation, "the lexer was instructed to read a Laye identifier, but the current character cannot start an identifier");
 
         tokenInfo.Kind = TokenKind.Identifier;
         while (!IsAtEnd)
@@ -498,7 +499,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
     private void ReadInteger(ref TokenInfo tokenInfo)
     {
-        Debug.Assert(CurrentCharacter is >= '0' and <= '9');
+        Context.Assert(CurrentCharacter is >= '0' and <= '9', CurrentLocation, "the lexer was instructed to read a Laye integer literal, but the current character cannot start an integer literal");
 
         // when reading *just* an integer, we should be able to assert that
         // there are no identifier characters within or at its end.
@@ -514,14 +515,13 @@ public sealed class Lexer(SourceFile sourceFile)
             Advance();
         }
 
-        Debug.Assert(CurrentCharacter is not ((>= '0' and <= '9') or (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_') && !SyntaxFacts.IsIdentifierPartCharacter(CurrentCharacter));
-        
+        Context.Assert(CurrentCharacter is not ((>= '0' and <= '9') or (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_') && !SyntaxFacts.IsIdentifierPartCharacter(CurrentCharacter), CurrentLocation, "the lexer was instructed to read a Laye integer literal, but the current character cannot be a part of an integer literal");
         tokenInfo.IntegerValue = BigInteger.Parse(_stringBuilder.ToString());
     }
 
     private void ReadIntegerWithRadix(ref TokenInfo tokenInfo)
     {
-        Debug.Assert(CurrentCharacter is >= '0' and <= '9');
+        Context.Assert(CurrentCharacter is >= '0' and <= '9', CurrentLocation, "the lexer was instructed to read a Laye integer literal with a base prefix, but the current character cannot start an integer literal");
 
         var startLocation = CurrentLocation;
         tokenInfo.Kind = TokenKind.LiteralInteger;
@@ -568,8 +568,8 @@ public sealed class Lexer(SourceFile sourceFile)
             }
         }
 
-        Debug.Assert(!IsAtEnd && CurrentCharacter == '#');
-        Debug.Assert(radix is >= 2 and <= 36);
+        Context.Assert(!IsAtEnd && CurrentCharacter == '#', CurrentLocation, "the lexer was instructed to read a Laye integer literal with a base prefix, but the current character is not the base delimiter character '#'");
+        Context.Assert(radix is >= 2 and <= 36, "the lexer failed to restrict the base of an integer literal to the range [2, 36]");
         Advance();
 
         _stringBuilder.Clear();
@@ -609,12 +609,12 @@ public sealed class Lexer(SourceFile sourceFile)
 
         if (parseResult)
         {
-            Debug.Assert(_stringBuilder.Length > 0);
+            Context.Assert(_stringBuilder.Length > 0, "the lexer expected to be able to parse an integer value, but no digits were provided to parse");
             tokenInfo.IntegerValue = ParseBigInteger(_stringBuilder.ToString(), radix);
         }
         else
         {
-            Debug.Assert(_stringBuilder.Length == 0);
+            Context.Assert(_stringBuilder.Length == 0, "the lexer expected to be unable to parse an integer value, so the digit storage string builder should have been cleared");
         }
 
         static BigInteger ParseBigInteger(string value, int radix)
@@ -644,7 +644,7 @@ public sealed class Lexer(SourceFile sourceFile)
         highSurrogate = '\0';
         lowSurrogate = '\0';
 
-        Debug.Assert(CurrentCharacter == '\\');
+        Context.Assert(CurrentCharacter == '\\', CurrentLocation, "the lexer was instructed to read an escape sequence, but the current character was not the escape start character '\\'");
 
         var startLocation = CurrentLocation;
         Advance();
@@ -716,7 +716,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
     private void ReadString(ref TokenInfo tokenInfo)
     {
-        Debug.Assert(CurrentCharacter == '"');
+        Context.Assert(CurrentCharacter == '"', CurrentLocation, "the lexer was instructed to read a Laye string literal, but the current character is not the string start character '\"'");
 
         var startLocation = CurrentLocation;
         tokenInfo.Kind = TokenKind.LiteralString;
@@ -728,7 +728,7 @@ public sealed class Lexer(SourceFile sourceFile)
             if (CurrentCharacter == '\\')
             {
                 int nchars = ReadEscapeSequenceAsSurrogatePair(out char higher, out char lower);
-                Debug.Assert(nchars == 1 || nchars == 2);
+                Context.Assert(nchars == 1 || nchars == 2, "the lexer requested an escape sequence to be read, but the number of characters returned was not the expected 1 or 2");
                 _stringBuilder.Append(lower);
                 if (nchars == 2) _stringBuilder.Append(higher);
             }
@@ -757,7 +757,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
     private void ReadRune(ref TokenInfo tokenInfo)
     {
-        Debug.Assert(CurrentCharacter == '\'');
+        Context.Assert(CurrentCharacter == '\'', CurrentLocation, "the lexer was instructed to read a Laye rune literal, but the current character is not the rune start character '\''");
         
         var startLocation = CurrentLocation;
         tokenInfo.Kind = TokenKind.LiteralRune;
@@ -792,7 +792,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
     private ScanNumberFlags ScanNumber()
     {
-        Debug.Assert(SyntaxFacts.IsNumericLiteralDigit(CurrentCharacter));
+        Context.Assert(SyntaxFacts.IsNumericLiteralDigit(CurrentCharacter), CurrentLocation, "the lexer was instructed to scan ahead to determine the kind of Laye numeric literal to read, if any, but the current character cannot start a numeric literal.");
 
         using var resetPoint = new LexerResetPoint(this);
         while (!IsAtEnd)
@@ -833,7 +833,7 @@ public sealed class Lexer(SourceFile sourceFile)
 
         ScanNumberFlags ScanNumberWithRadix()
         {
-            Debug.Assert(CurrentCharacter == '#');
+            Context.Assert(CurrentCharacter == '#', "the lexer was instructed to scan a Laye numeric literal with a base, but the current character is not the base delimiter character '#'");
             Advance();
 
             while (!IsAtEnd)

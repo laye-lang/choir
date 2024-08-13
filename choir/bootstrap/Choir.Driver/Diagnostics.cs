@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Choir.CommandLine;
 
@@ -26,14 +27,12 @@ public abstract class DiagnosticWriter(ChoirContext? context, bool? useColor = n
 
     internal Action<DiagnosticKind>? OnIssue;
 
-    protected abstract void IssueInternal(DiagnosticKind kind, Location? location, string message);
-    public void Issue(DiagnosticKind kind, Location? location, string message)
+    protected abstract void IssueInternal(DiagnosticKind kind, Location? location, string message, bool includeStackTrace);
+    public void Issue(DiagnosticKind kind, Location? location, string message, [DoesNotReturnIf(true)] bool exit = false)
     {
         OnIssue?.Invoke(kind);
-        IssueInternal(kind, location, message);
-
-        if (kind >= DiagnosticKind.Fatal)
-            Environment.Exit(1);
+        IssueInternal(kind, location, message, includeStackTrace: exit);
+        if (exit) Environment.Exit(1);
     }
 
     public void Note(string message) => Issue(DiagnosticKind.Note, null, message);
@@ -45,14 +44,19 @@ public abstract class DiagnosticWriter(ChoirContext? context, bool? useColor = n
     public void Error(string message) => Issue(DiagnosticKind.Error, null, message);
     public void Error(Location location, string message) => Issue(DiagnosticKind.Error, location, message);
 
-    public void Fatal(string message) => Issue(DiagnosticKind.Fatal, null, message);
-    public void Fatal(Location location, string message) => Issue(DiagnosticKind.Fatal, location, message);
+    [DoesNotReturn]
+    public void Fatal(string message) => Issue(DiagnosticKind.Fatal, null, message, true);
+    [DoesNotReturn]
+    public void Fatal(Location location, string message) => Issue(DiagnosticKind.Fatal, location, message, true);
 
-    public void ICE(string message) => Issue(DiagnosticKind.ICE, null, message);
-    public void ICE(Location location, string message) => Issue(DiagnosticKind.ICE, location, message);
+    [DoesNotReturn]
+    public void ICE(string message) => Issue(DiagnosticKind.ICE, null, message, true);
+    [DoesNotReturn]
+    public void ICE(Location location, string message) => Issue(DiagnosticKind.ICE, location, message, true);
 }
 
-public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter? writer = null, bool? useColor = null) : DiagnosticWriter(context, useColor)
+public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter? writer = null, bool? useColor = null)
+    : DiagnosticWriter(context, useColor)
 {
     private int _errorsWritten = 0;
     private bool _printedErrorLimitMessage = false;
@@ -72,18 +76,23 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
         }
     }
 
-    protected override void IssueInternal(DiagnosticKind kind, Location? location, string message)
+    protected override void IssueInternal(DiagnosticKind kind, Location? location, string message, bool includeStackTrace)
     {
-        if (kind == DiagnosticKind.Error && Context is not null && _errorsWritten > Context.ErrorLimit)
+        if (kind == DiagnosticKind.Error && Context is not null)
         {
-            if (!_printedErrorLimitMessage)
+            if (_errorsWritten > Context.ErrorLimit)
             {
-                _printedErrorLimitMessage = true;
-                Writer.WriteLine($"choir: {Colors.Red}error: {Colors.White}too many errors emitted (> {Context.ErrorLimit}). further errors will not be shown.{Colors.Reset}");
-                Writer.WriteLine($"choir: {Colors.White}note: {Colors.White}use '--error-limit <limit>' to show more errors.{Colors.Reset}");
+                if (!_printedErrorLimitMessage)
+                {
+                    _printedErrorLimitMessage = true;
+                    Writer.WriteLine($"choir: {Colors.Red}error: {Colors.White}too many errors emitted (> {Context.ErrorLimit}). further errors will not be shown.{Colors.Reset}");
+                    Writer.WriteLine($"choir: {Colors.White}note: {Colors.White}use '--error-limit <limit>' to show more errors.{Colors.Reset}");
+                }
+
+                return;
             }
 
-            return;
+            _errorsWritten++;
         }
 
         if (_printed && kind != DiagnosticKind.Note && Context is not null)
@@ -128,5 +137,11 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
         Writer.WriteLine($"{Colors.White}{message}{Colors.Reset}");
 
         // TODO(local): write the relevant source text, if any
+
+        if (includeStackTrace)
+        {
+            Writer.WriteLine(Colors.White);
+            Writer.WriteLine(Environment.StackTrace);
+        }
     }
 }

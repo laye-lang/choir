@@ -1,7 +1,5 @@
 // alias laye_os_kind = typeof(LAYE_OS);
 
-template<T, var U, i32 V>
-void my_printf_better();
-
-template<T = f32, var U = vec2, i32 V = 10 + 20>
-void my_printf_better();
+i32 main(i32 argc, i8[*][*] argv)
+{
+}

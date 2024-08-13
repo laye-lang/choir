@@ -208,6 +208,44 @@ public sealed class SyntaxCall(SyntaxNode callee, SyntaxToken tokenOpenParen, IR
     }
 }
 
+public sealed class SyntaxExprSizeof(SyntaxToken tokenSizeof, SyntaxNode type)
+    : SyntaxNode(tokenSizeof.Location)
+{
+    public SyntaxToken TokenSizeof { get; } = tokenSizeof;
+    public SyntaxNode Type { get; } = type;
+    
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenSizeof, type];
+}
+
+public sealed class SyntaxExprAlignof(SyntaxToken tokenAlignof, SyntaxNode type)
+    : SyntaxNode(tokenAlignof.Location)
+{
+    public SyntaxToken TokenAlignof { get; } = tokenAlignof;
+    public SyntaxNode Type { get; } = type;
+    
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenAlignof, type];
+}
+
+public sealed class SyntaxExprOffsetof(SyntaxToken tokenOffsetof, SyntaxNode type, SyntaxToken tokenFieldName)
+    : SyntaxNode(tokenOffsetof.Location)
+{
+    public SyntaxToken TokenOffsetof { get; } = tokenOffsetof;
+    public SyntaxNode Type { get; } = type;
+    public SyntaxToken TokenFieldName { get; } = tokenFieldName;
+    
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOffsetof, type, tokenFieldName];
+}
+
+public sealed class SyntaxExprLambda(IReadOnlyList<SyntaxDeclParam> @params, SyntaxToken tokenArrow, SyntaxNode body)
+    : SyntaxNode(tokenArrow.Location)
+{
+    public IReadOnlyList<SyntaxDeclParam> Params { get; } = @params;
+    public SyntaxToken TokenArrow { get; } = tokenArrow;
+    public SyntaxNode Body { get; } = body;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [.. @params, tokenArrow, body];
+}
+
 public sealed class SyntaxQualMut(SyntaxNode inner, SyntaxToken tokenMut)
     : SyntaxNode(inner.Location)
 {
@@ -270,4 +308,14 @@ public sealed class SyntaxTypeNilable(SyntaxNode inner)
     
     public override bool CanBeType { get; } = true;
     public override IEnumerable<SyntaxNode> Children { get; } = [inner];
+}
+
+public sealed class SyntaxTypeof(SyntaxToken tokenTypeof, SyntaxNode expr)
+    : SyntaxNode(tokenTypeof.Location)
+{
+    public SyntaxToken TokenTypeof { get; } = tokenTypeof;
+    public SyntaxNode Expr { get; } = expr;
+
+    public override bool CanBeType { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenTypeof, expr];
 }

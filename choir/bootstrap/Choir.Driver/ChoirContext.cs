@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 using Choir.Front.Laye.Sema;
@@ -154,5 +156,53 @@ public sealed class ChoirContext
             return null;
 
         return _sourceFiles[fileId - 1];
+    }
+    
+    [InterpolatedStringHandler]
+    public readonly ref struct AssertInterpolatedStringHandler
+    {
+        private readonly StringBuilder builder;
+
+        public AssertInterpolatedStringHandler(int literalLength, int formattedCount, bool condition, out bool shouldAppend)
+        {
+            builder = new(literalLength);
+            shouldAppend = !condition;
+        }
+
+        public readonly void AppendLiteral(string s)
+        {
+            builder.Append(s);
+        }
+
+        public readonly void AppendFormatted<T>(T t)
+        {
+            builder.Append(t?.ToString());
+        }
+
+        internal readonly string GetFormattedText() => builder.ToString();
+    }
+
+    public void Assert([DoesNotReturnIf(false)] bool condition, [InterpolatedStringHandlerArgument("condition")] ref AssertInterpolatedStringHandler message)
+    {
+        if (condition) return;
+        Diag.ICE(message.GetFormattedText());
+    }
+
+    public void Assert([DoesNotReturnIf(false)] bool condition, Location location, [InterpolatedStringHandlerArgument("condition")] ref AssertInterpolatedStringHandler message)
+    {
+        if (condition) return;
+        Diag.ICE(location, message.GetFormattedText());
+    }
+
+    public void Assert([DoesNotReturnIf(false)] bool condition, string message)
+    {
+        if (condition) return;
+        Diag.ICE(message);
+    }
+
+    public void Assert([DoesNotReturnIf(false)] bool condition, Location location, string message)
+    {
+        if (condition) return;
+        Diag.ICE(location, message);
     }
 }

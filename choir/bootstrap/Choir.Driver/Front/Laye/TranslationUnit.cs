@@ -1,6 +1,4 @@
-using System.Diagnostics;
-
-namespace Choir.Front.Laye.Sema;
+namespace Choir.Front.Laye;
 
 public sealed class TranslationUnit(ChoirContext context)
 {
@@ -11,8 +9,7 @@ public sealed class TranslationUnit(ChoirContext context)
 
     public void AddModule(Module module)
     {
-        Debug.Assert(module.TranslationUnit is null);
-
+        Context.Assert(module.TranslationUnit is null, "when adding a module to a translation unit, the module was already a part of another translation unit.");
         module.TranslationUnit = this;
         _modules.Add(module);
     }
