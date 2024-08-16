@@ -17,7 +17,7 @@
     * [x] String Literals
     * [x] Rune Literals
     * [x] Bool Literals
-    * [ ] Nil Literal
+    * [x] Nil Literal
     * [x] Grouped Expression
     * [x] (Invalid) Empty Expression
     * [x] Cast
@@ -92,10 +92,11 @@
     * [x] Expression Statement
     * [ ] Expression Statement Errors
 * [ ] Declarations
+    * [ ] Operator functions
     * [ ] Function Parameters need default value support
-    * [ ] Struct
+    * [x] Struct
     * [ ] Enum
-    * [ ] Alias
+    * [x] Alias
     * [ ] Test
     * [x] Template Parameters
     * [ ] Declaration Attributes

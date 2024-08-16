@@ -254,14 +254,33 @@ public sealed class SyntaxDeclField(SyntaxNode fieldType, SyntaxToken tokenName)
 public sealed class SyntaxDeclStruct(SyntaxToken tokenStructOrVariant, SyntaxToken tokenName, IReadOnlyList<SyntaxDeclField> fields, IReadOnlyList<SyntaxDeclStruct> variants)
     : SyntaxNode(tokenName.Location)
 {
+    public required SyntaxTemplateParams? TemplateParams { get; init; }
+    public required IReadOnlyList<SyntaxAttrib> Attribs { get; init; }
+    
     public SyntaxToken TokenStructOrVariant { get; } = tokenStructOrVariant;
     public SyntaxToken TokenName { get; } = tokenName;
     public IReadOnlyList<SyntaxDeclField> Fields { get; } = fields;
     public IReadOnlyList<SyntaxDeclStruct> Variants { get; } = variants;
 
     public bool IsVariant => TokenStructOrVariant.Kind == TokenKind.Variant;
+    public bool IsVoidVariant => IsVariant && TokenName.Kind == TokenKind.Void;
     public override bool IsDecl { get; } = true;
-    public override IEnumerable<SyntaxNode> Children { get; } = [tokenStructOrVariant, tokenName, .. fields, .. variants];
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            if (TemplateParams is not null)
+                yield return TemplateParams;
+            foreach (var attrib in Attribs)
+                yield return attrib;
+            yield return TokenStructOrVariant;
+            yield return TokenName;
+            foreach (var @field in Fields)
+                yield return @field;
+            foreach (var variant in Variants)
+                yield return variant;
+        }
+    }
 }
 
 public sealed class SyntaxDeclEnumVariant(SyntaxToken tokenName, SyntaxNode? value)
@@ -277,10 +296,56 @@ public sealed class SyntaxDeclEnumVariant(SyntaxToken tokenName, SyntaxNode? val
 public sealed class SyntaxDeclEnum(SyntaxToken tokenEnum, SyntaxToken tokenName, IReadOnlyList<SyntaxDeclEnumVariant> variants)
     : SyntaxNode(tokenName.Location)
 {
+    public required SyntaxTemplateParams? TemplateParams { get; init; }
+    public required IReadOnlyList<SyntaxAttrib> Attribs { get; init; }
+
     public SyntaxToken TokenEnum { get; } = tokenEnum;
     public SyntaxToken TokenName { get; } = tokenName;
-    public  IReadOnlyList<SyntaxDeclEnumVariant> Variants { get; } = variants;
+    public IReadOnlyList<SyntaxDeclEnumVariant> Variants { get; } = variants;
 
     public override bool IsDecl { get; } = true;
-    public override IEnumerable<SyntaxNode> Children { get; } = [tokenEnum, tokenName, .. variants];
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            if (TemplateParams is not null)
+                yield return TemplateParams;
+            foreach (var attrib in Attribs)
+                yield return attrib;
+            yield return TokenEnum;
+            yield return TokenName;
+            foreach (var variant in Variants)
+                yield return variant;
+        }
+    }
+}
+
+public sealed class SyntaxDeclAlias(SyntaxToken? tokenStrict, SyntaxToken tokenAlias, SyntaxToken tokenName, SyntaxNode type)
+    : SyntaxNode(tokenName.Location)
+{
+    public required SyntaxTemplateParams? TemplateParams { get; init; }
+    public required IReadOnlyList<SyntaxAttrib> Attribs { get; init; }
+
+    public SyntaxToken? TokenStrict { get; } = tokenStrict;
+    public SyntaxToken TokenAlias { get; } = tokenAlias;
+    public SyntaxToken TokenName { get; } = tokenName;
+    public SyntaxNode Type { get; } = type;
+
+    public bool IsStrict { get; } = tokenStrict is not null;
+    public override bool IsDecl { get; } = true;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            if (TemplateParams is not null)
+                yield return TemplateParams;
+            foreach (var attrib in Attribs)
+                yield return attrib;
+            if (TokenStrict is not null)
+                yield return TokenStrict;
+            yield return TokenAlias;
+            yield return TokenName;
+            yield return Type;
+        }
+    }
 }

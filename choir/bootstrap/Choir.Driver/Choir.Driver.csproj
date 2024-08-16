@@ -9,6 +9,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!--
+    <DefineConstants>LAYE_DECONSTRUCTOR_PATTERN_ENABLED</DefineConstants>
+    -->
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="LLVMSharp" Version="16.0.0" />
     <PackageReference Include="ClangSharp" Version="18.1.0.1" />

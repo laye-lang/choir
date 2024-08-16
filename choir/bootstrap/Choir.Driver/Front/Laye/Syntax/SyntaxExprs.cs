@@ -208,6 +208,34 @@ public sealed class SyntaxCall(SyntaxNode callee, SyntaxToken tokenOpenParen, IR
     }
 }
 
+#if LAYE_DECONSTRUCTOR_PATTERN_ENABLED
+public sealed class SyntaxPatternStructDeconstruction(SyntaxNode? type, SyntaxToken tokenOpenBrace, IReadOnlyList<SyntaxNode> children, SyntaxToken tokenCloseBrace)
+    : SyntaxNode(tokenOpenBrace.Location)
+{
+    public SyntaxNode? Type { get; } = type;
+    public IReadOnlyList<SyntaxNode> ChildPatterns { get; } = children;
+    public override IEnumerable<SyntaxNode> Children { get; } = type is not null ? [type, tokenOpenBrace, .. children, tokenCloseBrace] : [tokenOpenBrace, .. children, tokenCloseBrace];
+}
+#else
+public sealed class SyntaxPatternStructured(SyntaxNode? type, SyntaxToken tokenOpenBrace, IReadOnlyList<SyntaxNode> children, SyntaxToken tokenCloseBrace)
+    : SyntaxNode(tokenOpenBrace.Location)
+{
+    public SyntaxNode? Type { get; } = type;
+    public IReadOnlyList<SyntaxNode> ChildPatterns { get; } = children;
+    public override IEnumerable<SyntaxNode> Children { get; } = type is not null ? [type, tokenOpenBrace, .. children, tokenCloseBrace] : [tokenOpenBrace, .. children, tokenCloseBrace];
+}
+#endif
+
+public sealed class SyntaxExprPatternMatch(SyntaxNode expr, SyntaxToken tokenIs, SyntaxNode pattern)
+    : SyntaxNode(tokenIs.Location)
+{
+    public SyntaxNode Expr { get; } = expr;
+    public SyntaxToken TokenIs { get; } = tokenIs;
+    public SyntaxNode Pattern { get; } = pattern;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [expr, tokenIs, pattern];
+}
+
 public sealed class SyntaxExprSizeof(SyntaxToken tokenSizeof, SyntaxNode type)
     : SyntaxNode(tokenSizeof.Location)
 {

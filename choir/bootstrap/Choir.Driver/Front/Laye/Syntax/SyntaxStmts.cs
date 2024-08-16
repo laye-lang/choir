@@ -80,6 +80,48 @@ public sealed class SyntaxStaticIf(SyntaxToken tokenStatic, IReadOnlyList<Syntax
     }
 }
 
+public sealed class SyntaxSwitchCase(SyntaxToken tokenCase, SyntaxNode casePattern, SyntaxToken? tokenIf, SyntaxNode? guardClause, SyntaxToken tokenColon, SyntaxNode? caseBody)
+    : SyntaxNode(tokenCase.Location)
+{
+    public SyntaxToken TokenCase { get; } = tokenCase;
+    public SyntaxNode CasePattern { get; } = casePattern;
+    public SyntaxToken? TokenIf { get; } = tokenIf;
+    public SyntaxNode? GuardClause { get; } = guardClause;
+    public SyntaxToken TokenColon { get; } = tokenColon;
+    public SyntaxNode? CaseBody { get; } = caseBody;
+
+    public bool IsImplicitFallthrough { get; } = caseBody is null;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return TokenCase;
+            yield return CasePattern;
+            if (TokenIf is not null)
+                yield return TokenIf;
+            if (GuardClause is not null)
+                yield return GuardClause;
+            yield return TokenColon;
+            if (CaseBody is not null)
+                yield return CaseBody;
+        }
+    }
+}
+
+public sealed class SyntaxStmtSwitch(SyntaxToken tokenSwitch)
+    : SyntaxNode(tokenSwitch.Location)
+{
+    public SyntaxToken TokenSwitch { get; } = tokenSwitch;
+
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return TokenSwitch;
+        }
+    }
+}
+
 public sealed class SyntaxStmtReturn(SyntaxToken tokenReturn, SyntaxNode? value, SyntaxToken tokenSemiColon)
     : SyntaxNode(tokenReturn.Location)
 {
@@ -148,15 +190,17 @@ public sealed class SyntaxStmtXyzzy(SyntaxToken tokenXyzzy, SyntaxToken tokenSem
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenXyzzy, tokenSemiColon];
 }
 
-public sealed class SyntaxStmtAssert(SyntaxToken tokenAssert, SyntaxNode condition, SyntaxToken? tokenComma, SyntaxToken? tokenMessage, SyntaxToken tokenSemiColon)
+public sealed class SyntaxStmtAssert(SyntaxToken? tokenStatic, SyntaxToken tokenAssert, SyntaxNode condition, SyntaxToken? tokenComma, SyntaxToken? tokenMessage, SyntaxToken tokenSemiColon)
     : SyntaxNode(tokenAssert.Location)
 {
+    public SyntaxToken? TokenStatic { get; } = tokenStatic;
     public SyntaxToken TokenAssert { get; } = tokenAssert;
     public SyntaxNode Condition { get; } = condition;
     public SyntaxToken? TokenComma { get; } = tokenComma;
     public SyntaxToken? TokenMessage { get; } = tokenMessage;
     public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
 
+    public bool IsStaticAssert { get; } = tokenStatic is not null;
     public bool HasMessage => TokenMessage is not null;
     public string? MessageText => TokenMessage?.TextValue;
 
@@ -164,6 +208,8 @@ public sealed class SyntaxStmtAssert(SyntaxToken tokenAssert, SyntaxNode conditi
     {
         get
         {
+            if (TokenStatic is not null)
+                yield return TokenStatic;
             yield return TokenAssert;
             yield return Condition;
             if (TokenComma is not null)
