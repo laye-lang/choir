@@ -359,7 +359,10 @@ public partial class Parser(Module module)
                 return ParseAliasDeclaration(templateParams, attribs);
                 
             case TokenKind.Struct:
-                return ParseStructDeclaration(templateParams, attribs);
+                return ParseStructDeclaration(templateParams, attribs, null);
+
+            case TokenKind.Enum:
+                return ParseEnumDeclaration(templateParams, attribs, null);
                 
             case TokenKind.Identifier when CurrentToken.TextValue == "static" && PeekAt(1, TokenKind.If):
                 return ParseStaticIf(true);
@@ -592,7 +595,7 @@ public partial class Parser(Module module)
         };
     }
 
-    private SyntaxDeclStruct ParseStructDeclaration(SyntaxTemplateParams? templateParams, IReadOnlyList<SyntaxAttrib> attribs)
+    private SyntaxDeclStruct ParseStructDeclaration(SyntaxTemplateParams? templateParams, IReadOnlyList<SyntaxAttrib> attribs, SyntaxToken? tokenError)
     {
         Context.Assert(At(TokenKind.Struct, TokenKind.Variant), CurrentLocation, $"{nameof(ParseStructDeclaration)} called when not at 'struct' or 'variant'.");
 
@@ -617,7 +620,7 @@ public partial class Parser(Module module)
                 }
                 else
                 {
-                    var variant = ParseStructDeclaration(null, []);
+                    var variant = ParseStructDeclaration(null, [], null);
                     variants.Add(variant);
                 }
 
@@ -634,6 +637,44 @@ public partial class Parser(Module module)
         Expect(TokenKind.CloseBrace, "'}'");
 
         return new SyntaxDeclStruct(tokenStructOrVariant, tokenName, [.. fields], [.. variants])
+        {
+            TemplateParams = templateParams,
+            Attribs = attribs,
+        };
+    }
+
+    private SyntaxDeclEnumVariant ParseEnumVariant()
+    {
+        var tokenName = ExpectIdentifier();
+        if (TryAdvance(TokenKind.Equal, out var tokenEqual))
+        {
+            var value = ParseExpr(ExprParseContext.Default);
+            return new SyntaxDeclEnumVariant(tokenName, value);
+        }
+
+        return new SyntaxDeclEnumVariant(tokenName, null);
+    }
+
+    private SyntaxDeclEnum ParseEnumDeclaration(SyntaxTemplateParams? templateParams, IReadOnlyList<SyntaxAttrib> attribs, SyntaxToken? tokenError)
+    {
+        Context.Assert(At(TokenKind.Enum), CurrentLocation, $"{nameof(ParseStructDeclaration)} called when not at 'enum'.");
+
+        var tokenEnum = Consume();
+        var tokenName = ExpectIdentifier();
+        Expect(TokenKind.OpenBrace, "'{'");
+
+        var variants = ParseDelimited(
+            ParseEnumVariant,
+            TokenKind.Comma,
+            "an identifier",
+            true,
+            TokenKind.CloseBrace,
+            TokenKind.SemiColon
+        );
+
+        Expect(TokenKind.CloseBrace, "'}'");
+
+        return new SyntaxDeclEnum(tokenEnum, tokenName, variants)
         {
             TemplateParams = templateParams,
             Attribs = attribs,

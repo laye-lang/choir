@@ -11,10 +11,10 @@ struct source_range {
     source_location end;
 }
 
-// enum token_kind {
-//     invalid,
-//     end_of_file,
-// }
+enum token_kind {
+    invalid,
+    end_of_file,
+}
 
 struct syntax_node {
     source_range range;
