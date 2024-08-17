@@ -150,18 +150,69 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(token
     }
 }
 
-public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxToken tokenName, IReadOnlyList<SyntaxNode> parameters)
-    : SyntaxNode(tokenName.Location)
+public abstract class SyntaxOperatorName(SyntaxToken tokenOperatorKeyword)
+    : SyntaxNode(tokenOperatorKeyword.Location)
+{
+    public SyntaxToken TokenOperatorKeyword { get; } = tokenOperatorKeyword;
+}
+
+public sealed class SyntaxOperatorSimple(SyntaxToken tokenOperatorKeyword, SyntaxToken tokenOperator)
+    : SyntaxOperatorName(tokenOperatorKeyword)
+{
+    public SyntaxToken TokenOperator { get; } = tokenOperator;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOperatorKeyword, tokenOperator];
+}
+
+public sealed class SyntaxOperatorCast(SyntaxToken tokenOperatorKeyword, SyntaxToken tokenCast, SyntaxNode type)
+    : SyntaxOperatorName(tokenOperatorKeyword)
+{
+    public SyntaxToken TokenCast { get; } = tokenCast;
+    public SyntaxNode Type { get; } = type;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOperatorKeyword, tokenCast, type];
+}
+
+public sealed class SyntaxOperatorNew(SyntaxToken tokenOperatorKeyword, SyntaxToken tokenNew)
+    : SyntaxOperatorName(tokenOperatorKeyword)
+{
+    public SyntaxNode TokenNew { get; } = tokenNew;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOperatorKeyword, tokenNew];
+}
+
+public sealed class SyntaxOperatorDelete(SyntaxToken tokenOperatorKeyword, SyntaxToken tokenDelete)
+    : SyntaxOperatorName(tokenOperatorKeyword)
+{
+    public SyntaxNode TokenDelete { get; } = tokenDelete;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOperatorKeyword, tokenDelete];
+}
+
+public sealed class SyntaxOperatorNewArray(SyntaxToken tokenOperatorKeyword, SyntaxToken tokenNew)
+    : SyntaxOperatorName(tokenOperatorKeyword)
+{
+    public SyntaxNode TokenNew { get; } = tokenNew;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOperatorKeyword, tokenNew];
+}
+
+public sealed class SyntaxOperatorDeleteArray(SyntaxToken tokenOperatorKeyword, SyntaxToken tokenDelete)
+    : SyntaxOperatorName(tokenOperatorKeyword)
+{
+    public SyntaxNode TokenDelete { get; } = tokenDelete;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOperatorKeyword, tokenDelete];
+}
+
+public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxNode name, IReadOnlyList<SyntaxNode> parameters)
+    : SyntaxNode(name.Location)
 {
     public required SyntaxTemplateParams? TemplateParams { get; init; }
     public required IReadOnlyList<SyntaxAttrib> Attribs { get; init; }
 
     public SyntaxNode ReturnType { get; } = returnType;
-    public SyntaxToken TokenName { get; } = tokenName;
+    public SyntaxNode Name { get; } = name;
     public IReadOnlyList<SyntaxNode> Params { get; } = parameters;
 
     public SyntaxNode? Body { get; init; } = null;
     public SyntaxToken? TokenSemiColon { get; init; } = null;
+
+    public bool IsOperatorOverload { get; } = name is SyntaxOperatorName;
 
     public override bool IsDecl { get; } = true;
     public override IEnumerable<SyntaxNode> Children
@@ -173,7 +224,7 @@ public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxToken tokenN
             foreach (var attrib in Attribs)
                 yield return attrib;
             yield return ReturnType;
-            yield return TokenName;
+            yield return Name;
             foreach (var param in Params)
                 yield return param;
             if (Body is not null)

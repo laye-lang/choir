@@ -36,6 +36,8 @@
     * [x] Offsetof
     * [x] Typeof
     * [x] Lambdas
+    * [ ] New
+    * [ ] Delete
     * [x] (Maybe) Ternary (if/then/else)
     * [x] (Maybe) Do Expression (Compound)
     * [ ] (Maybe) Do Expression (Monad Things)

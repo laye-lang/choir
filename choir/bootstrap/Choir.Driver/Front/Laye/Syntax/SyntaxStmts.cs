@@ -226,8 +226,15 @@ public sealed class SyntaxStmtDefer(SyntaxToken tokenDefer, SyntaxNode stmt)
 {
     public SyntaxToken TokenDefer { get; } = tokenDefer;
     public SyntaxNode Stmt { get; } = stmt;
-
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenDefer, stmt];
+}
+
+public sealed class SyntaxStmtDelete(SyntaxToken tokenDelete, SyntaxNode expr)
+    : SyntaxNode(tokenDelete.Location)
+{
+    public SyntaxToken TokenDelete { get; } = tokenDelete;
+    public SyntaxNode Expr { get; } = expr;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenDelete, expr];
 }
 
 public sealed class SyntaxStmtDoLoop(SyntaxToken tokenDo, SyntaxNode body, SyntaxToken tokenWhile, SyntaxNode condition)

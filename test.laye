@@ -11,6 +11,11 @@ struct source_range {
     source_location end;
 }
 
+// enum token_kind {
+//     invalid,
+//     end_of_file,
+// }
+
 struct syntax_node {
     source_range range;
 
@@ -19,14 +24,22 @@ struct syntax_node {
     }
 }
 
-void main() {
-    syntax_node foo;
-    if (foo is not token or token { ::end_of_file }) {
-
-    }
+struct translation_unit {
+    // store nodes
+    list<syntax_node mut*> owned_syntax_nodes;
 }
 
-// enum token_kind {
-//     invalid,
-//     end_of_file,
-// }
+i8 mut* operator new(int size) {
+    return libc::malloc(size);
+}
+
+syntax_node mut* operator new(int size, translation_unit mut& tu) {
+    var ptr = cast(syntax_node mut*) ::operator new(size);
+    list_add(tu.owned_syntax_nodes, ptr);
+    return ptr;
+}
+
+void main() {
+    translation_unit tu;
+    syntax_node* foo = new (&tu) syntax_node;
+}

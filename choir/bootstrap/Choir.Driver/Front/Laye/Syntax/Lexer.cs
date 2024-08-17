@@ -356,7 +356,10 @@ public sealed class Lexer(SourceFile sourceFile)
                 tokenInfo.Kind
                     = TryAdvance(':') ? TokenKind.LessColon
                     : TryAdvance('<')
-                        ? TryAdvance('=') ? TokenKind.LessLessEqual : TokenKind.LessLess
+                        ? TryAdvance('=')
+                            ? TryAdvance('>') ? TokenKind.LessEqualGreater
+                            : TokenKind.LessLessEqual
+                        : TokenKind.LessLess
                     : TryAdvance('=')
                         ? TryAdvance(':') ? TokenKind.LessEqualColon : TokenKind.LessEqual
                     : TokenKind.Less;

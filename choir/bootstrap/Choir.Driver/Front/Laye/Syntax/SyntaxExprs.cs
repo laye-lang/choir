@@ -35,20 +35,24 @@ public sealed class SyntaxTemplateArguments(IReadOnlyList<SyntaxNode> templateAr
 // global::foo
 public sealed class SyntaxNameref : SyntaxNode
 {
-    public static SyntaxNameref Create(SyntaxToken name) =>
-        new(name.Location, NamerefKind.Default, [name], null);
+    public static SyntaxNameref Create(ChoirContext context, SyntaxNode name) =>
+        new(context, name.Location, NamerefKind.Default, [name], null);
         
-    public static SyntaxNameref Create(SyntaxToken name, SyntaxTemplateArguments? templateArguments) =>
-        new(name.Location, NamerefKind.Default, [name], templateArguments);
+    public static SyntaxNameref Create(ChoirContext context, SyntaxNode name, SyntaxTemplateArguments? templateArguments) =>
+        new(context, name.Location, NamerefKind.Default, [name], templateArguments);
         
-    public static SyntaxNameref Create(Location location, NamerefKind kind, IReadOnlyList<SyntaxToken> names) =>
-        new(location, kind, names, null);
+    public static SyntaxNameref Create(ChoirContext context, Location location, NamerefKind kind, IReadOnlyList<SyntaxNode> names) =>
+        new(context, location, kind, names, null);
         
-    public static SyntaxNameref Create(Location location, NamerefKind kind, IReadOnlyList<SyntaxToken> names, SyntaxTemplateArguments? templateArguments) =>
-        new(location, kind, names, templateArguments);
+    public static SyntaxNameref Create(ChoirContext context, Location location, NamerefKind kind, IReadOnlyList<SyntaxNode> names, SyntaxTemplateArguments? templateArguments) =>
+        new(context, location, kind, names, templateArguments);
 
     public NamerefKind NamerefKind { get; }
-    public IReadOnlyList<SyntaxToken> Names { get; }
+    /// <summary>
+    /// All names except for the last must be token identifiers.
+    /// The last name may be an instance of type derived from <see cref="SyntaxOperatorName"/> or a token identifier.
+    /// </summary>
+    public IReadOnlyList<SyntaxNode> Names { get; }
     public SyntaxTemplateArguments? TemplateArguments { get; }
 
     public override bool CanBeType { get; } = true;
@@ -63,9 +67,12 @@ public sealed class SyntaxNameref : SyntaxNode
         }
     }
 
-    private SyntaxNameref(Location location, NamerefKind kind, IReadOnlyList<SyntaxToken> names, SyntaxTemplateArguments? templateArguments)
+    private SyntaxNameref(ChoirContext context, Location location, NamerefKind kind, IReadOnlyList<SyntaxNode> names, SyntaxTemplateArguments? templateArguments)
         : base(location)
     {
+        context.Assert(names.Count != 0, location, "nameref must contain at least one name");
+        context.Assert(names.Take(names.Count - 1).All(n => n is SyntaxToken token && token.Kind == TokenKind.Identifier), location, "all except for the last name in a nameref *must* be token identifiers");
+        context.Assert((names[names.Count - 1] is SyntaxToken token && token.Kind == TokenKind.Identifier) || names[names.Count - 1] is SyntaxOperatorName, location, $"the last name in a nameref *must* be a token identifier or an instance of {nameof(SyntaxOperatorName)}. found a {names[names.Count - 1].GetType().Name}.");
         NamerefKind = kind;
         Names = names;
         TemplateArguments = templateArguments;
@@ -154,6 +161,16 @@ public sealed class SyntaxExprConstructor(SyntaxToken tokenOpenBrace, IReadOnlyL
     public IReadOnlyList<SyntaxConstructorInit> Inits { get; } = inits;
     public SyntaxToken TokenCloseBrace { get; } = tokenCloseBrace;
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenOpenBrace, ..inits, tokenCloseBrace];
+}
+
+public sealed class SyntaxExprNew(SyntaxToken tokenNew, IReadOnlyList<SyntaxNode> @params, SyntaxNode type, IReadOnlyList<SyntaxConstructorInit> inits)
+    : SyntaxNode(tokenNew.Location)
+{
+    public SyntaxToken TokenNew { get; } = tokenNew;
+    public IReadOnlyList<SyntaxNode> Params { get; } = @params;
+    public SyntaxNode Type { get; } = type;
+    public IReadOnlyList<SyntaxConstructorInit> Inits { get; } = inits;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenNew, .. @params, type, ..inits];
 }
 
 public sealed class SyntaxExprField(SyntaxNode operand, SyntaxToken tokenFieldName)

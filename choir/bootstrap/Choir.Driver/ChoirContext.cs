@@ -182,6 +182,12 @@ public sealed class ChoirContext
         internal readonly string GetFormattedText() => builder.ToString();
     }
 
+    [DoesNotReturn]
+    public void Unreachable()
+    {
+        Diag.ICE("reached unreachable code");
+    }
+
     public void Assert([DoesNotReturnIf(false)] bool condition, [InterpolatedStringHandlerArgument("condition")] ref AssertInterpolatedStringHandler message)
     {
         if (condition) return;

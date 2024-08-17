@@ -72,6 +72,7 @@ public enum TokenKind : ushort
     ColonGreater,
     ColonGreaterEqual,
     LessEqual,
+    LessEqualGreater,
     LessLess,
     LessLessEqual,
     LessMinus,
@@ -209,6 +210,26 @@ public static class TokenKindExtensions
         TokenKind.Caret => 60,
 
         _ => -1,
+    };
+
+    public static bool IsOverloadableOperatorKind(this TokenKind kind) => kind switch
+    {
+        TokenKind.LessEqualGreater or
+        TokenKind.EqualEqual or TokenKind.BangEqual or
+        TokenKind.Less or TokenKind.LessEqual or
+        TokenKind.Greater or TokenKind.GreaterEqual or
+        TokenKind.LessColon or TokenKind.LessEqualColon or
+        TokenKind.ColonGreater or TokenKind.ColonGreaterEqual or
+        TokenKind.Ampersand or TokenKind.Pipe or TokenKind.Tilde or
+        TokenKind.LessLess or TokenKind.GreaterGreater or
+        TokenKind.GreaterGreaterGreater or
+        TokenKind.Plus or TokenKind.Minus or
+        TokenKind.PlusPipe or TokenKind.MinusPipe or
+        TokenKind.PlusPercent or TokenKind.MinusPercent or
+        TokenKind.Star or TokenKind.Slash or TokenKind.Percent or
+        TokenKind.SlashColon or TokenKind.PercentColon or
+        TokenKind.Caret => true,
+        _ => false,
     };
 
     public static bool IsRightAssociativeBinaryOperator(this TokenKind kind) => kind switch
