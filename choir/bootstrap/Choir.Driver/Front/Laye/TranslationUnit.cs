@@ -1,3 +1,4 @@
+
 namespace Choir.Front.Laye;
 
 public sealed class TranslationUnit(ChoirContext context)
@@ -12,5 +13,10 @@ public sealed class TranslationUnit(ChoirContext context)
         Context.Assert(module.TranslationUnit is null, "when adding a module to a translation unit, the module was already a part of another translation unit.");
         module.TranslationUnit = this;
         _modules.Add(module);
+    }
+
+    public Module? FindModuleBySourceFile(SourceFile sourceFile)
+    {
+        return _modules.Where(m => m.SourceFile == sourceFile).SingleOrDefault();
     }
 }

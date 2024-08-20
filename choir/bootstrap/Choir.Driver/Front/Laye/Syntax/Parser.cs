@@ -16,18 +16,15 @@ public partial class Parser(Module module)
 
     public static void ParseSyntax(Module module)
     {
+        module.Context.Assert(module.TranslationUnit is not null, "Module must be in a translation unit to parse a source file into it");
+
         if (module.TopLevelSyntax.Any())
             throw new InvalidOperationException("Can't repeatedly parse syntax into a module which already had syntax read into it.");
         
         var parser = new Parser(module);
-
+                
         while (parser.ParseTopLevelSyntax() is {} topLevelNode)
             module.AddTopLevelSyntax(topLevelNode);
-    }
-
-    private static bool IsImportDeclForCHeader(SyntaxDeclImport importDecl)
-    {
-        return importDecl.ImportKind == ImportKind.FilePath && importDecl.ModuleNameText.EndsWith(".h", StringComparison.InvariantCultureIgnoreCase);
     }
 
     private static bool IsDefinitelyTypeStart(TokenKind kind) => kind switch
@@ -58,9 +55,6 @@ public partial class Parser(Module module)
     private readonly SyntaxToken[] _tokens = module.Tokens.ToArray();
 
     private int _position = 0;
-    private bool _hasOnlyReadImports = true;
-
-    private readonly List<SyntaxDeclImport> _cHeaderImports = [];
     
     private bool IsAtEnd => _position >= _tokens.Length - 1;
     private SyntaxToken EndOfFileToken => _tokens[_tokens.Length - 1];
@@ -315,23 +309,6 @@ public partial class Parser(Module module)
 
     public SyntaxNode? ParseTopLevelSyntax()
     {
-        if (_hasOnlyReadImports)
-        {
-            if (CurrentToken.Kind == TokenKind.Import)
-            {
-                var importDecl = ParseImportDeclaration();
-                if (IsImportDeclForCHeader(importDecl))
-                    _cHeaderImports.Add(importDecl);
-
-                return importDecl;
-            }
-            else
-            {
-                _hasOnlyReadImports = false;
-                ParseImportedCHeaders();
-            }
-        }
-        
         if (IsAtEnd) return null;
 
         SyntaxTemplateParams? templateParams = null;
@@ -343,16 +320,7 @@ public partial class Parser(Module module)
         switch (CurrentToken.Kind)
         {
             case TokenKind.Import:
-            {
-                var importDecl = ParseImportDeclaration();
-                if (IsImportDeclForCHeader(importDecl))
-                {
-                    Debug.Assert(!_hasOnlyReadImports);
-                    Context.Diag.Error("import declarations referencing C header files must appear only at the top of the source file");
-                }
-                
-                return importDecl;
-            }
+                return ParseImportDeclaration();
             
             case TokenKind.Alias:
             case TokenKind.Identifier when CurrentToken.TextValue == "strict" && PeekAt(1, TokenKind.Alias):

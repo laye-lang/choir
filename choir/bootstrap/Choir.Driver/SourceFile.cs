@@ -1,7 +1,10 @@
 namespace Choir;
 
-public class SourceFile
+public class SourceFile : IEquatable<SourceFile>
 {
+    public static bool operator ==(SourceFile a, SourceFile b) =>  a.Equals(b);
+    public static bool operator !=(SourceFile a, SourceFile b) => !a.Equals(b);
+
     public ChoirContext Context { get; }
 
     public FileInfo FileInfo { get; }
@@ -29,4 +32,8 @@ public class SourceFile
         
         return Text.AsSpan().Slice(location.Offset, location.Length);
     }
+
+    public override int GetHashCode() => FileId.GetHashCode();
+    public override bool Equals(object? obj) => obj is SourceFile other && Equals(other);
+    public bool Equals(SourceFile? other) => ReferenceEquals(other, this);
 }

@@ -1,16 +1,17 @@
 using System.Text;
 
-using Choir.Front.Laye.Sema;
+using Choir.Front.Laye.Syntax;
 
 using ClangSharp;
 using ClangSharp.Interop;
 
 using static ClangSharp.Interop.CXTranslationUnit_Flags;
 
-namespace Choir.Front.Laye.Syntax;
+namespace Choir.Front.Laye.Sema;
 
-public partial class Parser
+public partial class Sema
 {
+    private readonly Dictionary<(string RelativeDirPath, string cHeaderFileName), Module> _parsedCHeaderModules = [];
     private readonly HashSet<CXCursor> _visitedCanonicalDecls = [];
     private readonly Dictionary<CXCursor, SemaDecl> _generatedCTypeDecls = [];
 
@@ -19,21 +20,20 @@ public partial class Parser
         return new SyntaxToken(kind, new Location(0, 0, cFile.FileId));
     }
 
-    private void ParseImportedCHeaders()
+    private Module ParseCHeaderFromImport(SyntaxDeclImport cHeaderImport)
     {
-        if (_cHeaderImports.Count == 0) return;
-        if (Context.HasIssuedError) return;
+        var headerKey = (Module.SourceFile.FileInfo.Directory?.FullName ?? "", cHeaderImport.ModuleNameText);
+        if (_parsedCHeaderModules.TryGetValue(headerKey, out var cImportModule))
+            return cImportModule;
 
         var tuBuilder = new StringBuilder();
-        foreach (var cImport in _cHeaderImports)
-        {
-            var locInfo = cImport.Location.SeekLineColumn(Context)!.Value;
-            //tuBuilder.AppendLine($"#line {locInfo.Line} \"{SourceFile.FileInfo.FullName}\"");
-            tuBuilder.AppendLine($"#include <{cImport.ModuleNameText}>");
-        }
+        
+        var locInfo = cHeaderImport.Location.SeekLineColumn(Context)!.Value;
+        //tuBuilder.AppendLine($"#line {locInfo.Line} \"{SourceFile.FileInfo.FullName}\"");
+        tuBuilder.AppendLine($"#include <{cHeaderImport.ModuleNameText}>");
 
         string tuSource = tuBuilder.ToString();
-        string tuFileName = SourceFile.FileInfo.Name + ".generated.c";
+        string tuFileName = Module.SourceFile.FileInfo.Name + ".generated.c";
 
         var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
         Directory.CreateDirectory(tempDir);
@@ -47,10 +47,7 @@ public partial class Parser
             
             using var index = ClangSharp.Index.Create();
 
-            var cflags = _cHeaderImports
-                .Where(i => i.CFlags is not null)
-                .SelectMany(i => i.CFlags!.Flags.Select(f => f.TextValue))
-                .Distinct();
+            var cflags = cHeaderImport.CFlags?.Flags.Select(f => f.TextValue).Distinct() ?? [];
             string[] clangArgs = [$"-I{Environment.CurrentDirectory}", ..(Context.IncludeDirectories.Select(i => $"-I{i}")), .. cflags];
             var translationUnit = CXTranslationUnit.Parse(index.Handle, file.FullName, clangArgs, [], CXTranslationUnit_None | CXTranslationUnit_SkipFunctionBodies | CXTranslationUnit_DetailedPreprocessingRecord | CXTranslationUnit_CacheCompletionResults);
 
@@ -70,8 +67,9 @@ public partial class Parser
 
             var clangFile = translationUnit.GetFile(file.FullName);
 
-            var cImportModule = new Module(choirFile);
+            cImportModule = new Module(choirFile);
             Module.TranslationUnit?.AddModule(cImportModule);
+            _parsedCHeaderModules[headerKey] = cImportModule;
 
             using var tu = ClangSharp.TranslationUnit.GetOrCreate(translationUnit);
 
@@ -109,6 +107,8 @@ public partial class Parser
                 //Console.WriteLine(decl.CursorKindSpelling + " :: " + decl);
                 CreateCBindingSema(cImportModule, decl);
             }
+
+            return cImportModule;
         }
         finally
         {

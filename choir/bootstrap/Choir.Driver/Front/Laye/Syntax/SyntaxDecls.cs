@@ -123,6 +123,7 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(token
     public required SyntaxImportCFlags? CFlags { get; init; }
     public required SyntaxToken? TokenSemiColon { get; init; }
 
+    public bool IsLibraryModule => TokenModuleName.Kind == TokenKind.Identifier;
     public string ModuleNameText => TokenModuleName.TextValue;
     public bool IsAliased => TokenAlias is not null;
     public string AliasNameText => TokenAlias?.TextValue ?? "";

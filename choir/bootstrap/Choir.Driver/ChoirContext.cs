@@ -7,6 +7,14 @@ using Choir.Front.Laye.Sema;
 
 namespace Choir;
 
+[Flags]
+public enum FileLookupLocations
+{
+    None = 0,
+    IncludeDirectories = 1 << 0,
+    LibraryDirectories = 1 << 1,
+}
+
 public sealed class TypeStorage
 {
     private readonly Dictionary<int, SemaTypeBuiltIn> _layeBoolTypes = [];
@@ -108,6 +116,7 @@ public sealed class ChoirContext
     public DiagnosticLocationStyle DiagnosticLocationStyle { get; set; } = DiagnosticLocationStyle.LineColumn;
 
     public List<string> IncludeDirectories { get; set; } = [];
+    public List<string> LibraryDirectories { get; set; } = [];
     public TypeStorage Types { get; } = new();
 
     public ChoirContext(bool useColor)
@@ -120,6 +129,43 @@ public sealed class ChoirContext
     {
         if (kind >= DiagnosticKind.Error)
             HasIssuedError = true;
+    }
+
+    public FileInfo? LookupFile(string relativeSearchPath, DirectoryInfo? relativeTo, FileLookupLocations locations)
+    {
+        if (relativeTo is not null && LookupFileInDirectory(relativeTo) is {} relativeFileInfo)
+            return relativeFileInfo;
+
+        if (locations.HasFlag(FileLookupLocations.IncludeDirectories))
+        {
+            foreach (var includeDir in IncludeDirectories)
+            {
+                if (LookupFileInDirectory(new DirectoryInfo(includeDir)) is {} includeFileInfo)
+                    return includeFileInfo;
+            }
+        }
+
+        if (locations.HasFlag(FileLookupLocations.LibraryDirectories))
+        {
+            foreach (var libraryDir in LibraryDirectories)
+            {
+                if (LookupFileInDirectory(new DirectoryInfo(libraryDir)) is {} libraryFileInfo)
+                    return libraryFileInfo;
+            }
+        }
+
+        return null;
+
+        FileInfo? LookupFileInDirectory(DirectoryInfo directory)
+        {
+            if (!directory.Exists) return null;
+
+            var fileInfo = new FileInfo(Path.Combine(directory.FullName, relativeSearchPath));
+            if (fileInfo.Exists)
+                return fileInfo;
+            
+            return null;
+        }
     }
 
     public SourceFile GetSourceFile(FileInfo fileInfo)
