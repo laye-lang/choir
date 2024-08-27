@@ -1,6 +1,0 @@
-export import
-  size_t
-, ptrdiff_t
-//, max_align_t
-//, nullptr_t
-from "stddef.h";
