@@ -1,0 +1,3 @@
+export import "libc/stddef.laye" as stddef;
+export import "libc/stdlib.laye" as stdlib;
+export import "libc/stdio.laye" as stdio;
