@@ -221,7 +221,7 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
             throw new UnreachableException();
         }
 
-        int columnsRem = columns - 2;
+        int columnsRem = columns - 3;
 
         var builder = new StringBuilder();
 
