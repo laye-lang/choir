@@ -24,6 +24,8 @@ public sealed class TypeStorage
     private readonly Dictionary<SemaDeclStruct, SemaTypeStruct> _layeStructTypes = [];
     private readonly Dictionary<SemaDeclEnum, SemaTypeEnum> _layeEnumTypes = [];
     private readonly Dictionary<SemaDeclAlias, SemaTypeAlias> _layeAliasTypes = [];
+
+    public int MaxSupportedIntBitWidth { get; } = 256;
     
     public SemaTypePoison LayeTypePoison { get; } = SemaTypePoison.Instance;
 
@@ -179,10 +181,12 @@ public sealed class ChoirContext
             try
             {
                 sourceText = File.ReadAllText(canonicalPath, Encoding.UTF8).ReplaceLineEndings("\n");
+                if (!sourceText.EndsWith('\n'))
+                    sourceText += "\n"; // oh boy this is a lot of copying, forgive me
             }
             catch (Exception ex)
             {
-                Diag.Fatal($"Could not read source file \"{canonicalPath}\": {ex.Message}");
+                Diag.ICE($"Could not read source file \"{canonicalPath}\": {ex.Message}");
                 throw new UnreachableException();
             }
 
@@ -232,6 +236,12 @@ public sealed class ChoirContext
     public void Unreachable()
     {
         Diag.ICE("reached unreachable code");
+    }
+
+    [DoesNotReturn]
+    public void Unreachable(string message)
+    {
+        Diag.ICE($"reached unreachable code: {message}");
     }
 
     public void Assert([DoesNotReturnIf(false)] bool condition, [InterpolatedStringHandlerArgument("condition")] ref AssertInterpolatedStringHandler message)

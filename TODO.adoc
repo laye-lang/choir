@@ -96,6 +96,7 @@
 * [ ] Declarations
     * [ ] Operator functions
     * [ ] Function Parameters need default value support
+    * [ ] Advanced import queries
     * [x] Struct
     * [ ] Enum
     * [x] Alias

@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using Choir.CommandLine;
 
 namespace Choir.Front.Laye.Syntax;
 
@@ -47,10 +49,11 @@ public partial class Parser(Module module)
         TokenKind.LiteralRune or TokenKind.LiteralString => true,
         _ => false,
     };
-
+    
     public Module Module { get; } = module;
     public SourceFile SourceFile { get; } = module.SourceFile;
     public ChoirContext Context { get; } = module.Context;
+    public Colors Colors { get; } = new Colors(module.Context?.UseColor ?? false);
 
     private readonly SyntaxToken[] _tokens = module.Tokens.ToArray();
 
@@ -59,7 +62,19 @@ public partial class Parser(Module module)
     private bool IsAtEnd => _position >= _tokens.Length - 1;
     private SyntaxToken EndOfFileToken => _tokens[_tokens.Length - 1];
     private SyntaxToken CurrentToken => Peek(0);
-    private Location CurrentLocation => CurrentToken.Location;
+    private Location CurrentLocation
+    {
+        get
+        {
+            if (IsAtEnd && _position > 0)
+            {
+                var prevLocation = _tokens[_position - 1].Location;
+                return new Location(prevLocation.Offset + prevLocation.Length, 1, SourceFile.FileId);
+            }
+
+            return CurrentToken.Location;
+        }
+    }
 
     private SyntaxToken Peek(int ahead)
     {
@@ -209,7 +224,7 @@ public partial class Parser(Module module)
     private SyntaxToken Expect(TokenKind kind, string expected)
     {
         if (!Consume(kind, out var token))
-            Context.Diag.Error(CurrentLocation, $"expected {expected}");
+            Context.Diag.Error(CurrentLocation, $"Expected {expected}");
         return token;
     }
 
@@ -222,7 +237,10 @@ public partial class Parser(Module module)
     private void Expect(TokenKind kind, string expected, out SyntaxToken token)
     {
         if (!Consume(kind, out token))
-            Context.Diag.Error(CurrentLocation, $"expected {expected}");
+        {
+            Context.Diag.Error(CurrentLocation, $"Expected {expected}");
+            Context.Diag.Note(CurrentLocation, $"This is just an {Colors.Cyan}example{Colors.Default} note to test grouping");
+        }
     }
 
     private SyntaxToken ExpectSemiColon() { Expect(TokenKind.SemiColon, "';'", out var token); return token; }
@@ -310,6 +328,9 @@ public partial class Parser(Module module)
     public SyntaxNode? ParseTopLevelSyntax()
     {
         if (IsAtEnd) return null;
+
+        if (At(TokenKind.Export) && PeekAt(1, TokenKind.Import))
+            return ParseImportDeclaration();
 
         SyntaxTemplateParams? templateParams = null;
         if (TryAdvance(TokenKind.Template, out var tokenTemplate))
@@ -461,6 +482,8 @@ public partial class Parser(Module module)
 
     public SyntaxDeclImport ParseImportDeclaration()
     {
+        TryAdvance(TokenKind.Export, out var tokenExport);
+
         Context.Assert(CurrentToken.Kind == TokenKind.Import, CurrentLocation, $"{nameof(ParseImportDeclaration)} called when not at 'import'.");
         Advance(out var tokenImport);
 
@@ -488,6 +511,7 @@ public partial class Parser(Module module)
             return new SyntaxDeclImport(tokenImport)
             {
                 ImportKind = tokenModuleName.Kind == TokenKind.LiteralString ? ImportKind.FilePath : ImportKind.Library,
+                TokenExport = tokenExport,
                 Queries = [],
                 TokenFrom = null,
                 TokenModuleName = tokenModuleName,
@@ -518,6 +542,7 @@ public partial class Parser(Module module)
         {
             ImportKind = tokenPath.Kind == TokenKind.LiteralString ? ImportKind.FilePath
                        : tokenPath.Kind == TokenKind.Identifier ? ImportKind.Library : ImportKind.Invalid,
+            TokenExport = tokenExport,
             Queries = queries,
             TokenFrom = tokenFrom,
             TokenModuleName = tokenPath,

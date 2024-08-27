@@ -179,6 +179,13 @@ public sealed class SemaTypeErrorPair(SemaTypeQual resultType, SemaTypeQual erro
     public override IEnumerable<BaseSemaNode> Children { get; } = [resultType, errorType];
 }
 
+public sealed class SemaTypeDelegate(SemaDeclDelegate declDelegate) : SemaType
+{
+    public SemaDeclDelegate DeclDelegate { get; } = declDelegate;
+    public override string ToDebugString(Colors colors) =>
+        $"{colors.LayeTypeName()}{DeclDelegate.Name}";
+}
+
 public sealed class SemaTypeStruct(SemaDeclStruct declStruct) : SemaType
 {
     public SemaDeclStruct DeclStruct { get; } = declStruct;

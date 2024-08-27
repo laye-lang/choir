@@ -1,3 +1,5 @@
+//#define DEBUG_PRINT_TO_CONSOLE
+
 using System.Text;
 
 using Choir.Front.Laye.Syntax;
@@ -14,6 +16,13 @@ public partial class Sema
     private readonly Dictionary<(string RelativeDirPath, string cHeaderFileName), Module> _parsedCHeaderModules = [];
     private readonly HashSet<CXCursor> _visitedCanonicalDecls = [];
     private readonly Dictionary<CXCursor, SemaDecl> _generatedCTypeDecls = [];
+
+    private static void DebugPrint(string message)
+    {
+#if DEBUG_PRINT_TO_CONSOLE
+        Console.WriteLine(message);
+#endif
+    }
 
     private SyntaxToken CreateTokenForCFile(SourceFile cFile, TokenKind kind = TokenKind.Missing)
     {
@@ -97,14 +106,14 @@ public partial class Sema
                 }
 
                 string defineBodyText = text.Substring(locInfo.LineStart, lineLength);
-                Console.WriteLine($"// Line {locInfo.Line}, Column {locInfo.Column} in '{definitionFile.FileInfo.FullName}'");
-                Console.WriteLine(defineBodyText);
+                DebugPrint($"// Line {locInfo.Line}, Column {locInfo.Column} in '{definitionFile.FileInfo.FullName}'");
+                DebugPrint(defineBodyText);
             }
             #endif
             
             foreach (var decl in tu.TranslationUnitDecl.Decls)
             {
-                //Console.WriteLine(decl.CursorKindSpelling + " :: " + decl);
+                //DebugPrint(decl.CursorKindSpelling + " :: " + decl);
                 CreateCBindingSema(cImportModule, decl);
             }
 
@@ -148,7 +157,7 @@ public partial class Sema
         {
             default:
             {
-                Console.WriteLine($"Unhandled type: {typeKind} ({type})");
+                DebugPrint($"Unhandled type: {typeKind} ({type})");
                 return null;
             }
 
@@ -194,14 +203,14 @@ public partial class Sema
                 var typeEnum = (EnumType)type;
                 // var underlyingIntegerType = typeEnum.Decl.IntegerType;
                 //return new SemaTypeEnum();
-                Console.WriteLine($"Unhandled enum type: {typeKind} ({type})");
+                DebugPrint($"Unhandled enum type: {typeKind} ({type})");
                 return null;
             }
 
             case CXTypeKind.CXType_Elaborated:
             {
                 var typeElaborated = (ElaboratedType)type;
-                //Console.WriteLine($"Unhandled elaborated: {typeElaborated.OwnedTagDecl} ({typeElaborated.NamedType})");
+                //DebugPrint($"Unhandled elaborated: {typeElaborated.OwnedTagDecl} ({typeElaborated.NamedType})");
                 return CreateCBindingSema(cModule, typeElaborated.NamedType);
             }
 
@@ -213,7 +222,7 @@ public partial class Sema
                     return new SemaTypeElaborated([typeTypedef.Decl.Name], decl.AliasedType).Qualified(Location.Nowhere, qualifiers);
                 }
                 
-                Console.WriteLine($"Unhandled typedef type: {typeTypedef.Decl} {typeTypedef.Decl.Handle.Hash}");
+                DebugPrint($"Unhandled typedef type: {typeTypedef.Decl} {typeTypedef.Decl.Handle.Hash}");
                 return null;
             }
 
@@ -225,7 +234,7 @@ public partial class Sema
                 else if (typeRecord.Decl.Definition is null)
                     return cModule.Context.Types.LayeTypeFFIChar.Qualified(Location.Nowhere, qualifiers);
 
-                Console.WriteLine($"Unhandled record type: {typeRecord} ({typeRecord.Decl}, {typeRecord.Decl.UnderlyingDecl.Handle.Hash})");
+                DebugPrint($"Unhandled record type: {typeRecord} ({typeRecord.Decl}, {typeRecord.Decl.UnderlyingDecl.Handle.Hash})");
                 return null;
             }
         }
@@ -270,12 +279,20 @@ public partial class Sema
                 var aliasedType = CreateCBindingSema(cModule, declTypedef.UnderlyingType);
                 if (aliasedType is null) break;
 
-                generatedDecl = new SemaDeclAlias(location, declTypedef.Name, aliasedType);
+                generatedDecl = new SemaDeclAlias(location, declTypedef.Name)
+                {
+                    AliasedType = aliasedType,
+                    Linkage = Linkage.Exported,
+                };
+                
+                cModule.FileScope.AddDecl(declTypedef.Name, generatedDecl);
+                cModule.ExportScope.AddDecl(declTypedef.Name, generatedDecl);
             } break;
 
             case CX_DeclKind.CX_DeclKind_Record:
             {
                 var declRecord = (RecordDecl)decl;
+                var declRecordName = $"struct_{declRecord.Name}";
                 if (declRecord.Definition is {} defRecord)
                 {
                     var fields = new SemaDeclField[defRecord.Fields.Count];
@@ -287,12 +304,23 @@ public partial class Sema
                         fields[i] = new(Location.Nowhere, fieldName, fieldType);
                     }
 
-                    generatedDecl = new SemaDeclStruct(location, $"struct_{declRecord.Name}", fields, []);
+                    generatedDecl = new SemaDeclStruct(location, declRecordName)
+                    {
+                        FieldDecls = fields,
+                        Linkage = Linkage.Exported,
+                    };
                 }
                 else
                 {
-                    generatedDecl = new SemaDeclAlias(location, $"struct_{declRecord.Name}", cModule.Context.Types.LayeTypeFFIChar.Qualified(location));
+                    generatedDecl = new SemaDeclAlias(location, declRecordName)
+                    {
+                        AliasedType = cModule.Context.Types.LayeTypeFFIChar.Qualified(location),
+                        Linkage = Linkage.Exported,
+                    };
                 }
+                
+                cModule.FileScope.AddDecl(declRecordName, generatedDecl);
+                cModule.ExportScope.AddDecl(declRecordName, generatedDecl);
             } break;
 
             case CX_DeclKind.CX_DeclKind_Function:
@@ -304,7 +332,7 @@ public partial class Sema
                     : CreateCBindingSema(cModule, declFunction.ReturnType);
                 if (returnType is null) break;
 
-                var paramDecls = new SemaDeclParameter[declFunction.NumParams];
+                var paramDecls = new SemaDeclParam[declFunction.NumParams];
                 for (int i = 0; i < paramDecls.Length; i++)
                 {
                     var paramType = CreateCBindingSema(cModule, declFunction.Parameters[i].Type);
@@ -313,7 +341,21 @@ public partial class Sema
                     paramDecls[i] = new(GetLocation(declFunction.Parameters[i]), paramName, paramType);
                 }
 
-                generatedDecl = new SemaDeclFunction(location, declFunction.Name, returnType, paramDecls);
+                // TODO(local): variadic C functions
+                generatedDecl = new SemaDeclFunction(location, declFunction.Name)
+                {
+                    ReturnType = returnType,
+                    ParameterDecls = paramDecls,
+                    Linkage = declFunction.IsGlobal ? Linkage.Exported : Linkage.Internal,
+                    IsForeign = true,
+                    ForeignSymbolName = declFunction.Name,
+                    // TODO(local): get the calling convention from C functions
+                    CallingConvention = CallingConvention.CDecl,
+                };
+
+                cModule.FileScope.AddDecl(declFunction.Name, generatedDecl);
+                if (((SemaDeclFunction)generatedDecl).Linkage == Linkage.Exported)
+                    cModule.ExportScope.AddDecl(declFunction.Name, generatedDecl);
             } break;
 
             case CX_DeclKind.CX_DeclKind_Var:
@@ -323,20 +365,30 @@ public partial class Sema
                 var varType = CreateCBindingSema(cModule, declVar.Type);
                 if (varType is null) break;
 
-                generatedDecl = new SemaDeclBinding(location, declVar.Name, varType, null);
+                generatedDecl = new SemaDeclBinding(location, declVar.Name)
+                {
+                    BindingType = varType,
+                    Linkage = declVar.StorageClass == CX_StorageClass.CX_SC_Static ? Linkage.Internal : Linkage.Exported,
+                    IsForeign = true,
+                    ForeignSymbolName = declVar.Name,
+                };
+
+                cModule.FileScope.AddDecl(declVar.Name, generatedDecl);
+                if (((SemaDeclBinding)generatedDecl).Linkage == Linkage.Exported)
+                    cModule.ExportScope.AddDecl(declVar.Name, generatedDecl);
             } break;
         }
 
 end_generate:;
         if (generatedDecl is not null)
         {
-            // Console.WriteLine($"Handled decl: {decl.Handle.Hash} = {decl.Spelling}");
+            // DebugPrint($"Handled decl: {decl.Handle.Hash} = {decl.Spelling}");
             _generatedCTypeDecls[decl.Handle] = generatedDecl;
             cModule.AddDecl(generatedDecl);
         }
         else
         {
-            Console.WriteLine($"Unhandled decl: {declKind} {decl.Spelling}");
+            DebugPrint($"Unhandled decl: {declKind} {decl.Spelling}");
         }
     }
 
@@ -417,7 +469,7 @@ end_generate:;
                 var returnTypeSyntax = CreateCBindingSyntax(cModule, cFile, declFunc.ReturnType);
                 if (returnTypeSyntax is null)
                 {
-                    //Console.WriteLine($"unhandled return type: {declFunc.ReturnType} ({declFunc.ReturnType.Kind}, {declFunc.ReturnType.GetType().Name})");
+                    //DebugPrint($"unhandled return type: {declFunc.ReturnType} ({declFunc.ReturnType.Kind}, {declFunc.ReturnType.GetType().Name})");
                     //returnTypeSyntax = new SyntaxToken(SyntaxKind.TokenMissing, new Location(0, 0, clangFile.FileId));
                     return null;
                 }

@@ -65,7 +65,7 @@ public sealed class SemaDeclTemplateValueParameter(Location location, string nam
     public override IEnumerable<BaseSemaNode> Children { get; } = [paramType];
 }
 
-public sealed class SemaDeclParameter(Location location, string name, SemaTypeQual paramType)
+public sealed class SemaDeclParam(Location location, string name, SemaTypeQual paramType)
     : SemaDecl(location)
 {
     public string Name { get; } = name;
@@ -75,18 +75,20 @@ public sealed class SemaDeclParameter(Location location, string name, SemaTypeQu
     public override IEnumerable<BaseSemaNode> Children { get; } = [paramType];
 }
 
-public sealed class SemaDeclFunction(Location location, string name, SemaTypeQual returnType, SemaDeclParameter[] parameterDecls)
+public sealed class SemaDeclFunction(Location location, string name)
     : SemaDecl(location)
 {
     public string Name { get; } = name;
-    public SemaTypeQual ReturnType { get; } = returnType;
-    public IReadOnlyList<SemaDeclParameter> ParameterDecls { get; } = parameterDecls;
-    public SemaDeclTemplateParameters? TemplateParameters { get; init; }
-    public SemaStmt? Body { get; init; }
+
+    public SemaTypeQual ReturnType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
+    public IReadOnlyList<SemaDeclParam> ParameterDecls { get; set; } = [];
+    public SemaDeclTemplateParameters? TemplateParameters { get; set; }
+    public SemaStmt? Body { get; set; }
     
-    public Linkage Linkage { get; init; } = Linkage.Internal;
-    public string? ForeignSymbolName { get; init; }
-    public CallingConvention CallingConvention { get; init; } = CallingConvention.Laye;
+    public Linkage Linkage { get; set; } = Linkage.Internal;
+    public bool IsForeign { get; set; } = false;
+    public string? ForeignSymbolName { get; set; }
+    public CallingConvention CallingConvention { get; set; } = CallingConvention.Laye;
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -103,16 +105,17 @@ public sealed class SemaDeclFunction(Location location, string name, SemaTypeQua
     }
 }
 
-public sealed class SemaDeclDelegate(Location location, string name, SemaTypeQual returnType, SemaDeclParameter[] parameterDecls)
+public sealed class SemaDeclDelegate(Location location, string name)
     : SemaDecl(location)
 {
     public string Name { get; } = name;
-    public SemaTypeQual ReturnType { get; } = returnType;
-    public IReadOnlyList<SemaDeclParameter> ParameterDecls { get; } = parameterDecls;
-    public SemaDeclTemplateParameters? TemplateParameters { get; init; }
+
+    public SemaTypeQual ReturnType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
+    public IReadOnlyList<SemaDeclParam> ParameterDecls { get; set; } = [];
+    public SemaDeclTemplateParameters? TemplateParameters { get; set; }
     
-    public Linkage Linkage { get; init; } = Linkage.Internal;
-    public CallingConvention CallingConvention { get; init; } = CallingConvention.Laye;
+    public Linkage Linkage { get; set; } = Linkage.Internal;
+    public CallingConvention CallingConvention { get; set; } = CallingConvention.Laye;
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -127,14 +130,27 @@ public sealed class SemaDeclDelegate(Location location, string name, SemaTypeQua
     }
 }
 
-public sealed class SemaDeclBinding(Location location, string name, SemaTypeQual bindingType, SemaExpr? initialValue)
+public sealed class SemaDeclBinding(Location location, string name)
     : SemaDecl(location)
 {
     public string Name { get; } = name;
-    public SemaTypeQual BindingType { get; } = bindingType;
-    public SemaExpr? InitialValue { get; } = initialValue;
 
-    public override IEnumerable<BaseSemaNode> Children { get; } = initialValue is not null ? [bindingType, initialValue] : [bindingType];
+    public SemaTypeQual BindingType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
+    public SemaExpr? InitialValue { get; set; }
+    
+    public Linkage Linkage { get; set; } = Linkage.Internal;
+    public bool IsForeign { get; set; } = false;
+    public string? ForeignSymbolName { get; set; }
+
+    public override IEnumerable<BaseSemaNode> Children
+    {
+        get
+        {
+            yield return BindingType;
+            if (InitialValue is not null)
+                yield return InitialValue;
+        }
+    }
 }
 
 public sealed class SemaDeclField(Location location, string name, SemaTypeQual fieldType)
@@ -146,15 +162,16 @@ public sealed class SemaDeclField(Location location, string name, SemaTypeQual f
     public override IEnumerable<BaseSemaNode> Children { get; } = [fieldType];
 }
 
-public sealed class SemaDeclStruct(Location location, string name, SemaDeclField[] fields, SemaDeclStruct[] variants)
+public sealed class SemaDeclStruct(Location location, string name)
     : SemaDecl(location)
 {
     public string Name { get; } = name;
-    public IReadOnlyList<SemaDeclField> FieldDecls { get; } = fields;
-    public IReadOnlyList<SemaDeclStruct> VariantDecls { get; } = variants;
+
+    public IReadOnlyList<SemaDeclField> FieldDecls { get; set; } = [];
+    public IReadOnlyList<SemaDeclStruct> VariantDecls { get; set; } = [];
     public SemaDeclTemplateParameters? TemplateParameters { get; init; }
     
-    public Linkage Linkage { get; init; } = Linkage.Internal;
+    public Linkage Linkage { get; set; } = Linkage.Internal;
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -177,13 +194,14 @@ public sealed class SemaDeclEnumVariant(Location location, string name, BigInteg
     public BigInteger Value { get; } = value;
 }
 
-public sealed class SemaDeclEnum(Location location, string name, SemaDeclEnumVariant[] variants)
+public sealed class SemaDeclEnum(Location location, string name)
     : SemaDecl(location)
 {
     public string Name { get; } = name;
-    public IReadOnlyList<SemaDeclEnumVariant> Variants { get; } = variants;
+
+    public IReadOnlyList<SemaDeclEnumVariant> Variants { get; set; } = [];
     
-    public Linkage Linkage { get; init; } = Linkage.Internal;
+    public Linkage Linkage { get; set; } = Linkage.Internal;
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -195,15 +213,16 @@ public sealed class SemaDeclEnum(Location location, string name, SemaDeclEnumVar
     }
 }
 
-public sealed class SemaDeclAlias(Location location, string name, SemaTypeQual alaisedType, bool isStrict = false)
+public sealed class SemaDeclAlias(Location location, string name, bool isStrict = false)
     : SemaDecl(location)
 {
     public string Name { get; } = name;
-    public bool IsStrict { get; } = isStrict;
-    public SemaTypeQual AliasedType { get; } = alaisedType;
-    public SemaDeclTemplateParameters? TemplateParameters { get; init; }
+
+    public bool IsStrict { get; set; } = isStrict;
+    public SemaTypeQual AliasedType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
+    public SemaDeclTemplateParameters? TemplateParameters { get; set; }
     
-    public Linkage Linkage { get; init; } = Linkage.Internal;
+    public Linkage Linkage { get; set; } = Linkage.Internal;
 
     public override IEnumerable<BaseSemaNode> Children
     {

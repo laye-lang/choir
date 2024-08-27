@@ -16,6 +16,9 @@ public sealed class Module(SourceFile sourceFile)
     public ChoirContext Context { get; } = sourceFile.Context;
     public TranslationUnit? TranslationUnit { get; internal set; }
 
+    public Scope FileScope { get; } = new();
+    public Scope ExportScope { get; } = new();
+
     public bool HasTokens => _tokens.Count != 0;
     public IEnumerable<SyntaxToken> Tokens => _tokens;
 

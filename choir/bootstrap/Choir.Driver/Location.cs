@@ -28,13 +28,19 @@ public struct Location(int offset, int length, int fileId)
         int lineEnd = Offset;
 
         string text = file.Text;
+        if (lineStart >= text.Length)
+            lineStart = text.Length - 1;
+        
+        bool isNewlineLocation = Length == 1 && text[lineStart] == '\n';
 
         // seek to start of line
+        if (isNewlineLocation && lineStart > 0) lineStart--;
         while (lineStart > 0 && text[lineStart] != '\n') lineStart--;
-        if (text[lineStart] == '\n') lineStart++;
+        if (!isNewlineLocation && text[lineStart] == '\n') lineStart++;
 
         // seek to end of line
         while (lineEnd < text.Length && text[lineEnd] != '\n') lineEnd++;
+        if (isNewlineLocation && lineEnd < text.Length && text[lineEnd] == '\n') lineEnd++;
 
         int line = 1;
         int column = 1;

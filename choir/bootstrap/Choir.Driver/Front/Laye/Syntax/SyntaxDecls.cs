@@ -114,6 +114,7 @@ public sealed class SyntaxImportCFlags(SyntaxToken tokenCFlags, SyntaxToken toke
 public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(tokenImport.Location)
 {
     public required ImportKind ImportKind { get; init; }
+    public SyntaxToken? TokenExport { get; init; }
     public SyntaxToken TokenImport { get; } = tokenImport;
     public required IReadOnlyList<SyntaxImportQuery> Queries { get; init; }
     public SyntaxToken? TokenFrom { get; init; }
@@ -123,16 +124,21 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(token
     public required SyntaxImportCFlags? CFlags { get; init; }
     public required SyntaxToken? TokenSemiColon { get; init; }
 
-    public bool IsLibraryModule => TokenModuleName.Kind == TokenKind.Identifier;
+    public bool IsLibraryModule => ImportKind == ImportKind.Library;
+    public bool IsExported => TokenExport is not null;
     public string ModuleNameText => TokenModuleName.TextValue;
     public bool IsAliased => TokenAlias is not null;
     public string AliasNameText => TokenAlias?.TextValue ?? "";
+
+    public Module? ReferencedModule { get; set; }
 
     public override bool IsDecl { get; } = true;
     public override IEnumerable<SyntaxNode> Children
     {
         get
         {
+            if (TokenExport is not null)
+                yield return TokenExport;
             yield return TokenImport;
             foreach (var query in Queries)
                 yield return query;

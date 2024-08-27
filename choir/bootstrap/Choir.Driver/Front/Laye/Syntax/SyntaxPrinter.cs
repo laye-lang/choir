@@ -2,11 +2,17 @@ namespace Choir.Front.Laye.Syntax;
 
 public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
 {
+    private readonly ScopePrinter _scopePrinter;
+    private readonly bool _printScopes;
+
     public ChoirContext Context { get; }
 
-    public SyntaxPrinter(ChoirContext context)
+    public SyntaxPrinter(ChoirContext context, bool printScopes)
         : base(context.UseColor)
     {
+        _scopePrinter = new(context.UseColor);
+        _printScopes = printScopes;
+
         Context = context;
         ColorBase = CommandLine.Color.Green;
     }
@@ -14,6 +20,15 @@ public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
     public void PrintModuleHeader(Module module)
     {
         Console.WriteLine($"{C[ColorMisc]}// Laye Module '{module.SourceFile.FileInfo.FullName}'");
+
+        if (_printScopes)
+        {
+            if (module.FileScope.Count > 0)
+                _scopePrinter.PrintScope(module.FileScope, "File Scope");
+
+            if (module.ExportScope.Count > 0)
+                _scopePrinter.PrintScope(module.ExportScope, "Exports");
+        }
     }
 
     public void PrintModuleTokens(Module module)

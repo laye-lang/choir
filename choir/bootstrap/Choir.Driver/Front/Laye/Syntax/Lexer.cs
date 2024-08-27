@@ -632,13 +632,13 @@ public sealed class Lexer(SourceFile sourceFile)
 
     private void ReadFloat(ref TokenInfo tokenInfo)
     {
-        Context.Diag.Fatal("float literal tokens are currently not supported :(");
+        Context.Diag.ICE("float literal tokens are currently not supported :(");
         throw new UnreachableException();
     }
 
     private void ReadFloatWithRadix(ref TokenInfo tokenInfo)
     {
-        Context.Diag.Fatal("float literal tokens are currently not supported :(");
+        Context.Diag.ICE("float literal tokens are currently not supported :(");
         throw new UnreachableException();
     }
 
