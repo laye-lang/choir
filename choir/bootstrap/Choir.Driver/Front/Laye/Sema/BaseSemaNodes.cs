@@ -130,6 +130,12 @@ public abstract class BaseSemaNode
 public abstract class SemaType : BaseSemaNode
 {
     public virtual bool IsPoison { get; } = false;
+    public virtual bool IsNumeric { get; } = false;
+    public virtual bool IsInteger { get; } = false;
+    public virtual bool IsFloat { get; } = false;
+
+    public abstract Size Size { get; }
+    public virtual Align Align => Align.ForBytes(Size.Bytes);
 
     public SemaTypeQual Qualified(Location location, TypeQualifiers qualifiers = TypeQualifiers.None) =>
         new(this, location, qualifiers);

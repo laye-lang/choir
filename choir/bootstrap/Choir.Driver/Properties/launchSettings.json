@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "Choir.Driver": {
+      "commandName": "Project",
+      "commandLineArgs": "test.laye --sema --ast",
+      "workingDirectory": "C:\\Users\\Nashiora\\dev\\choir"
+    }
+  }
+}

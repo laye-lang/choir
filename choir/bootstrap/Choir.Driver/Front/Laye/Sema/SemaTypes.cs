@@ -1,5 +1,8 @@
+using System.Diagnostics;
 using System.Text;
 using Choir.CommandLine;
+
+using ClangSharp;
 
 namespace Choir.Front.Laye.Sema;
 
@@ -12,6 +15,7 @@ public enum BuiltinTypeKind
     Int,
     IntSized,
     FloatSized,
+
     FFIBool,
     FFIChar,
     FFIShort,
@@ -21,6 +25,15 @@ public enum BuiltinTypeKind
     FFIFloat,
     FFIDouble,
     FFILongDouble,
+
+    __FFI_FIRST = FFIBool,
+    __FFI_LAST = FFILongDouble,
+
+    __FFI_FIRST_INTEGER = FFIChar,
+    __FFI_LAST_INTEGER = FFILongLong,
+
+    __FFI_FIRST_FLOAT = FFIFloat,
+    __FFI_LAST_FLOAT = FFILongDouble,
 }
 
 public static class BuiltinTypeKindExtensions
@@ -57,6 +70,7 @@ public sealed class SemaTypePoison : SemaType
 {
     public static readonly SemaTypePoison Instance = new();
     public override bool IsPoison { get; } = true;
+    public override Size Size { get; } = Size.FromBytes(1);
     public override string ToDebugString(Colors colors) =>
         $"{colors.Red}POISON";
 }
@@ -64,11 +78,15 @@ public sealed class SemaTypePoison : SemaType
 public sealed class SemaTypeTypeInfo : SemaType
 {
     public static readonly SemaTypeTypeInfo Instance = new();
+
+    // TODO(local): TypeInfo needs a size... if we even implement it in this version of Choir
+    public override Size Size { get; } = Size.FromBytes(1);
+
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeKeyword()}typeinfo";
 }
 
-public sealed class SemaTypeBuiltIn(BuiltinTypeKind kind, int bitWidth = 0) : SemaType
+public sealed class SemaTypeBuiltIn(ChoirContext context, BuiltinTypeKind kind, int bitWidth = 0) : SemaType
 {
     public BuiltinTypeKind Kind { get; } = kind;
     /// <summary>
@@ -80,6 +98,66 @@ public sealed class SemaTypeBuiltIn(BuiltinTypeKind kind, int bitWidth = 0) : Se
     /// </summary>
     public bool IsExplicitlySized => Kind is BuiltinTypeKind.IntSized or BuiltinTypeKind.FloatSized or BuiltinTypeKind.BoolSized;
 
+    public override bool IsNumeric { get; } = kind is BuiltinTypeKind.Int or BuiltinTypeKind.IntSized or BuiltinTypeKind.FloatSized
+                                                   or (>= BuiltinTypeKind.__FFI_FIRST_INTEGER and <= BuiltinTypeKind.__FFI_LAST_INTEGER)
+                                                   or (>= BuiltinTypeKind.__FFI_FIRST_FLOAT and <= BuiltinTypeKind.__FFI_LAST_FLOAT);
+    public override bool IsInteger { get; } = kind is BuiltinTypeKind.Int or BuiltinTypeKind.IntSized
+                                                   or (>= BuiltinTypeKind.__FFI_FIRST_INTEGER and <= BuiltinTypeKind.__FFI_LAST_INTEGER);
+    public override bool IsFloat { get; } = kind is BuiltinTypeKind.FloatSized
+                                                 or (>= BuiltinTypeKind.__FFI_FIRST_FLOAT and <= BuiltinTypeKind.__FFI_LAST_FLOAT);
+
+    private static Size ICEOnInvalidSize(ChoirContext context, BuiltinTypeKind kind)
+    {
+        context.Diag.ICE($"Unhandled case for builtin type-kind {kind}: unknown size");
+        throw new UnreachableException();
+    }
+
+    private static Align ICEOnInvalidAlign(ChoirContext context, BuiltinTypeKind kind)
+    {
+        context.Diag.ICE($"Unhandled case for builtin type-kind {kind}: unknown align");
+        throw new UnreachableException();
+    }
+
+    public override Size Size { get; } = bitWidth != 0 ? Size.FromBits(bitWidth) : kind switch
+    {
+        BuiltinTypeKind.Void => Size.FromBits(0),
+        BuiltinTypeKind.NoReturn => Size.FromBits(0),
+        BuiltinTypeKind.Bool => Size.FromBits(8),
+        BuiltinTypeKind.Int => context.Target.SizeOfPointer,
+
+        BuiltinTypeKind.FFIBool => context.Target.SizeOfCBool,
+        BuiltinTypeKind.FFIChar => context.Target.SizeOfCChar,
+        BuiltinTypeKind.FFIShort => context.Target.SizeOfCShort,
+        BuiltinTypeKind.FFIInt => context.Target.SizeOfCInt,
+        BuiltinTypeKind.FFILong => context.Target.SizeOfCLong,
+        BuiltinTypeKind.FFILongLong => context.Target.SizeOfCLongLong,
+        BuiltinTypeKind.FFIFloat => context.Target.SizeOfCFloat,
+        BuiltinTypeKind.FFIDouble => context.Target.SizeOfCDouble,
+        BuiltinTypeKind.FFILongDouble => context.Target.SizeOfCLongDouble,
+
+        _ => ICEOnInvalidSize(context, kind),
+    };
+
+    public override Align Align { get; } = bitWidth != 0 ? Align.ForBits(bitWidth) : kind switch
+    {
+        BuiltinTypeKind.Void => Align.ForBits(0),
+        BuiltinTypeKind.NoReturn => Align.ForBits(0),
+        BuiltinTypeKind.Bool => Align.ForBits(8),
+        BuiltinTypeKind.Int => context.Target.AlignOfPointer,
+
+        BuiltinTypeKind.FFIBool => context.Target.AlignOfCBool,
+        BuiltinTypeKind.FFIChar => context.Target.AlignOfCChar,
+        BuiltinTypeKind.FFIShort => context.Target.AlignOfCShort,
+        BuiltinTypeKind.FFIInt => context.Target.AlignOfCInt,
+        BuiltinTypeKind.FFILong => context.Target.AlignOfCLong,
+        BuiltinTypeKind.FFILongLong => context.Target.AlignOfCLongLong,
+        BuiltinTypeKind.FFIFloat => context.Target.AlignOfCFloat,
+        BuiltinTypeKind.FFIDouble => context.Target.AlignOfCDouble,
+        BuiltinTypeKind.FFILongDouble => context.Target.AlignOfCLongDouble,
+
+        _ => ICEOnInvalidAlign(context, kind),
+    };
+
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeKeyword()}{Kind.ToLanguageKeywordString(BitWidth)}";
 }
@@ -88,7 +166,10 @@ public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedTyp
 {
     public IReadOnlyList<string> NameParts { get; } = nameParts;
     public SemaTypeQual NamedType { get; } = namedType;
-    
+
+    public override Size Size { get; } = namedType.Type.Size;
+    public override Align Align { get; } = namedType.Type.Align;
+
     public override string ToDebugString(Colors colors)
     {
         var builder = new StringBuilder();
@@ -110,6 +191,9 @@ public sealed class SemaTypeTemplateParameter(string parameterName) : SemaType
 {
     public string ParameterName { get; } = parameterName;
 
+    public override Size Size { get; } = Size.FromBits(0);
+    public override Align Align { get; } = Align.ForBits(0);
+
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTemplate()}{ParameterName}";
 }
@@ -121,16 +205,23 @@ public abstract class SemaContainerType(SemaTypeQual elementType) : SemaType
     public override IEnumerable<BaseSemaNode> Children { get; } = [elementType];
 }
 
-public sealed class SemaTypePointer(SemaTypeQual elementType) : SemaContainerType(elementType)
+public sealed class SemaTypePointer(ChoirContext context, SemaTypeQual elementType) : SemaContainerType(elementType)
 {
+    public override Size Size { get; } = context.Target.SizeOfPointer;
+    public override Align Align { get; } = context.Target.AlignOfPointer;
+
     public override string ToDebugString(Colors colors) =>
         $"{ElementType.ToDebugString(colors)}{colors.Reset}*";
 }
 
-public sealed class SemaTypeBuffer(SemaTypeQual elementType, byte? terminator = null)
+public sealed class SemaTypeBuffer(ChoirContext context, SemaTypeQual elementType, byte? terminator = null)
     : SemaContainerType(elementType)
 {
     public byte? Terminator { get; } = terminator;
+
+    public override Size Size { get; } = context.Target.SizeOfPointer;
+    public override Align Align { get; } = context.Target.AlignOfPointer;
+
     public override string ToDebugString(Colors colors)
     {
         if (Terminator is byte t)
@@ -139,28 +230,40 @@ public sealed class SemaTypeBuffer(SemaTypeQual elementType, byte? terminator = 
     }
 }
 
-public sealed class SemaTypeReference(SemaTypeQual elementType) : SemaContainerType(elementType)
+public sealed class SemaTypeReference(ChoirContext context, SemaTypeQual elementType) : SemaContainerType(elementType)
 {
+    public override Size Size { get; } = context.Target.SizeOfPointer;
+    public override Align Align { get; } = context.Target.AlignOfPointer;
+
     public override string ToDebugString(Colors colors) =>
         $"{ElementType.ToDebugString(colors)}{colors.Reset}&";
 }
 
 public sealed class SemaTypeNilable(SemaTypeQual elementType) : SemaContainerType(elementType)
 {
+    public override Size Size => throw new NotImplementedException();
+    public override Align Align => throw new NotImplementedException();
+
     public override string ToDebugString(Colors colors) =>
         $"{ElementType.ToDebugString(colors)}{colors.Reset}?";
 }
 
-public sealed class SemaTypeSlice(SemaTypeQual elementType) : SemaContainerType(elementType)
+public sealed class SemaTypeSlice(ChoirContext context, SemaTypeQual elementType) : SemaContainerType(elementType)
 {
+    public override Size Size { get; } = context.Target.SizeOfPointer + context.Target.SizeOfPointer;
+    public override Align Align { get; } = context.Target.AlignOfPointer;
+
     public override string ToDebugString(Colors colors) =>
         $"{ElementType.ToDebugString(colors)}{colors.Reset}[]";
 }
 
-public sealed class SemaTypeArray(SemaTypeQual elementType, long[] lengths) : SemaContainerType(elementType)
+public sealed class SemaTypeArray(SemaTypeQual elementType, SemaExpr[] lengths) : SemaContainerType(elementType)
 {
-    public IReadOnlyList<long> Lengths { get; } = lengths;
+    public IReadOnlyList<SemaExpr> Lengths { get; } = lengths;
     public int Arity { get; } = lengths.Length;
+
+    public override Size Size => throw new NotImplementedException();
+    public override Align Align => throw new NotImplementedException();
 
     public override string ToDebugString(Colors colors)
     {
@@ -173,14 +276,21 @@ public sealed class SemaTypeErrorPair(SemaTypeQual resultType, SemaTypeQual erro
 {
     public SemaTypeQual ResultType { get; } = resultType;
     public SemaTypeQual ErrorType { get; } = errorType;
+
+    public override Size Size => throw new NotImplementedException();
+    public override Align Align => throw new NotImplementedException();
+
     public override string ToDebugString(Colors colors) =>
         $"{ResultType.ToDebugString(colors)}{colors.Reset}!{ErrorType.ToDebugString(colors)}";
 
     public override IEnumerable<BaseSemaNode> Children { get; } = [resultType, errorType];
 }
 
-public sealed class SemaTypeDelegate(SemaDeclDelegate declDelegate) : SemaType
+public sealed class SemaTypeDelegate(ChoirContext context, SemaDeclDelegate declDelegate) : SemaType
 {
+    public override Size Size { get; } = context.Target.SizeOfPointer;
+    public override Align Align { get; } = context.Target.AlignOfPointer;
+
     public SemaDeclDelegate DeclDelegate { get; } = declDelegate;
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclDelegate.Name}";
@@ -189,6 +299,10 @@ public sealed class SemaTypeDelegate(SemaDeclDelegate declDelegate) : SemaType
 public sealed class SemaTypeStruct(SemaDeclStruct declStruct) : SemaType
 {
     public SemaDeclStruct DeclStruct { get; } = declStruct;
+
+    public override Size Size => throw new NotImplementedException();
+    public override Align Align => throw new NotImplementedException();
+
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclStruct.Name}";
 }
@@ -196,6 +310,10 @@ public sealed class SemaTypeStruct(SemaDeclStruct declStruct) : SemaType
 public sealed class SemaTypeEnum(SemaDeclEnum declEnum) : SemaType
 {
     public SemaDeclEnum DeclEnum { get; } = declEnum;
+    
+    public override Size Size { get; } = Size.FromBits(32);
+    public override Align Align { get; } = Align.ForBits(32);
+
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclEnum.Name}";
 }
@@ -203,6 +321,10 @@ public sealed class SemaTypeEnum(SemaDeclEnum declEnum) : SemaType
 public sealed class SemaTypeAlias(SemaDeclAlias declAlias) : SemaType
 {
     public SemaDeclAlias DeclAlias { get; } = declAlias;
+
+    public override Size Size { get; } = declAlias.AliasedType.Type.Size;
+    public override Align Align { get; } = declAlias.AliasedType.Type.Align;
+
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclAlias.Name}";
 }

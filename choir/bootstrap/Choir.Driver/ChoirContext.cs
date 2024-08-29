@@ -15,7 +15,59 @@ public enum FileLookupLocations
     LibraryDirectories = 1 << 1,
 }
 
-public sealed class TypeStorage
+public sealed record class ChoirTarget
+{
+    public static readonly ChoirTarget X86_64 = new()
+    {
+        SizeOfPointer = Size.FromBits(64),
+        AlignOfPointer = Align.ForBits(64),
+
+        SizeOfCBool = Size.FromBits(8),
+        SizeOfCChar = Size.FromBits(8),
+        SizeOfCShort = Size.FromBits(16),
+        SizeOfCInt = Size.FromBits(32),
+        SizeOfCLong = Size.FromBits(64),
+        SizeOfCLongLong = Size.FromBits(64),
+        SizeOfCFloat = Size.FromBits(32),
+        SizeOfCDouble = Size.FromBits(64),
+        SizeOfCLongDouble = Size.FromBits(128),
+
+        AlignOfCBool = Align.ForBits(8),
+        AlignOfCChar = Align.ForBits(8),
+        AlignOfCShort = Align.ForBits(16),
+        AlignOfCInt = Align.ForBits(32),
+        AlignOfCLong = Align.ForBits(64),
+        AlignOfCLongLong = Align.ForBits(64),
+        AlignOfCFloat = Align.ForBits(32),
+        AlignOfCDouble = Align.ForBits(64),
+        AlignOfCLongDouble = Align.ForBits(128),
+    };
+
+    public required Size SizeOfPointer { get; init; }
+    public required Align AlignOfPointer { get; init; }
+
+    public required Size SizeOfCBool { get; init; }
+    public required Size SizeOfCChar { get; init; }
+    public required Size SizeOfCShort { get; init; }
+    public required Size SizeOfCInt { get; init; }
+    public required Size SizeOfCLong { get; init; }
+    public required Size SizeOfCLongLong { get; init; }
+    public required Size SizeOfCFloat { get; init; }
+    public required Size SizeOfCDouble { get; init; }
+    public required Size SizeOfCLongDouble { get; init; }
+
+    public required Align AlignOfCBool { get; init; }
+    public required Align AlignOfCChar { get; init; }
+    public required Align AlignOfCShort { get; init; }
+    public required Align AlignOfCInt { get; init; }
+    public required Align AlignOfCLong { get; init; }
+    public required Align AlignOfCLongLong { get; init; }
+    public required Align AlignOfCFloat { get; init; }
+    public required Align AlignOfCDouble { get; init; }
+    public required Align AlignOfCLongDouble { get; init; }
+}
+
+public sealed class TypeStorage(ChoirContext context)
 {
     private readonly Dictionary<int, SemaTypeBuiltIn> _layeBoolTypes = [];
     private readonly Dictionary<int, SemaTypeBuiltIn> _layeIntTypes = [];
@@ -29,38 +81,38 @@ public sealed class TypeStorage
     
     public SemaTypePoison LayeTypePoison { get; } = SemaTypePoison.Instance;
 
-    public SemaTypeBuiltIn LayeTypeVoid { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.Void);
-    public SemaTypeBuiltIn LayeTypeNoReturn { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.NoReturn);
-    public SemaTypeBuiltIn LayeTypeBool { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.Bool);
-    public SemaTypeBuiltIn LayeTypeInt { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.Int);
-    public SemaTypeBuiltIn LayeTypeFFIBool { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.FFIBool);
-    public SemaTypeBuiltIn LayeTypeFFIChar { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.FFIChar);
-    public SemaTypeBuiltIn LayeTypeFFIShort { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.FFIShort);
-    public SemaTypeBuiltIn LayeTypeFFIInt { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.FFIInt);
-    public SemaTypeBuiltIn LayeTypeFFILong { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.FFILong);
-    public SemaTypeBuiltIn LayeTypeFFILongLong { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.FFILongLong);
-    public SemaTypeBuiltIn LayeTypeFFIFloat { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.FFIFloat);
-    public SemaTypeBuiltIn LayeTypeFFIDouble { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.FFIDouble);
-    public SemaTypeBuiltIn LayeTypeFFILongDouble { get; } = new SemaTypeBuiltIn(BuiltinTypeKind.FFILongDouble);
+    public SemaTypeBuiltIn LayeTypeVoid { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.Void);
+    public SemaTypeBuiltIn LayeTypeNoReturn { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.NoReturn);
+    public SemaTypeBuiltIn LayeTypeBool { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.Bool);
+    public SemaTypeBuiltIn LayeTypeInt { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.Int);
+    public SemaTypeBuiltIn LayeTypeFFIBool { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.FFIBool);
+    public SemaTypeBuiltIn LayeTypeFFIChar { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.FFIChar);
+    public SemaTypeBuiltIn LayeTypeFFIShort { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.FFIShort);
+    public SemaTypeBuiltIn LayeTypeFFIInt { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.FFIInt);
+    public SemaTypeBuiltIn LayeTypeFFILong { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.FFILong);
+    public SemaTypeBuiltIn LayeTypeFFILongLong { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.FFILongLong);
+    public SemaTypeBuiltIn LayeTypeFFIFloat { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.FFIFloat);
+    public SemaTypeBuiltIn LayeTypeFFIDouble { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.FFIDouble);
+    public SemaTypeBuiltIn LayeTypeFFILongDouble { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.FFILongDouble);
 
     public SemaTypeBuiltIn LayeTypeBoolSized(int bitWidth)
     {
         if (!_layeBoolTypes.TryGetValue(bitWidth, out var boolType))
-            _layeBoolTypes[bitWidth] = boolType = new SemaTypeBuiltIn(BuiltinTypeKind.BoolSized, bitWidth);
+            _layeBoolTypes[bitWidth] = boolType = new SemaTypeBuiltIn(context, BuiltinTypeKind.BoolSized, bitWidth);
         return boolType;
     }
 
     public SemaTypeBuiltIn LayeTypeIntSized(int bitWidth)
     {
         if (!_layeIntTypes.TryGetValue(bitWidth, out var intType))
-            _layeIntTypes[bitWidth] = intType = new SemaTypeBuiltIn(BuiltinTypeKind.IntSized, bitWidth);
+            _layeIntTypes[bitWidth] = intType = new SemaTypeBuiltIn(context, BuiltinTypeKind.IntSized, bitWidth);
         return intType;
     }
 
     public SemaTypeBuiltIn LayeTypeFloatSized(int bitWidth)
     {
         if (!_layeFloatTypes.TryGetValue(bitWidth, out var floatType))
-            _layeFloatTypes[bitWidth] = floatType = new SemaTypeBuiltIn(BuiltinTypeKind.FloatSized, bitWidth);
+            _layeFloatTypes[bitWidth] = floatType = new SemaTypeBuiltIn(context, BuiltinTypeKind.FloatSized, bitWidth);
         return floatType;
     }
 
@@ -85,7 +137,12 @@ public sealed class TypeStorage
         return aliasType;
     }
 
-    public SemaTypeArray LayeArrayType(SemaTypeQual elementType, int length)
+    public SemaTypeArray LayeArrayType(SemaTypeQual elementType, long length)
+    {
+        return LayeArrayType(elementType, new SemaExprLiteralInteger(Location.Nowhere, length, context.Types.LayeTypeInt.Qualified(Location.Nowhere)));
+    }
+
+    public SemaTypeArray LayeArrayType(SemaTypeQual elementType, SemaExpr length)
     {
         return new SemaTypeArray(elementType, [length]);
     }
@@ -98,6 +155,7 @@ public sealed class ChoirContext
     private readonly List<SourceFile> _sourceFiles = [];
     private readonly Dictionary<string, SourceFile> _sourceFilesByCanonicalPath = [];
 
+    public ChoirTarget Target { get; }
     public bool UseColor { get; }
     public DiagnosticWriter Diag
     {
@@ -119,12 +177,14 @@ public sealed class ChoirContext
 
     public List<string> IncludeDirectories { get; set; } = [];
     public List<string> LibraryDirectories { get; set; } = [];
-    public TypeStorage Types { get; } = new();
+    public TypeStorage Types { get; }
 
-    public ChoirContext(bool useColor)
+    public ChoirContext(ChoirTarget target, bool useColor)
     {
+        Target = target;
         UseColor = useColor;
         Diag = new StreamingDiagnosticWriter(this, Console.Error);
+        Types = new(this);
     }
 
     private void OnDiagnosticIssue(DiagnosticKind kind)
@@ -140,7 +200,7 @@ public sealed class ChoirContext
 
         if (locations.HasFlag(FileLookupLocations.IncludeDirectories))
         {
-            foreach (var includeDir in IncludeDirectories)
+            foreach (string includeDir in IncludeDirectories)
             {
                 if (LookupFileInDirectory(new DirectoryInfo(includeDir)) is {} includeFileInfo)
                     return includeFileInfo;
@@ -149,7 +209,7 @@ public sealed class ChoirContext
 
         if (locations.HasFlag(FileLookupLocations.LibraryDirectories))
         {
-            foreach (var libraryDir in LibraryDirectories)
+            foreach (string libraryDir in LibraryDirectories)
             {
                 if (LookupFileInDirectory(new DirectoryInfo(libraryDir)) is {} libraryFileInfo)
                     return libraryFileInfo;

@@ -85,7 +85,7 @@ public static class Program
             }
             else if (arg == "-x" || arg == "--file-type")
             {
-                if (!args.Shift(out var fileType))
+                if (!args.Shift(out string? fileType))
                     diag.Error($"argument to '{arg}' is missing (expected 1 value)");
                 else
                 {
@@ -143,7 +143,7 @@ public static class Program
                 options.PrintCliFilesOnly = true;
             else if (arg == "-e")
             {
-                if (!args.Shift(out var entryName))
+                if (!args.Shift(out string? entryName))
                     diag.Error($"argument to '{arg}' is missing (expected 1 value)");
                 else options.EntryName = entryName;
             }
@@ -159,7 +159,7 @@ public static class Program
                 options.NoLibC = true;
             else if (arg == "-I")
             {
-                if (!args.Shift(out var includeDirectory))
+                if (!args.Shift(out string? includeDirectory))
                     diag.Error($"argument to '{arg}' is missing (expected 1 value)");
                 else options.IncludeDirectories.Add(includeDirectory);
             }
@@ -172,7 +172,7 @@ public static class Program
             }
             else if (arg == "-L")
             {
-                if (!args.Shift(out var libraryDirectory))
+                if (!args.Shift(out string? libraryDirectory))
                     diag.Error($"argument to '{arg}' is missing (expected 1 value)");
                 else options.LibraryDirectories.Add(libraryDirectory);
             }
@@ -185,7 +185,7 @@ public static class Program
             }
             else if (arg == "-l")
             {
-                if (!args.Shift(out var linkLibrary))
+                if (!args.Shift(out string? linkLibrary))
                     diag.Error($"argument to '{arg}' is missing (expected 1 value)");
                 else options.LinkLibraries.Add(linkLibrary);
             }

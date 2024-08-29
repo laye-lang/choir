@@ -57,7 +57,11 @@ public abstract class DiagnosticWriter(ChoirContext? context, bool? useColor = n
     {
         OnIssue?.Invoke(kind);
         IssueInternal(kind, location, message, includeStackTrace: exit);
-        if (exit) Environment.Exit(1);
+        if (exit)
+        {
+            Flush();
+            Environment.Exit(1);
+        }
     }
 
     public void Note(string message) => Issue(DiagnosticKind.Note, null, message);
@@ -92,7 +96,7 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
         if (_printed) Writer.WriteLine();
         _printed = true;
         bool isConsole = Console.LargestWindowWidth != 0;
-        var groupText = RenderDiagnosticGroup(_group, isConsole ? Math.Max(Console.WindowWidth, 80) : 80);
+        string groupText = RenderDiagnosticGroup(_group, isConsole ? Math.Max(Console.WindowWidth, 80) : 80);
         Writer.Write(groupText);
         Writer.Write(Colors.Reset);
         _group.Clear();
@@ -235,12 +239,21 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
                 builder.AppendLine("│");
                 
             var diag = group[diagIndex];
-            var diagText = FormatDiagnostic(diag, previousLocation);
-            var diagLines = diagText.Split('\n');
+            string diagText = FormatDiagnostic(diag, previousLocation);
+            string[] diagLines = diagText.TrimEnd('\n').Split('\n').Select(s => s.TrimEnd('\r')).ToArray();
+
+            if (groupCount == 1 && diagLines.Length == 1 && diag.Location is null && !diagLines[0].ContainsAny('\v', '\f') && TextWidth([.. diagLines[0].EnumerateRunes()]) <= columnsRem)
+            {
+                builder.Append(Colors.Reset);
+                builder.Append("── ");
+                builder.Append(diagLines[0]);
+                builder.AppendLine(Colors.Reset);
+                break;
+            }
 
             for (int i = 0, lineCount = diagLines.Length; i < lineCount; i++)
             {
-                string line = diagLines[i].TrimEnd('\r');
+                string line = diagLines[i];
 
                 void EmitLeading(bool isLastLineSegment, bool isSegmentEmpty = false)
                 {

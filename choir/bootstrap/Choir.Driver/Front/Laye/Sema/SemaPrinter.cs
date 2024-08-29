@@ -52,6 +52,14 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
     protected override void Print(BaseSemaNode node)
     {
         PrintSemaNodeHeader(node);
+
+        if (node is SemaExpr expr)
+        {
+            Console.Write(C[ColorBase]);
+            Console.Write($"{expr.ValueCategory} ");
+            Console.Write($"{expr.Type.ToDebugString(C)} ");
+        }
+
         switch (node)
         {
             default: break;
@@ -102,6 +110,23 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
             case SemaExprLiteralInteger literalInteger:
             {
                 Console.Write(literalInteger.LiteralValue);
+            } break;
+
+            case SemaExprEvaluatedConstant evaluatedConstant:
+            {
+                switch (evaluatedConstant.Value.Kind)
+                {
+                    default: break;
+                    case EvaluatedConstantKind.Integer:
+                        Console.Write(evaluatedConstant.Value.IntegerValue);
+                        break;
+                }
+            } break;
+
+            case SemaExprCast cast:
+            {
+                Console.Write(C[ColorBase]);
+                Console.Write(cast.CastKind);
             } break;
         }
         

@@ -1,7 +1,11 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
+
+using static System.Formats.Asn1.AsnWriter;
 
 namespace Choir.Front.Laye.Sema;
 
@@ -46,6 +50,21 @@ public partial class Sema
     public TranslationUnit TranslationUnit { get; }
 
     private readonly Dictionary<SyntaxNode, SemaDecl> _forwardDeclNodes = [];
+    private readonly Stack<Scope> _scopes = [];
+    private readonly Stack<SemaDeclFunction> _functions = [];
+
+    private Scope Scope => _scopes.Count == 0 ? Module.FileScope : _scopes.Peek();
+    private SemaDeclFunction CurrentFunction
+    {
+        get
+        {
+            if (_functions.TryPeek(out var function))
+                return function;
+
+            Context.Diag.ICE("Attempt to access the current function during sema from outside any function.");
+            throw new UnreachableException();
+        }
+    }
 
     private Sema(Module module)
     {
@@ -244,6 +263,8 @@ public partial class Sema
     private void ForwardDeclareIfAllowedOutOfOrder(SyntaxNode node)
     {
         SemaDecl forwardDecl;
+        // if we're in file scope, scoping will be handled separately (for now)
+        Scope? nonFileScope = _scopes.TryPeek(out var scope2) ? scope2 : null;
         switch (node)
         {
             default: return;
@@ -251,21 +272,25 @@ public partial class Sema
             case SyntaxDeclAlias declAlias:
             {
                 forwardDecl = new SemaDeclAlias(declAlias.Location, declAlias.TokenName.TextValue, declAlias.IsStrict);
+                nonFileScope?.AddDecl(declAlias.TokenName.TextValue, forwardDecl);
             } break;
 
             case SyntaxDeclStruct declStruct:
             {
                 forwardDecl = new SemaDeclStruct(declStruct.Location, declStruct.TokenName.TextValue);
+                nonFileScope?.AddDecl(declStruct.TokenName.TextValue, forwardDecl);
             } break;
 
             case SyntaxDeclEnum declEnum:
             {
                 forwardDecl = new SemaDeclEnum(declEnum.Location, declEnum.TokenName.TextValue);
+                nonFileScope?.AddDecl(declEnum.TokenName.TextValue, forwardDecl);
             } break;
 
             case SyntaxDeclBinding declBinding:
             {
                 forwardDecl = new SemaDeclBinding(declBinding.Location, declBinding.TokenName.TextValue);
+                nonFileScope?.AddDecl(declBinding.TokenName.TextValue, forwardDecl);
             } break;
 
             case SyntaxDeclFunction declFunction:
@@ -273,6 +298,7 @@ public partial class Sema
                 if (declFunction.Name is not SyntaxToken tokenIdent || tokenIdent.Kind != TokenKind.Identifier)
                     throw new NotImplementedException("need to have a generic entity name type");
                 forwardDecl = new SemaDeclFunction(declFunction.Location, tokenIdent.TextValue);
+                nonFileScope?.AddDecl(tokenIdent.TextValue, forwardDecl);
             } break;
         }
 
@@ -316,7 +342,7 @@ public partial class Sema
         }
     }
 
-    private SemaStmt AnalyseStmtOrDecl(SyntaxNode stmt)
+    private SemaStmt AnalyseStmtOrDecl(SyntaxNode stmt, bool inheritCurrentScope = false)
     {
         if (stmt is SyntaxTypeBuffer or SyntaxTypeBuiltIn or SyntaxTypeNilable or SyntaxTypePointer or SyntaxTypeReference or SyntaxTypeSlice)
         {
@@ -343,6 +369,7 @@ public partial class Sema
 
             case SyntaxDeclStruct declStruct:
             {
+                using var _ = EnterScope();
                 if (!_forwardDeclNodes.TryGetValue(stmt, out var semaNodeCheck))
                     semaNodeCheck = new SemaDeclStruct(declStruct.Location, declStruct.TokenName.TextValue);
                 Context.Assert(semaNodeCheck is SemaDeclStruct, declStruct.Location, "struct declaration did not have sema node of struct type");
@@ -370,6 +397,8 @@ public partial class Sema
 
             case SyntaxDeclFunction declFunction:
             {
+                using var _s = EnterScope();
+
                 if (!_forwardDeclNodes.TryGetValue(stmt, out var semaNodeCheck))
                 {
                     if (declFunction.Name is not SyntaxToken tokenIdent || tokenIdent.Kind != TokenKind.Identifier)
@@ -379,12 +408,14 @@ public partial class Sema
                 Context.Assert(semaNodeCheck is SemaDeclFunction, declFunction.Location, "function declaration did not have sema node of function type");
                 var semaNode = (SemaDeclFunction)semaNodeCheck;
 
+                using var _f = EnterFunction(semaNode);
+
                 semaNode.ReturnType = AnalyseType(declFunction.ReturnType);
                 
                 Context.Assert(declFunction.Params.Count == 0, declFunction.Location, "TODO: implement sema for top-level function parameters");
                 
                 if (declFunction.Body is SyntaxCompound bodyCompound)
-                    semaNode.Body = (SemaStmtCompound)AnalyseStmtOrDecl(bodyCompound);
+                    semaNode.Body = (SemaStmtCompound)AnalyseStmtOrDecl(bodyCompound, inheritCurrentScope: true);
                 else if (declFunction.Body is not null)
                 {
                     Context.Assert(false, declFunction.Body.Location, $"unsupported syntax as function body: {declFunction.Body.GetType().Name}");
@@ -396,9 +427,12 @@ public partial class Sema
 
             case SyntaxCompound stmtCompound:
             {
+                using var _ = EnterScope(!inheritCurrentScope);
+                foreach (var node in stmtCompound.Body)
+                    ForwardDeclareIfAllowedOutOfOrder(node);
                 // TODO(local): handle forward declarations in compound statements
                 // TODO(local): create scopes in compound statements.
-                var childStatements = stmtCompound.Body.Select(AnalyseStmtOrDecl).ToArray();
+                var childStatements = stmtCompound.Body.Select(node => AnalyseStmtOrDecl(node)).ToArray();
                 return new SemaStmtCompound(stmtCompound.Location, childStatements);
             }
 
@@ -410,6 +444,7 @@ public partial class Sema
                 }
 
                 var returnValue = AnalyseExpr(stmtReturn.Value);
+                returnValue = ConvertOrError(returnValue, CurrentFunction.ReturnType);
                 return new SemaStmtReturnValue(stmtReturn.Location, returnValue);
             }
         }
@@ -446,7 +481,7 @@ public partial class Sema
                 }
                 else
                 {
-                    intTypeUnqual = Context.Types.LayeTypeIntSized((int)tokenInteger.IntegerValue.GetBitLength());
+                    intTypeUnqual = Context.Types.LayeTypeIntSized(Math.Max(1, (int)tokenInteger.IntegerValue.GetBitLength()));
                     intValue = tokenInteger.IntegerValue;
                 }
 
@@ -459,6 +494,12 @@ public partial class Sema
                 throw new UnreachableException();
             }
         }
+    }
+
+    private bool TryEvaluate(SemaExpr expr, out EvaluatedConstant value)
+    {
+        var evaluator = new ConstantEvaluator();
+        return evaluator.TryEvaluate(expr, out value);
     }
 
     private const int ConvertScoreNoOp = 0;
@@ -481,8 +522,35 @@ public partial class Sema
             expr = LValueToRValue(expr, false);
             from = expr.Type.Requalified();
         }
-        
-        throw new NotImplementedException();
+
+        // TODO(local): type-equals
+
+        int score = 0;
+        if (expr.IsLValue) score = 1;
+
+        // TODO(local): more conversion checks
+
+        if (TryEvaluate(expr, out var evaluatedConstant))
+        {
+            if (evaluatedConstant.Kind == EvaluatedConstantKind.Integer && to.Type.IsNumeric)
+            {
+                if (to.Type.IsFloat)
+                {
+                    Context.Assert(false, "TODO: Converting an evaluated integer constant to a float constant is not supported; floats are not currently supported at this stage.");
+                    throw new UnreachableException();
+                }
+
+                long bitCount = evaluatedConstant.IntegerValue.GetBitLength();
+                if (bitCount <= to.Type.Size.Bits)
+                {
+                    if (performConversion)
+                        expr = new SemaExprEvaluatedConstant(ImplicitCast(expr, to), evaluatedConstant);
+                    return score;
+                }
+            }
+        }
+
+        return ConvertScoreImpossible;
     }
 
     private bool Convert(ref SemaExpr expr, SemaTypeQual to)
@@ -585,6 +653,87 @@ public partial class Sema
         }
 
         return expr;
+    }
+
+    private IDisposable EnterScope(bool createNewScope = true)
+    {
+        return createNewScope ? new ScopeDisposable(this) : new ScopeDisposableNoPush(this);
+    }
+
+    private CurrentFunctionDisposable EnterFunction(SemaDeclFunction function)
+    {
+        return new CurrentFunctionDisposable(this, function);
+    }
+
+    private sealed class ScopeDisposableNoPush : IDisposable
+    {
+        private readonly Sema _sema;
+        private readonly Scope _scope;
+
+        public ScopeDisposableNoPush(Sema sema)
+        {
+            _sema = sema;
+            _scope = sema.Scope;
+        }
+
+        public void Dispose()
+        {
+            if (!_sema._scopes.TryPeek(out var scope))
+            {
+                _sema.Context.Diag.ICE($"Exited a {nameof(ScopeDisposableNoPush)}, but there were no scopes");
+                throw new UnreachableException();
+            }
+
+            _sema.Context.Assert(ReferenceEquals(scope, _scope), $"Exited a {nameof(ScopeDisposableNoPush)}, but the scope was not the correct scope");
+        }
+    }
+
+    private sealed class ScopeDisposable : IDisposable
+    {
+        private readonly Sema _sema;
+        private readonly Scope _scope;
+
+        public ScopeDisposable(Sema sema)
+        {
+            _sema = sema;
+            _scope = new Scope();
+            sema._scopes.Push(_scope);
+        }
+
+        public void Dispose()
+        {
+            if (!_sema._scopes.TryPop(out var scope))
+            {
+                _sema.Context.Diag.ICE($"Exited a {nameof(ScopeDisposable)}, but there were no scopes");
+                throw new UnreachableException();
+            }
+
+            _sema.Context.Assert(ReferenceEquals(scope, _scope), $"Exited a {nameof(ScopeDisposable)}, but the scope was not the correct scope");
+        }
+    }
+
+    private sealed class CurrentFunctionDisposable : IDisposable
+    {
+        private readonly Sema _sema;
+        private readonly SemaDeclFunction _function;
+
+        public CurrentFunctionDisposable(Sema sema, SemaDeclFunction function)
+        {
+            _sema = sema;
+            _function = function;
+            sema._functions.Push(function);
+        }
+
+        public void Dispose()
+        {
+            if (!_sema._functions.TryPop(out var function))
+            {
+                _sema.Context.Diag.ICE($"Exited a {nameof(CurrentFunctionDisposable)}, but there were no functions");
+                throw new UnreachableException();
+            }
+
+            _sema.Context.Assert(ReferenceEquals(function, _function), $"Exited a {nameof(CurrentFunctionDisposable)}, but the function was not the correct function");
+        }
     }
 }
 #pragma warning restore CA1822 // Mark members as static

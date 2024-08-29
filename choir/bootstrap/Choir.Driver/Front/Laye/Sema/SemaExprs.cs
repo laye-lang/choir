@@ -15,6 +15,14 @@ public enum CastKind
     NoOp,
 }
 
+public sealed class SemaExprEvaluatedConstant(SemaExpr sourceExpr, EvaluatedConstant value)
+    : SemaExpr(sourceExpr.Location, sourceExpr.Type)
+{
+    public SemaExpr SourceExpr { get; } = sourceExpr;
+    public EvaluatedConstant Value { get; } = value;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [sourceExpr];
+}
+
 public sealed class SemaExprLiteralInteger(Location location, BigInteger literalValue, SemaTypeQual type)
     : SemaExpr(location, type)
 {
@@ -26,6 +34,7 @@ public sealed class SemaExprCast(Location location, CastKind castKind, SemaTypeQ
 {
     public CastKind CastKind { get; } = castKind;
     public SemaExpr Operand { get; } = operand;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [type, operand];
 }
 
 public sealed class SemaExprDereference : SemaExpr

@@ -157,7 +157,7 @@ public sealed class ChoirDriver
     private ChoirDriver(ChoirDriverOptions options)
     {
         Options = options;
-        Context = new(options.OutputColoring)
+        Context = new(ChoirTarget.X86_64, options.OutputColoring)
         {
             IncludeDirectories = options.IncludeDirectories,
             LibraryDirectories = options.LibraryDirectories,

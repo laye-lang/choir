@@ -44,7 +44,7 @@ public partial class Sema
         string tuSource = tuBuilder.ToString();
         string tuFileName = Module.SourceFile.FileInfo.Name + ".generated.c";
 
-        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        string tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
         Directory.CreateDirectory(tempDir);
 
         try
@@ -60,7 +60,7 @@ public partial class Sema
             string[] clangArgs = [$"-I{Environment.CurrentDirectory}", ..(Context.IncludeDirectories.Select(i => $"-I{i}")), .. cflags];
             var translationUnit = CXTranslationUnit.Parse(index.Handle, file.FullName, clangArgs, [], CXTranslationUnit_None | CXTranslationUnit_SkipFunctionBodies | CXTranslationUnit_DetailedPreprocessingRecord | CXTranslationUnit_CacheCompletionResults);
 
-            var hasErrored = translationUnit.DiagnosticSet.Any(d => d.Severity >= CXDiagnosticSeverity.CXDiagnostic_Error);
+            bool hasErrored = translationUnit.DiagnosticSet.Any(d => d.Severity >= CXDiagnosticSeverity.CXDiagnostic_Error);
             if (hasErrored)
             {
                 foreach (var diag in translationUnit.DiagnosticSet)
@@ -127,7 +127,7 @@ public partial class Sema
 
     private Location GetLocation(Cursor cursor)
     {
-        cursor.Location.GetFileLocation(out var cxFile, out var line, out var column, out var offset);
+        cursor.Location.GetFileLocation(out var cxFile, out uint line, out uint column, out uint offset);
         if (line == 0 && column == 0 && offset == 0) return Location.Nowhere;
         
         SourceFile cFile;
@@ -195,7 +195,7 @@ public partial class Sema
                 var typePointer = (PointerType)type;
                 var elementType = CreateCBindingSema(cModule, typePointer.PointeeType);
                 if (elementType is null) return null;
-                return new SemaTypePointer(elementType).Qualified(Location.Nowhere);
+                return new SemaTypePointer(Context, elementType).Qualified(Location.Nowhere);
             }
 
             case CXTypeKind.CXType_Enum:
@@ -292,7 +292,7 @@ public partial class Sema
             case CX_DeclKind.CX_DeclKind_Record:
             {
                 var declRecord = (RecordDecl)decl;
-                var declRecordName = $"struct_{declRecord.Name}";
+                string declRecordName = $"struct_{declRecord.Name}";
                 if (declRecord.Definition is {} defRecord)
                 {
                     var fields = new SemaDeclField[defRecord.Fields.Count];
