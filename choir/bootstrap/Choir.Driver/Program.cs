@@ -92,11 +92,11 @@ public static class Program
                     switch (fileType)
                     {
                         default: diag.Error($"language not recognized: '{fileType}'"); break;
-                        
+
                         case "laye": currentFileType = InputFileLanguage.Laye; break;
-                        
+
                         case "choir": currentFileType = InputFileLanguage.Choir; break;
-                        
+
                         case "c": currentFileType = InputFileLanguage.C; break;
                         case "c-header": currentFileType = InputFileLanguage.C | InputFileLanguage.Header; break;
                         case "cpp-output": currentFileType = InputFileLanguage.C | InputFileLanguage.NoPreprocess; break;
@@ -104,15 +104,15 @@ public static class Program
                         case "c++": currentFileType = InputFileLanguage.CXX; break;
                         case "c++-header": currentFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
                         case "c++-cpp-output": currentFileType = InputFileLanguage.CXX | InputFileLanguage.NoPreprocess; break;
-                        
+
                         case "objective-c": currentFileType = InputFileLanguage.ObjC; break;
                         case "objective-c-header": currentFileType = InputFileLanguage.ObjC | InputFileLanguage.Header; break;
                         case "objective-c-cpp-output": currentFileType = InputFileLanguage.ObjC | InputFileLanguage.NoPreprocess; break;
-                        
+
                         case "objective-c++": currentFileType = InputFileLanguage.ObjCXX; break;
                         case "objective-c++-header": currentFileType = InputFileLanguage.ObjCXX | InputFileLanguage.Header; break;
                         case "objective-c++-cpp-output": currentFileType = InputFileLanguage.ObjCXX | InputFileLanguage.NoPreprocess; break;
-                        
+
                         case "assembler": currentFileType = InputFileLanguage.Assembler | InputFileLanguage.NoPreprocess; break;
                         case "assembler-with-cpp": currentFileType = InputFileLanguage.Assembler; break;
                     }
@@ -126,10 +126,18 @@ public static class Program
                 options.DriverStage = ChoirDriverStage.Parse;
             else if (arg == "--sema")
                 options.DriverStage = ChoirDriverStage.Sema;
+            else if (arg == "--codegen")
+                options.DriverStage = ChoirDriverStage.Codegen;
             else if (arg == "-S")
                 options.DriverStage = ChoirDriverStage.Compile;
             else if (arg == "-c")
                 options.DriverStage = ChoirDriverStage.Assemble;
+            else if (arg == "-emit-choir")
+                options.AssemblerFormat = ChoirAssemblerFormat.Choir;
+            else if (arg == "-emit-qbe")
+                options.AssemblerFormat = ChoirAssemblerFormat.QBE;
+            else if (arg == "-emit-llvm")
+                options.AssemblerFormat = ChoirAssemblerFormat.LLVM;
             else if (arg == "--tokens")
             {
                 options.DriverStage = ChoirDriverStage.Lex;
@@ -137,6 +145,8 @@ public static class Program
             }
             else if (arg == "--ast")
                 options.PrintAst = true;
+            else if (arg == "--ir")
+                options.PrintIR = true;
             else if (arg == "--file-scopes")
                 options.PrintFileScopes = true;
             else if (arg == "--print-cli-files-only")
@@ -196,6 +206,12 @@ public static class Program
                     diag.Error($"argument to '-l' is missing (expected 1 value)");
                 else options.LinkLibraries.Add(linkLibrary);
             }
+            else if (arg == "-o")
+            {
+                if (!args.Shift(out string? outputFilePath))
+                    diag.Error($"argument to '{arg}' is missing (expected 1 value)");
+                else options.OutputFile = outputFilePath;
+            }
             else
             {
                 var inputFileInfo = new FileInfo(arg);
@@ -216,41 +232,41 @@ public static class Program
                         else if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && inputFileExtension is ".S")
                             inputFileType = InputFileLanguage.Assembler;
                         else switch (inputFileExtension.ToLower())
-                        {
-                            case ".laye": inputFileType = InputFileLanguage.Laye; break;
+                            {
+                                case ".laye": inputFileType = InputFileLanguage.Laye; break;
 
-                            case ".h": inputFileType = InputFileLanguage.C | InputFileLanguage.CXX | InputFileLanguage.ObjC | InputFileLanguage.ObjCXX | InputFileLanguage.Header; break;
+                                case ".h": inputFileType = InputFileLanguage.C | InputFileLanguage.CXX | InputFileLanguage.ObjC | InputFileLanguage.ObjCXX | InputFileLanguage.Header; break;
 
-                            case ".c": inputFileType = InputFileLanguage.C; break;
-                            case ".i": inputFileType = InputFileLanguage.C | InputFileLanguage.NoPreprocess; break;
+                                case ".c": inputFileType = InputFileLanguage.C; break;
+                                case ".i": inputFileType = InputFileLanguage.C | InputFileLanguage.NoPreprocess; break;
 
-                            case ".cc": inputFileType = InputFileLanguage.CXX; break;
-                            case ".cp": inputFileType = InputFileLanguage.CXX; break;
-                            case ".cxx": inputFileType = InputFileLanguage.CXX; break;
-                            case ".cpp": inputFileType = InputFileLanguage.CXX; break;
-                            case ".c++": inputFileType = InputFileLanguage.CXX; break;
-                            case ".ixx": inputFileType = InputFileLanguage.CXX; break;
-                            case ".ccm": inputFileType = InputFileLanguage.CXX; break;
-                            case ".ii": inputFileType = InputFileLanguage.CXX | InputFileLanguage.NoPreprocess; break;
-                            
-                            case ".hh": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
-                            case ".hp": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
-                            case ".hxx": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
-                            case ".hpp": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
-                            case ".h++": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
-                            case ".tcc": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
-                            
-                            case ".m": inputFileType = InputFileLanguage.ObjC; break;
-                            case ".mi": inputFileType = InputFileLanguage.ObjC | InputFileLanguage.NoPreprocess; break;
-                            
-                            case ".mm": inputFileType = InputFileLanguage.ObjCXX; break;
-                            case ".mii": inputFileType = InputFileLanguage.ObjCXX | InputFileLanguage.NoPreprocess; break;
-                            
-                            case ".s": inputFileType = InputFileLanguage.Assembler | InputFileLanguage.NoPreprocess; break;
-                            case ".sx": inputFileType = InputFileLanguage.Assembler; break;
+                                case ".cc": inputFileType = InputFileLanguage.CXX; break;
+                                case ".cp": inputFileType = InputFileLanguage.CXX; break;
+                                case ".cxx": inputFileType = InputFileLanguage.CXX; break;
+                                case ".cpp": inputFileType = InputFileLanguage.CXX; break;
+                                case ".c++": inputFileType = InputFileLanguage.CXX; break;
+                                case ".ixx": inputFileType = InputFileLanguage.CXX; break;
+                                case ".ccm": inputFileType = InputFileLanguage.CXX; break;
+                                case ".ii": inputFileType = InputFileLanguage.CXX | InputFileLanguage.NoPreprocess; break;
 
-                            default: inputFileType = InputFileLanguage.Object; break;
-                        }
+                                case ".hh": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".hp": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".hxx": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".hpp": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".h++": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".tcc": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+
+                                case ".m": inputFileType = InputFileLanguage.ObjC; break;
+                                case ".mi": inputFileType = InputFileLanguage.ObjC | InputFileLanguage.NoPreprocess; break;
+
+                                case ".mm": inputFileType = InputFileLanguage.ObjCXX; break;
+                                case ".mii": inputFileType = InputFileLanguage.ObjCXX | InputFileLanguage.NoPreprocess; break;
+
+                                case ".s": inputFileType = InputFileLanguage.Assembler | InputFileLanguage.NoPreprocess; break;
+                                case ".sx": inputFileType = InputFileLanguage.Assembler; break;
+
+                                default: inputFileType = InputFileLanguage.Object; break;
+                            }
                     }
 
                     options.InputFiles.Add(new(inputFileType, inputFileInfo));
@@ -260,6 +276,15 @@ public static class Program
 
         if (options.InputFiles.Count == 0)
             diag.Error("no input files");
+
+        if (options.OutputFile == "-")
+        {
+            if (options.InputFiles.Count != 1)
+                diag.Error("Can only output to stdout (`-o -`) with a single input file.");
+
+            if (options.DriverStage != ChoirDriverStage.Compile)
+                diag.Error("Can only output to stdout (`-o -`) when specifying the 'compile only' flag `-S`.");
+        }
 
         if (outputColoring == OutputColoring.Auto)
             outputColoring = Console.IsErrorRedirected ? OutputColoring.Never : OutputColoring.Always;
