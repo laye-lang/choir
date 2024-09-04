@@ -53,6 +53,12 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
     {
         PrintSemaNodeHeader(node);
 
+        if (node.Dependence != ExprDependence.None)
+        {
+            Console.Write(C[ColorBase]);
+            Console.Write($"({node.Dependence}) ");
+        }
+
         if (node is SemaExpr expr)
         {
             Console.Write(C[ColorBase]);
@@ -128,9 +134,25 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
                 Console.Write(C[ColorBase]);
                 Console.Write(cast.CastKind);
             } break;
+
+            case SemaExprLookupSimple lookupSimple:
+            {
+                Console.Write(C.LayeName());
+                Console.Write(lookupSimple.Name);
+            } break;
+
+            case SemaExprBinaryBuiltIn binaryBuiltIn:
+            {
+                Console.Write(C[ColorBase]);
+                Console.Write(binaryBuiltIn.OperatorToken.Location.Span(Context).ToString());
+                Console.Write(C[ColorBase]);
+                Console.Write(" (");
+                Console.Write(binaryBuiltIn.Kind);
+                Console.Write(")");
+            } break;
         }
         
-        Console.WriteLine(C.Reset);
+        Console.WriteLine(C.Default);
         PrintChildren(node.Children);
     }
 }

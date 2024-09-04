@@ -31,34 +31,23 @@ public sealed class SemaDeclImport(Location location, Module module, bool isExpo
     public override IEnumerable<BaseSemaNode> Children { get; } = queries;
 }
 
-public sealed class SemaDeclModuleInterface(Location location, bool isStrict, IReadOnlyList<SemaDecl> decls)
-    : SemaDecl(location)
-{
-    public bool IsStrict { get; } = isStrict;
-    public IReadOnlyList<SemaDecl> Decls { get; } = decls;
-
-    public override IEnumerable<BaseSemaNode> Children { get; } = decls;
-}
-
-public sealed class SemaDeclOverloadSet(Location location)
-    : SemaDecl(location)
+public sealed class SemaDeclOverloadSet(Location location, string name)
+    : SemaDeclNamed(location, name)
 {
 }
 
-public abstract class SemaDeclTemplateParameter(Location location) : SemaDecl(location);
+public abstract class SemaDeclTemplateParameter(Location location, string name) : SemaDeclNamed(location, name);
 
 public sealed class SemaDeclTemplateTypeParameter(Location location, string name, bool isDuckTyped)
-    : SemaDeclTemplateParameter(location)
+    : SemaDeclTemplateParameter(location, name)
 {
-    public string Name { get; } = name;
     public bool IsDuckTyped { get; } = isDuckTyped;
     // TODO(local): constraints/contracts/concepts/whatever
 }
 
 public sealed class SemaDeclTemplateValueParameter(Location location, string name, SemaTypeQual paramType)
-    : SemaDeclTemplateParameter(location)
+    : SemaDeclTemplateParameter(location, name)
 {
-    public string Name { get; } = name;
     public SemaTypeQual ParamType { get; } = paramType;
     // TODO(local): constraints/contracts/concepts/whatever
     
@@ -66,9 +55,8 @@ public sealed class SemaDeclTemplateValueParameter(Location location, string nam
 }
 
 public sealed class SemaDeclParam(Location location, string name, SemaTypeQual paramType)
-    : SemaDecl(location)
+    : SemaDeclNamed(location, name)
 {
-    public string Name { get; } = name;
     public SemaTypeQual ParamType { get; } = paramType;
     // TODO(local): evaluated constant for default values, or even arbitrary semantic expressions depending
     
@@ -76,10 +64,8 @@ public sealed class SemaDeclParam(Location location, string name, SemaTypeQual p
 }
 
 public sealed class SemaDeclFunction(Location location, string name)
-    : SemaDecl(location)
+    : SemaDeclNamed(location, name)
 {
-    public string Name { get; } = name;
-
     public SemaTypeQual ReturnType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
     public IReadOnlyList<SemaDeclParam> ParameterDecls { get; set; } = [];
     public SemaDeclTemplateParameters? TemplateParameters { get; set; }
@@ -103,13 +89,16 @@ public sealed class SemaDeclFunction(Location location, string name)
                 yield return Body;
         }
     }
+
+    public SemaTypeFunction FunctionType(ChoirContext context) => new SemaTypeFunction(context, ReturnType, ParameterDecls.Select(p => p.ParamType).ToArray())
+    {
+        CallingConvention = CallingConvention,
+    };
 }
 
 public sealed class SemaDeclDelegate(Location location, string name)
-    : SemaDecl(location)
+    : SemaDeclNamed(location, name)
 {
-    public string Name { get; } = name;
-
     public SemaTypeQual ReturnType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
     public IReadOnlyList<SemaDeclParam> ParameterDecls { get; set; } = [];
     public SemaDeclTemplateParameters? TemplateParameters { get; set; }
@@ -128,13 +117,16 @@ public sealed class SemaDeclDelegate(Location location, string name)
                 yield return TemplateParameters;
         }
     }
+
+    public SemaTypeFunction FunctionType(ChoirContext context) => new SemaTypeFunction(context, ReturnType, ParameterDecls.Select(p => p.ParamType).ToArray())
+    {
+        CallingConvention = CallingConvention,
+    };
 }
 
 public sealed class SemaDeclBinding(Location location, string name)
-    : SemaDecl(location)
+    : SemaDeclNamed(location, name)
 {
-    public string Name { get; } = name;
-
     public SemaTypeQual BindingType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
     public SemaExpr? InitialValue { get; set; }
     
@@ -154,19 +146,16 @@ public sealed class SemaDeclBinding(Location location, string name)
 }
 
 public sealed class SemaDeclField(Location location, string name, SemaTypeQual fieldType)
-    : SemaDecl(location)
+    : SemaDeclNamed(location, name)
 {
-    public string Name { get; } = name;
     public SemaTypeQual FieldType { get; } = fieldType;
 
     public override IEnumerable<BaseSemaNode> Children { get; } = [fieldType];
 }
 
 public sealed class SemaDeclStruct(Location location, string name)
-    : SemaDecl(location)
+    : SemaDeclNamed(location, name)
 {
-    public string Name { get; } = name;
-
     public IReadOnlyList<SemaDeclField> FieldDecls { get; set; } = [];
     public IReadOnlyList<SemaDeclStruct> VariantDecls { get; set; } = [];
     public SemaDeclTemplateParameters? TemplateParameters { get; init; }
@@ -188,17 +177,14 @@ public sealed class SemaDeclStruct(Location location, string name)
 }
 
 public sealed class SemaDeclEnumVariant(Location location, string name, BigInteger value)
-    : SemaDecl(location)
+    : SemaDeclNamed(location, name)
 {
-    public string Name { get; } = name;
     public BigInteger Value { get; } = value;
 }
 
 public sealed class SemaDeclEnum(Location location, string name)
-    : SemaDecl(location)
+    : SemaDeclNamed(location, name)
 {
-    public string Name { get; } = name;
-
     public IReadOnlyList<SemaDeclEnumVariant> Variants { get; set; } = [];
     
     public Linkage Linkage { get; set; } = Linkage.Internal;
@@ -214,10 +200,8 @@ public sealed class SemaDeclEnum(Location location, string name)
 }
 
 public sealed class SemaDeclAlias(Location location, string name, bool isStrict = false)
-    : SemaDecl(location)
+    : SemaDeclNamed(location, name)
 {
-    public string Name { get; } = name;
-
     public bool IsStrict { get; set; } = isStrict;
     public SemaTypeQual AliasedType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
     public SemaDeclTemplateParameters? TemplateParameters { get; set; }

@@ -1,6 +1,4 @@
-﻿using Choir;
-
-namespace Choir.IR;
+﻿namespace Choir.IR;
 
 public readonly struct ChoirTypeLoc(ChoirType type, Location location) : IEquatable<ChoirTypeLoc>
 {
@@ -29,6 +27,13 @@ public abstract class ChoirType : IEquatable<ChoirType>
     public static bool operator ==(ChoirType left, ChoirType right) => left.Equals(right);
     public static bool operator !=(ChoirType left, ChoirType right) => !(left == right);
 
+    public abstract Size Size { get; }
+    public virtual Align Align => Align.ForBytes(Size.Bytes);
+
+    public virtual bool IsBasic { get; } = false;
+    public virtual bool IsExtended { get; } = false;
+    public virtual bool IsAggregate { get; } = false;
+
     public ChoirTypeLoc TypeLoc(Location? location = null) => new(this, location ?? Location.Nowhere);
     public override string ToString() => ToSourceString();
     public abstract string ToSourceString();
@@ -45,30 +50,60 @@ public abstract class ChoirType : IEquatable<ChoirType>
 public sealed class ChoirTypeVoid : ChoirType
 {
     public static readonly ChoirTypeVoid Instance = new();
+    public override Size Size { get; } = Size.FromBytes(0);
     public override string ToSourceString() => "void";
 }
 
-public sealed class ChoirTypeI32 : ChoirType
+public sealed class ChoirTypeByte : ChoirType
 {
-    public static readonly ChoirTypeI32 Instance = new();
-    public override string ToSourceString() => "i32";
+    public static readonly ChoirTypeByte Instance = new();
+    public override Size Size { get; } = Size.FromBytes(1);
+    public override bool IsExtended { get; } = true;
+    private ChoirTypeByte() { }
+    public override string ToSourceString() => $"byte";
 }
 
-public sealed class ChoirTypeI64 : ChoirType
+public sealed class ChoirTypeShort : ChoirType
 {
-    public static readonly ChoirTypeI64 Instance = new();
-    public override string ToSourceString() => "i64";
+    public static readonly ChoirTypeShort Instance = new();
+    public override Size Size { get; } = Size.FromBytes(2);
+    public override bool IsExtended { get; } = true;
+    private ChoirTypeShort() { }
+    public override string ToSourceString() => $"short";
 }
 
-public sealed class ChoirTypeFunction(ChoirTypeLoc returnType, IReadOnlyList<ChoirTypeLoc> paramTypes)
-    : ChoirType
+public sealed class ChoirTypeInt : ChoirType
 {
-    public ChoirTypeLoc ReturnType { get; } = returnType;
-    public IReadOnlyList<ChoirTypeLoc> ParamTypes { get; } = paramTypes;
-    public override string ToSourceString() => $"function({string.Join(", ", ParamTypes)}) {ReturnType}";
-    public override bool Equals(ChoirType? type)
-    {
-        if (type is not ChoirTypeFunction typeFunction) return false;
-        return ReturnType == typeFunction.ReturnType && ParamTypes.Count == typeFunction.ParamTypes.Count && ParamTypes.Zip(typeFunction.ParamTypes).All(pair => pair.First == pair.Second);
-    }
+    public static readonly ChoirTypeInt Instance = new();
+    public override Size Size { get; } = Size.FromBytes(4);
+    public override bool IsBasic { get; } = true;
+    private ChoirTypeInt() { }
+    public override string ToSourceString() => $"int";
+}
+
+public sealed class ChoirTypeLong : ChoirType
+{
+    public static readonly ChoirTypeLong Instance = new();
+    public override Size Size { get; } = Size.FromBytes(8);
+    public override bool IsBasic { get; } = true;
+    private ChoirTypeLong() { }
+    public override string ToSourceString() => $"long";
+}
+
+public sealed class ChoirTypeSingle : ChoirType
+{
+    public static readonly ChoirTypeSingle Instance = new();
+    public override Size Size { get; } = Size.FromBytes(4);
+    public override bool IsBasic { get; } = true;
+    private ChoirTypeSingle() { }
+    public override string ToSourceString() => $"single";
+}
+
+public sealed class ChoirTypeDouble : ChoirType
+{
+    public static readonly ChoirTypeDouble Instance = new();
+    public override Size Size { get; } = Size.FromBytes(8);
+    public override bool IsBasic { get; } = true;
+    private ChoirTypeDouble() { }
+    public override string ToSourceString() => $"double";
 }

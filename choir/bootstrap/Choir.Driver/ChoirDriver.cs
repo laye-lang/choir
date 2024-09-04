@@ -82,6 +82,8 @@ public abstract class ChoirJob(ChoirDriver driver)
                     Parser.ParseSyntax(module);
             }
 
+            Context.Diag.Flush();
+
             if (Driver.Options.DriverStage == ChoirDriverStage.Lex)
             {
                 if (Driver.Options.PrintTokens)
@@ -119,6 +121,7 @@ public abstract class ChoirJob(ChoirDriver driver)
             if (Context.HasIssuedError) return 1;
 
             Sema.Analyse(tu);
+            Context.Diag.Flush();
 
             if (Driver.Options.DriverStage == ChoirDriverStage.Sema)
             {
@@ -144,6 +147,7 @@ public abstract class ChoirJob(ChoirDriver driver)
             if (Context.HasIssuedError) return 1;
 
             LayeCodegen.GenerateIR(tu);
+            Context.Diag.Flush();
 
             if (Driver.Options.DriverStage == ChoirDriverStage.Codegen)
             {
@@ -218,13 +222,13 @@ public abstract class ChoirJob(ChoirDriver driver)
                     {
                         if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.Choir)
                         {
-                            var choirOutputFileInfo = new FileInfo(Path.Combine(Path.GetTempPath(), Path.GetFileNameWithoutExtension(module.SourceFile.FileInfo.Name) + ".choir"));
+                            var choirOutputFileInfo = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + "-" + Path.GetFileNameWithoutExtension(module.SourceFile.FileInfo.Name) + ".choir"));
                             intermediateFiles.Add(choirOutputFileInfo);
                             outputFileWriter = new StreamWriter(choirOutputFileInfo.FullName);
                         }
                         else if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.QBE)
                         {
-                            var qbeOutputFileInfo = new FileInfo(Path.Combine(Path.GetTempPath(), Path.GetFileNameWithoutExtension(module.SourceFile.FileInfo.Name) + ".ssa"));
+                            var qbeOutputFileInfo = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + "-" + Path.GetFileNameWithoutExtension(module.SourceFile.FileInfo.Name) + ".ssa"));
                             intermediateFiles.Add(qbeOutputFileInfo);
                             outputFileWriter = new StreamWriter(qbeOutputFileInfo.FullName);
                         }
@@ -251,11 +255,11 @@ public abstract class ChoirJob(ChoirDriver driver)
             {
                 foreach (var intermediateFile in intermediateFiles)
                 {
-                    //intermediateFile.Delete();
+                    intermediateFile.Delete();
                 }
             }
 
-            Context.Diag.ICE("Going any farther than codegen is not yet supported");
+            Context.Diag.ICE("Going any farther than compilation is not yet supported");
             return 0;
         }
     }

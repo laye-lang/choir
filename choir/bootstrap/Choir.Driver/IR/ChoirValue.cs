@@ -2,9 +2,13 @@
 using System.Text;
 using Choir.Front.Laye.Sema;
 
-using ClangSharp;
-
 namespace Choir.IR;
+
+public enum ChoirBinaryOperatorKind
+{
+    Invalid,
+    IAdd,
+}
 
 public abstract class ChoirValue(Location location, string name)
 {
@@ -38,19 +42,17 @@ public sealed class ChoirFunctionParam(Location location, string name, ChoirType
     protected internal override string ToIRString() => ToValueString(true);
 }
 
-public sealed class ChoirFunction(Location location, string name, ChoirTypeLoc returnType, ChoirFunctionParam[] @params)
+public sealed class ChoirFunction(ChoirContext context, Location location, string name, ChoirTypeLoc returnType, ChoirFunctionParam[] @params)
     : ChoirValue(location, name)
 {
     public override string Sigil { get; } = GlobalSigil;
     public ChoirTypeLoc ReturnType { get; } = returnType;
     public IReadOnlyList<ChoirFunctionParam> Params { get; } = @params;
-    public override ChoirTypeLoc Type { get; } = new ChoirTypeFunction(returnType, @params.Select(p => p.Type).ToArray()).TypeLoc();
+    public override ChoirTypeLoc Type { get; } = context.Types.ChoirPointerType;
     public Linkage Linkage { get; set; }
 
     internal readonly List<ChoirValue> _blocks = [];
     public IReadOnlyList<ChoirValue> Blocks => _blocks;
-
-    public ChoirFunction? Definition { get; internal set; }
 
     public ChoirBlock AppendBlock(Location location, string name)
     {
@@ -142,8 +144,7 @@ public abstract class ChoirInst(Location location, string? name, ChoirTypeLoc? t
     protected abstract string ToInstString();
     protected internal override string ToIRString()
     {
-        if (Type.Type is not ChoirTypeVoid)
-            return $"{Sigil}{Name} {Type} = {ToInstString()}";
+        if (Type.Type is not ChoirTypeVoid) return $"{Sigil}{Name} = {ToInstString()}";
         return ToInstString();
     }
 }
@@ -162,11 +163,47 @@ public sealed class ChoirInstRet(Location location, ChoirValue value)
     protected override string ToInstString() => $"ret {Value.ToValueString()}";
 }
 
-public sealed class ChoirInstAdd(Location location, string name, ChoirTypeLoc type, ChoirValue left, ChoirValue right)
+public sealed class ChoirInstAlloca(Location location, string name, ChoirTypeLoc pointerType, ChoirTypeLoc type, int count, Align align)
+    : ChoirInst(location, name, pointerType)
+{
+    public ChoirTypeLoc AllocatedType { get; } = type;
+    public int AllocatedCount { get; } = count;
+    public Align Align { get; } = align;
+    protected override string ToInstString() => $"alloca {AllocatedType.ToSourceString()}, {AllocatedCount}, {Align.Value}";
+}
+
+public sealed class ChoirInstStore(Location location, ChoirValue address, ChoirValue value)
+    : ChoirInst(location, "")
+{
+    public ChoirValue Address { get; } = address;
+    public ChoirValue Value { get; } = value;
+    protected override string ToInstString() => $"store {Address.ToValueString(false)}, {Value.ToValueString(true)}";
+}
+
+public sealed class ChoirInstLoad(Location location, string name, ChoirTypeLoc type, ChoirValue address)
     : ChoirInst(location, name, type)
 {
+    public ChoirValue Address { get; } = address;
+    protected override string ToInstString() => $"load {Type.ToSourceString()}, {Address.ToValueString(false)}";
+}
+
+public sealed class ChoirInstBinary(Location location, string name, ChoirBinaryOperatorKind kind, ChoirTypeLoc type, ChoirValue left, ChoirValue right)
+    : ChoirInst(location, name, type)
+{
+    public ChoirBinaryOperatorKind Kind { get; } = kind;
     public ChoirValue Left { get; } = left;
     public ChoirValue Right { get; } = right;
     public override bool IsTerminal { get; } = true;
-    protected override string ToInstString() => $"add {type} {Left.ToValueString(false)}, {Right.ToValueString(false)}";
+    protected override string ToInstString() => $"{Kind.ToChoirKeyword()} {type} {Left.ToValueString(false)}, {Right.ToValueString(false)}";
+}
+
+public static partial class ChoirBinaryOperatorKindExtensions
+{
+    public static string ToChoirKeyword(this ChoirBinaryOperatorKind kind) => kind switch
+    {
+        ChoirBinaryOperatorKind.IAdd => "iadd",
+
+        ChoirBinaryOperatorKind.Invalid or
+        _ => throw new NotImplementedException(),
+    };
 }

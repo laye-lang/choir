@@ -285,8 +285,8 @@ public partial class Sema
                     Linkage = Linkage.Exported,
                 };
                 
-                cModule.FileScope.AddDecl(declTypedef.Name, generatedDecl);
-                cModule.ExportScope.AddDecl(declTypedef.Name, generatedDecl);
+                cModule.FileScope.AddDecl((SemaDeclNamed)generatedDecl);
+                cModule.ExportScope.AddDecl((SemaDeclNamed)generatedDecl);
             } break;
 
             case CX_DeclKind.CX_DeclKind_Record:
@@ -319,8 +319,8 @@ public partial class Sema
                     };
                 }
                 
-                cModule.FileScope.AddDecl(declRecordName, generatedDecl);
-                cModule.ExportScope.AddDecl(declRecordName, generatedDecl);
+                cModule.FileScope.AddDecl((SemaDeclNamed)generatedDecl);
+                cModule.ExportScope.AddDecl((SemaDeclNamed)generatedDecl);
             } break;
 
             case CX_DeclKind.CX_DeclKind_Function:
@@ -353,9 +353,9 @@ public partial class Sema
                     CallingConvention = CallingConvention.CDecl,
                 };
 
-                cModule.FileScope.AddDecl(declFunction.Name, generatedDecl);
+                cModule.FileScope.AddDecl((SemaDeclNamed)generatedDecl);
                 if (((SemaDeclFunction)generatedDecl).Linkage == Linkage.Exported)
-                    cModule.ExportScope.AddDecl(declFunction.Name, generatedDecl);
+                    cModule.ExportScope.AddDecl((SemaDeclNamed)generatedDecl);
             } break;
 
             case CX_DeclKind.CX_DeclKind_Var:
@@ -373,9 +373,9 @@ public partial class Sema
                     ForeignSymbolName = declVar.Name,
                 };
 
-                cModule.FileScope.AddDecl(declVar.Name, generatedDecl);
+                cModule.FileScope.AddDecl((SemaDeclNamed)generatedDecl);
                 if (((SemaDeclBinding)generatedDecl).Linkage == Linkage.Exported)
-                    cModule.ExportScope.AddDecl(declVar.Name, generatedDecl);
+                    cModule.ExportScope.AddDecl((SemaDeclNamed)generatedDecl);
             } break;
         }
 

@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 
 using Choir.Front.Laye.Sema;
+using Choir.IR;
 
 namespace Choir;
 
@@ -78,7 +79,20 @@ public sealed class TypeStorage(ChoirContext context)
     private readonly Dictionary<SemaDeclAlias, SemaTypeAlias> _layeAliasTypes = [];
 
     public int MaxSupportedIntBitWidth { get; } = 256;
-    
+
+    private static ChoirTypeLoc IceOnInvalidPointerSize(ChoirContext context)
+    {
+        context.Diag.ICE($"Invalid pointer size from target: {context.Target.SizeOfPointer.Bytes} bytes");
+        throw new UnreachableException();
+    }
+
+    public ChoirTypeLoc ChoirPointerType { get; } = context.Target.SizeOfPointer.Bytes switch
+    {
+        4 => ChoirTypeInt.Instance.TypeLoc(),
+        8 => ChoirTypeLong.Instance.TypeLoc(),
+        _ => IceOnInvalidPointerSize(context),
+    };
+
     public SemaTypePoison LayeTypePoison { get; } = SemaTypePoison.Instance;
 
     public SemaTypeBuiltIn LayeTypeVoid { get; } = new SemaTypeBuiltIn(context, BuiltinTypeKind.Void);

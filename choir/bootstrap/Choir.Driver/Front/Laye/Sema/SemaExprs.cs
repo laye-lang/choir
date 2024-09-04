@@ -1,5 +1,7 @@
 using System.Numerics;
 
+using Choir.Front.Laye.Syntax;
+
 namespace Choir.Front.Laye.Sema;
 
 public enum CastKind
@@ -13,6 +15,48 @@ public enum CastKind
     ReferenceToLValue,
     Implicit,
     NoOp,
+}
+
+[Flags]
+public enum BinaryOperatorKind : long
+{
+    Undefined = 0,
+
+    Add = 1 << 0,
+    Sub = 1 << 1,
+    Mul = 1 << 2,
+
+    Integer = 1 << 50,
+
+    OperatorMask = (1 << 50) - 1,
+    TypeMask = ~OperatorMask,
+}
+
+public abstract class SemaExprLookup(Location location, SemaTypeQual type, SemaDeclNamed? entity)
+    : SemaExpr(location, type)
+{
+    public SemaDeclNamed? ReferencedEntity { get; } = entity;
+}
+
+public sealed class SemaExprLookupSimple(SyntaxToken ident, SemaTypeQual type, SemaDeclNamed? entity)
+    : SemaExprLookup(ident.Location, type, entity)
+{
+    public string Name { get; } = ident.TextValue;
+}
+
+public abstract class SemaExprBinary(SyntaxToken operatorToken, SemaTypeQual type, SemaExpr left, SemaExpr right)
+    : SemaExpr(operatorToken.Location, type)
+{
+    public SyntaxToken OperatorToken { get; } = operatorToken;
+    public SemaExpr Left { get; } = left;
+    public SemaExpr Right { get; } = right;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [left, right];
+}
+
+public sealed class SemaExprBinaryBuiltIn(BinaryOperatorKind kind, SyntaxToken operatorToken, SemaTypeQual type, SemaExpr left, SemaExpr right)
+    : SemaExprBinary(operatorToken, type, left, right)
+{
+    public BinaryOperatorKind Kind { get; } = kind;
 }
 
 public sealed class SemaExprEvaluatedConstant(SemaExpr sourceExpr, EvaluatedConstant value)

@@ -20,10 +20,11 @@ public static class ChoirIR_QbeExtensions
         var builder = new StringBuilder();
         builder.AppendLine($"# Choir Module - '{module.Name}'");
 
-        for (int i = 0; i < module._globals.Count; i++)
+        var globals = module.GlobalDecls.ToArray();
+        for (int i = 0; i < globals.Length; i++)
         {
             if (i > 0) builder.AppendLine();
-            builder.AppendLine(module._globals[i].ToQbeString());
+            builder.AppendLine(globals[i].ToQbeString());
         }
 
         return builder.ToString();
@@ -35,9 +36,9 @@ public static class ChoirIR_QbeExtensions
         {
             default: throw new NotImplementedException($"Unimplemented Choir inst {inst.GetType().Name}");
 
-            case ChoirInstAdd add:
+            case ChoirInstBinary binary:
             {
-                return $"add {add.Left.ToQbeValueString(IncludeType.IfNotLiteral)}, {add.Left.ToQbeValueString(IncludeType.IfNotLiteral)}";
+                return $"{binary.Kind.ToQbeKeyword()} {binary.Left.ToQbeValueString(IncludeType.IfNotLiteral)}, {binary.Left.ToQbeValueString(IncludeType.IfNotLiteral)}";
             }
 
             case ChoirInstRet ret: return $"ret {ret.Value.ToQbeValueString(IncludeType.Never)}";
@@ -140,8 +141,29 @@ public static class ChoirIR_QbeExtensions
             case ChoirTypeVoid:
             default: return "";
 
-            case ChoirTypeI32: return "w";
-            case ChoirTypeI64: return "l";
+            case ChoirTypeInt typeInt:
+            {
+                switch (typeInt.Size.Bytes)
+                {
+                    default: throw new NotImplementedException($"Unsupported integer bit width in QBE backend: {typeInt.Size.Bytes} bytes");
+
+                    case 1: return "b";
+                    case 2: return "h";
+                    case 4: return "w";
+                    case 8: return "l";
+                }
+            }
         }
     }
+}
+
+public static partial class ChoirBinaryOperatorKindExtensions
+{
+    public static string ToQbeKeyword(this ChoirBinaryOperatorKind kind) => kind switch
+    {
+        ChoirBinaryOperatorKind.IAdd => "add",
+
+        ChoirBinaryOperatorKind.Invalid or
+        _ => throw new NotImplementedException(),
+    };
 }

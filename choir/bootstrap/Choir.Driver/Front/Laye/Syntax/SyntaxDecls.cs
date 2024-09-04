@@ -206,7 +206,7 @@ public sealed class SyntaxOperatorDeleteArray(SyntaxToken tokenOperatorKeyword, 
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenOperatorKeyword, tokenDelete];
 }
 
-public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxNode name, IReadOnlyList<SyntaxNode> parameters)
+public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxNode name, IReadOnlyList<SyntaxDeclParam> parameters)
     : SyntaxNode(name.Location)
 {
     public required SyntaxTemplateParams? TemplateParams { get; init; }
@@ -214,7 +214,7 @@ public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxNode name, I
 
     public SyntaxNode ReturnType { get; } = returnType;
     public SyntaxNode Name { get; } = name;
-    public IReadOnlyList<SyntaxNode> Params { get; } = parameters;
+    public IReadOnlyList<SyntaxDeclParam> Params { get; } = parameters;
 
     public SyntaxNode? Body { get; init; } = null;
     public SyntaxToken? TokenSemiColon { get; init; } = null;

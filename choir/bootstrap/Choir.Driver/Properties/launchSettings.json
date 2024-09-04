@@ -2,7 +2,7 @@
   "profiles": {
     "Choir.Driver": {
       "commandName": "Project",
-      "commandLineArgs": "test.laye -S -emit-qbe -o -",
+      "commandLineArgs": "test.laye -o - -S -emit-choir",
       "workingDirectory": "C:\\Users\\Nashiora\\dev\\choir"
     }
   }

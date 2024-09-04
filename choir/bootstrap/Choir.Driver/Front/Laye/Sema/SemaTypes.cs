@@ -2,8 +2,6 @@ using System.Diagnostics;
 using System.Text;
 using Choir.CommandLine;
 
-using ClangSharp;
-
 namespace Choir.Front.Laye.Sema;
 
 public enum BuiltinTypeKind
@@ -69,10 +67,12 @@ public static class BuiltinTypeKindExtensions
 public sealed class SemaTypePoison : SemaType
 {
     public static readonly SemaTypePoison Instance = new();
+    public static readonly SemaTypeQual InstanceQualified = Instance.Qualified(Location.Nowhere);
+
     public override bool IsPoison { get; } = true;
     public override Size Size { get; } = Size.FromBytes(1);
     public override string ToDebugString(Colors colors) =>
-        $"{colors.Red}POISON";
+        $"{colors.Red}POISON{colors.Default}";
 }
 
 public sealed class SemaTypeTypeInfo : SemaType
@@ -83,7 +83,7 @@ public sealed class SemaTypeTypeInfo : SemaType
     public override Size Size { get; } = Size.FromBytes(1);
 
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeKeyword()}typeinfo";
+        $"{colors.LayeKeyword()}typeinfo{colors.Default}";
 }
 
 public sealed class SemaTypeBuiltIn(ChoirContext context, BuiltinTypeKind kind, int bitWidth = 0) : SemaType
@@ -98,6 +98,7 @@ public sealed class SemaTypeBuiltIn(ChoirContext context, BuiltinTypeKind kind, 
     /// </summary>
     public bool IsExplicitlySized => Kind is BuiltinTypeKind.IntSized or BuiltinTypeKind.FloatSized or BuiltinTypeKind.BoolSized;
 
+    public override bool IsBuiltin { get; } = true;
     public override bool IsNumeric { get; } = kind is BuiltinTypeKind.Int or BuiltinTypeKind.IntSized or BuiltinTypeKind.FloatSized
                                                    or (>= BuiltinTypeKind.__FFI_FIRST_INTEGER and <= BuiltinTypeKind.__FFI_LAST_INTEGER)
                                                    or (>= BuiltinTypeKind.__FFI_FIRST_FLOAT and <= BuiltinTypeKind.__FFI_LAST_FLOAT);
@@ -159,7 +160,7 @@ public sealed class SemaTypeBuiltIn(ChoirContext context, BuiltinTypeKind kind, 
     };
 
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeKeyword()}{Kind.ToLanguageKeywordString(BitWidth)}";
+        $"{colors.LayeKeyword()}{Kind.ToLanguageKeywordString(BitWidth)}{colors.Default}";
 }
 
 public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedType) : SemaType
@@ -174,14 +175,14 @@ public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedTyp
     {
         var builder = new StringBuilder();
         for (int i = 0; i < NameParts.Count; i++) {
-            if (i > 0) builder.Append($"{colors.Reset}::");
+            if (i > 0) builder.Append($"{colors.Default}::");
             if (i == NameParts.Count - 1)
                 builder.Append(colors.LayeTypeName());
             else builder.Append(colors.LayeName());
             builder.Append(NameParts[i]);
         }
 
-        return builder.ToString();
+        return builder.Append(colors.Default).ToString();
     }
 
     public override IEnumerable<BaseSemaNode> Children { get; } = [namedType];
@@ -195,7 +196,7 @@ public sealed class SemaTypeTemplateParameter(string parameterName) : SemaType
     public override Align Align { get; } = Align.ForBits(0);
 
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeTemplate()}{ParameterName}";
+        $"{colors.LayeTemplate()}{ParameterName}{colors.Default}";
 }
 
 public abstract class SemaContainerType(SemaTypeQual elementType) : SemaType
@@ -211,7 +212,7 @@ public sealed class SemaTypePointer(ChoirContext context, SemaTypeQual elementTy
     public override Align Align { get; } = context.Target.AlignOfPointer;
 
     public override string ToDebugString(Colors colors) =>
-        $"{ElementType.ToDebugString(colors)}{colors.Reset}*";
+        $"{ElementType.ToDebugString(colors)}{colors.Default}*";
 }
 
 public sealed class SemaTypeBuffer(ChoirContext context, SemaTypeQual elementType, byte? terminator = null)
@@ -225,8 +226,8 @@ public sealed class SemaTypeBuffer(ChoirContext context, SemaTypeQual elementTyp
     public override string ToDebugString(Colors colors)
     {
         if (Terminator is byte t)
-            return $"{ElementType.ToDebugString(colors)}{colors.Reset}[*:{colors.LayeLiteral()}{Terminator}{colors.Reset}]";
-        else return $"{ElementType.ToDebugString(colors)}{colors.Reset}[*]";
+            return $"{ElementType.ToDebugString(colors)}{colors.Default}[*:{colors.LayeLiteral()}{Terminator}{colors.Default}]";
+        else return $"{ElementType.ToDebugString(colors)}{colors.Default}[*]";
     }
 }
 
@@ -236,7 +237,7 @@ public sealed class SemaTypeReference(ChoirContext context, SemaTypeQual element
     public override Align Align { get; } = context.Target.AlignOfPointer;
 
     public override string ToDebugString(Colors colors) =>
-        $"{ElementType.ToDebugString(colors)}{colors.Reset}&";
+        $"{ElementType.ToDebugString(colors)}{colors.Default}&";
 }
 
 public sealed class SemaTypeNilable(SemaTypeQual elementType) : SemaContainerType(elementType)
@@ -245,7 +246,7 @@ public sealed class SemaTypeNilable(SemaTypeQual elementType) : SemaContainerTyp
     public override Align Align => throw new NotImplementedException();
 
     public override string ToDebugString(Colors colors) =>
-        $"{ElementType.ToDebugString(colors)}{colors.Reset}?";
+        $"{ElementType.ToDebugString(colors)}{colors.Default}?";
 }
 
 public sealed class SemaTypeSlice(ChoirContext context, SemaTypeQual elementType) : SemaContainerType(elementType)
@@ -254,7 +255,7 @@ public sealed class SemaTypeSlice(ChoirContext context, SemaTypeQual elementType
     public override Align Align { get; } = context.Target.AlignOfPointer;
 
     public override string ToDebugString(Colors colors) =>
-        $"{ElementType.ToDebugString(colors)}{colors.Reset}[]";
+        $"{ElementType.ToDebugString(colors)}{colors.Default}[]";
 }
 
 public sealed class SemaTypeArray(SemaTypeQual elementType, SemaExpr[] lengths) : SemaContainerType(elementType)
@@ -267,8 +268,8 @@ public sealed class SemaTypeArray(SemaTypeQual elementType, SemaExpr[] lengths) 
 
     public override string ToDebugString(Colors colors)
     {
-        string lengths = string.Join($"{colors.Reset}, ", Lengths.Select(length => $"{colors.LayeLiteral()}{length}"));
-        return $"{ElementType.ToDebugString(colors)}{colors.Reset}[{lengths}{colors.Reset}]";
+        string lengths = string.Join($"{colors.Default}, ", Lengths.Select(length => $"{colors.LayeLiteral()}{length}"));
+        return $"{ElementType.ToDebugString(colors)}{colors.Default}[{lengths}{colors.Default}]";
     }
 }
 
@@ -281,9 +282,60 @@ public sealed class SemaTypeErrorPair(SemaTypeQual resultType, SemaTypeQual erro
     public override Align Align => throw new NotImplementedException();
 
     public override string ToDebugString(Colors colors) =>
-        $"{ResultType.ToDebugString(colors)}{colors.Reset}!{ErrorType.ToDebugString(colors)}";
+        $"{ResultType.ToDebugString(colors)}{colors.Default}!{ErrorType.ToDebugString(colors)}";
 
     public override IEnumerable<BaseSemaNode> Children { get; } = [resultType, errorType];
+}
+
+public sealed class SemaTypeFunction(ChoirContext context, SemaTypeQual returnType, IReadOnlyList<SemaTypeQual> paramTypes)
+    : SemaType
+{
+    public override Size Size { get; } = context.Target.SizeOfPointer;
+    public override Align Align { get; } = context.Target.AlignOfPointer;
+
+    public SemaTypeQual ReturnType { get; } = returnType;
+    public IReadOnlyList<SemaTypeQual> ParamTypes { get; } = paramTypes;
+
+    public CallingConvention CallingConvention { get; init; } = CallingConvention.Laye;
+
+    public override string ToDebugString(Colors colors)
+    {
+        var builder = new StringBuilder();
+        
+        builder.Append(colors.LayeKeyword()).Append("function");
+
+        if (CallingConvention != CallingConvention.Laye)
+        {
+            builder.Append(' ').Append("callconv").Append(colors.Default).Append('(').Append(colors.LayeName());
+            switch (CallingConvention)
+            {
+                default: throw new InvalidOperationException();
+                case CallingConvention.CDecl: builder.Append("cdecl"); break;
+                case CallingConvention.StdCall: builder.Append("stdcall"); break;
+                case CallingConvention.FastCall: builder.Append("fastcall"); break;
+            }
+
+            builder.Append(colors.Default).Append(") ");
+        }
+        else builder.Append(colors.Default);
+
+        builder.Append('(');
+        for (int i = 0; i < ParamTypes.Count; i++)
+        {
+            if (i > 0) builder.Append(colors.Default).Append(", ");
+            builder.Append(ParamTypes[i].ToDebugString(colors));
+        }
+
+        builder.Append(colors.Default).Append(')');
+
+        if (ReturnType.Type is not SemaTypeBuiltIn returnTypeBuiltin || returnTypeBuiltin.Kind != BuiltinTypeKind.Void)
+        {
+            builder.Append(" -> ");
+            builder.Append(ReturnType.ToDebugString(colors));
+        }
+
+        return builder.Append(colors.Default).ToString();
+    }
 }
 
 public sealed class SemaTypeDelegate(ChoirContext context, SemaDeclDelegate declDelegate) : SemaType
@@ -291,9 +343,10 @@ public sealed class SemaTypeDelegate(ChoirContext context, SemaDeclDelegate decl
     public override Size Size { get; } = context.Target.SizeOfPointer;
     public override Align Align { get; } = context.Target.AlignOfPointer;
 
+    public override SemaType CanonicalType => DeclDelegate.FunctionType(context);
     public SemaDeclDelegate DeclDelegate { get; } = declDelegate;
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeTypeName()}{DeclDelegate.Name}";
+        $"{colors.LayeTypeName()}{DeclDelegate.Name}{colors.Default}";
 }
 
 public sealed class SemaTypeStruct(SemaDeclStruct declStruct) : SemaType
@@ -304,7 +357,7 @@ public sealed class SemaTypeStruct(SemaDeclStruct declStruct) : SemaType
     public override Align Align => throw new NotImplementedException();
 
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeTypeName()}{DeclStruct.Name}";
+        $"{colors.LayeTypeName()}{DeclStruct.Name}{colors.Default}";
 }
 
 public sealed class SemaTypeEnum(SemaDeclEnum declEnum) : SemaType
@@ -315,7 +368,7 @@ public sealed class SemaTypeEnum(SemaDeclEnum declEnum) : SemaType
     public override Align Align { get; } = Align.ForBits(32);
 
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeTypeName()}{DeclEnum.Name}";
+        $"{colors.LayeTypeName()}{DeclEnum.Name}{colors.Default}";
 }
 
 public sealed class SemaTypeAlias(SemaDeclAlias declAlias) : SemaType
@@ -326,5 +379,5 @@ public sealed class SemaTypeAlias(SemaDeclAlias declAlias) : SemaType
     public override Align Align { get; } = declAlias.AliasedType.Type.Align;
 
     public override string ToDebugString(Colors colors) =>
-        $"{colors.LayeTypeName()}{DeclAlias.Name}";
+        $"{colors.LayeTypeName()}{DeclAlias.Name}{colors.Default}";
 }

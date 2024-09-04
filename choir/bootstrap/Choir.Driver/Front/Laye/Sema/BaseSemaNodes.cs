@@ -129,6 +129,7 @@ public abstract class BaseSemaNode
 
 public abstract class SemaType : BaseSemaNode
 {
+    public virtual bool IsBuiltin { get; } = false;
     public virtual bool IsPoison { get; } = false;
     public virtual bool IsNumeric { get; } = false;
     public virtual bool IsInteger { get; } = false;
@@ -137,6 +138,7 @@ public abstract class SemaType : BaseSemaNode
     public abstract Size Size { get; }
     public virtual Align Align => Align.ForBytes(Size.Bytes);
 
+    public virtual SemaType CanonicalType => this;
     public SemaTypeQual Qualified(Location location, TypeQualifiers qualifiers = TypeQualifiers.None) =>
         new(this, location, qualifiers);
 
@@ -156,8 +158,23 @@ public sealed class SemaTypeQual(SemaType type, Location location, TypeQualifier
     public override IEnumerable<BaseSemaNode> Children { get; } = [type];
 
     public bool IsPoison => Type.IsPoison;
+    public bool IsBuiltin => Type.IsBuiltin;
+    public bool IsNumeric => Type.IsNumeric;
+    public bool IsInteger => Type.IsInteger;
+    public bool IsFloat => Type.IsFloat;
+
     public bool IsQualified => Qualifiers != TypeQualifiers.None;
     public SemaTypeQual Unqualified => new(Type, Location);
+
+    public SemaTypeQual CanonicalType
+    {
+        get
+        {
+            var canon = Type.CanonicalType;
+            if (Type != canon) return Type.CanonicalType.Qualified(Location, Qualifiers);
+            return this;
+        }
+    }
 
     public SemaTypeQual Qualified(TypeQualifiers qualifiers = TypeQualifiers.None) =>
         new(Type, Location, Qualifiers | qualifiers);
@@ -176,7 +193,7 @@ public sealed class SemaTypeQual(SemaType type, Location location, TypeQualifier
     {
         string typeString = Type.ToDebugString(colors);
         if (Qualifiers.HasFlag(TypeQualifiers.Mutable))
-            typeString += $" {colors.LayeKeyword()}mut";
+            typeString += $" {colors.LayeKeyword()}mut{colors.Default}";
         return typeString;
     }
 }
@@ -189,6 +206,12 @@ public abstract class SemaStmt(Location location) : BaseSemaNode
 public abstract class SemaDecl(Location location)
     : SemaStmt(location)
 {
+}
+
+public abstract class SemaDeclNamed(Location location, string name)
+    : SemaDecl(location)
+{
+    public string Name { get; } = name;
 }
 
 public abstract class SemaExpr(Location location, SemaTypeQual type) : BaseSemaNode

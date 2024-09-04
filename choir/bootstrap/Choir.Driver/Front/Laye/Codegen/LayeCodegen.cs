@@ -1,10 +1,9 @@
 ﻿using System.Diagnostics;
+using System.Reflection.Metadata;
 
 using Choir.Front.Laye.Sema;
 
 using Choir.IR;
-
-using ClangSharp;
 
 namespace Choir.Front.Laye.Codegen;
 
@@ -23,16 +22,6 @@ public sealed class LayeCodegen(Module module)
 
         var cg = new LayeCodegen(module);
 
-        // forward declare things first
-        foreach (var decl in module.SemaDecls)
-        {
-            ChoirValue forwardDecl;
-            if (decl is SemaDeclFunction function)
-                forwardDecl = cg.GenerateDeclaration(function);
-            else throw new NotImplementedException($"for decl type {decl.GetType().FullName}");
-            cm.AddGlobal(forwardDecl);
-        }
-
         // generate definitions
         foreach (var decl in module.SemaDecls)
         {
@@ -48,6 +37,11 @@ public sealed class LayeCodegen(Module module)
     public Module Module { get; } = module;
     public ChoirModule ChoirModule { get; } = module.ChoirModule!;
 
+    private readonly Dictionary<SemaDeclNamed, ChoirValue> _declaredValues = [];
+
+    private int _nameCounter = 0;
+    private string NextName(string name = "") => $"{name}{_nameCounter++}";
+
     private ChoirTypeLoc GenerateType(SemaTypeQual typeQual)
     {
         return GenerateType(typeQual.Type).TypeLoc(typeQual.Location);
@@ -58,7 +52,7 @@ public sealed class LayeCodegen(Module module)
             {
                 default:
                 {
-                    Context.Assert(false, typeQual.Location, $"Unimplemented Laye type in Choir codegen: {type.GetType().FullName}");
+                    Context.Diag.ICE(typeQual.Location, $"Unimplemented Laye type in Choir codegen: {type.GetType().FullName}");
                     throw new UnreachableException();
                 }
 
@@ -68,25 +62,26 @@ public sealed class LayeCodegen(Module module)
                     {
                         default:
                         {
-                            Context.Assert(false, typeQual.Location, $"Unimplemented Laye built in type kind in Choir codegen: {builtIn.Kind}");
+                            Context.Diag.ICE(typeQual.Location, $"Unimplemented Laye built in type kind in Choir codegen: {builtIn.Kind}");
                             throw new UnreachableException();
                         }
 
                         case BuiltinTypeKind.NoReturn:
                         case BuiltinTypeKind.Void: return ChoirTypeVoid.Instance;
-
                         case BuiltinTypeKind.Int:
                         {
-                            switch (builtIn.Size.Bytes)
+                            switch (Align.ForBits(builtIn.Size.Bits).Value)
                             {
                                 default:
                                 {
-                                    Context.Assert(false, typeQual.Location, $"Unimplemented Laye int type size in Choir codegen: {builtIn.Size.Bytes} bytes");
+                                    Context.Diag.ICE(typeQual.Location, $"Currently unsupported Laye integer size: {builtIn.Size.Bits} bits");
                                     throw new UnreachableException();
                                 }
 
-                                case 4: return ChoirTypeI32.Instance;
-                                case 8: return ChoirTypeI64.Instance;
+                                case 1: return ChoirTypeByte.Instance;
+                                case 2: return ChoirTypeShort.Instance;
+                                case 4: return ChoirTypeInt.Instance;
+                                case 8: return ChoirTypeLong.Instance;
                             }
                         }
                     }
@@ -95,26 +90,29 @@ public sealed class LayeCodegen(Module module)
         }
     }
 
-    private ChoirFunction GenerateDeclaration(SemaDeclFunction function)
+    private ChoirFunction GenerateDefinition(SemaDeclFunction function)
     {
+        Context.Assert(function.Body is not null, function.Location, "Attempt to generate code for a function definition when only a declaration is present.");
+
         var @params = function.ParameterDecls.Select(p =>
         {
             return new ChoirFunctionParam(p.Location, p.Name, GenerateType(p.ParamType));
         }).ToArray();
-        var f = new ChoirFunction(function.Location, function.Name, GenerateType(function.ReturnType), @params);
-        return f;
-    }
 
+        var f = new ChoirFunction(Context, function.Location, function.Name, GenerateType(function.ReturnType), @params);
+        _declaredValues[function] = f;
 
-    private ChoirFunction GenerateDefinition(SemaDeclFunction function)
-    {
-        Context.Assert(function.Body is not null, function.Location, "Attempt to generate code for a function definition when only a declaration is present.");
-        
-        var f = GenerateDeclaration(function);
         var startBlock = f.AppendBlock(function.Body.Location, "start");
 
         var builder = new ChoirBuilder(ChoirModule);
         builder.PositionAtEnd(startBlock);
+
+        foreach (var (paramDecl, paramValue) in function.ParameterDecls.Zip(@params))
+        {
+            var local = builder.BuildAlloca(paramDecl.Location, NextName("param"), paramValue.Type, 1, paramValue.Type.Type.Align);
+            var storeParam = builder.BuildStore(paramDecl.Location, local, paramValue);
+            _declaredValues[paramDecl] = local;
+        }
 
         BuildStmt(builder, function.Body);
         
@@ -127,7 +125,7 @@ public sealed class LayeCodegen(Module module)
         {
             default:
             {
-                Context.Assert(false, stmt.Location, $"Unimplemented Laye node in Choir builder/codegen: {stmt.GetType().FullName}");
+                Context.Diag.ICE(stmt.Location, $"Unimplemented Laye node in Choir builder/codegen: {stmt.GetType().FullName}");
                 throw new UnreachableException();
             }
 
@@ -151,7 +149,7 @@ public sealed class LayeCodegen(Module module)
         {
             default:
             {
-                Context.Assert(false, expr.Location, $"Unimplemented Laye node in Choir builder/codegen: {expr.GetType().FullName}");
+                Context.Diag.ICE(expr.Location, $"Unimplemented Laye node in Choir builder/codegen: {expr.GetType().FullName}");
                 throw new UnreachableException();
             }
 
@@ -162,12 +160,54 @@ public sealed class LayeCodegen(Module module)
                 {
                     default:
                     {
-                        Context.Assert(false, expr.Location, $"Unimplemented Laye constant kind in Choir builder/codegen: {constant.Value.Kind}");
+                        Context.Diag.ICE(expr.Location, $"Unimplemented Laye constant kind in Choir builder/codegen: {constant.Value.Kind}");
                         throw new UnreachableException();
                     }
 
                     case EvaluatedConstantKind.Integer: return new ChoirValueLiteralInteger(constant.Location, constant.Value.IntegerValue, type);
                 }
+            }
+
+            case SemaExprBinaryBuiltIn binaryBuiltIn:
+            {
+                var type = GenerateType(binaryBuiltIn.Type);
+                var left = BuildExpr(builder, binaryBuiltIn.Left);
+                var right = BuildExpr(builder, binaryBuiltIn.Right);
+
+                switch (binaryBuiltIn.Kind)
+                {
+                    default:
+                    {
+                        Context.Diag.ICE(expr.Location, $"Unimplemented Laye built-in binary operator kind in Choir builder/codegen: {binaryBuiltIn.Kind}");
+                        throw new UnreachableException();
+                    }
+
+                    case BinaryOperatorKind.Add | BinaryOperatorKind.Integer:
+                    {
+                        return builder.BuildIAdd(binaryBuiltIn.Location, NextName("iadd"), type, left, right);
+                    }
+                }
+            }
+
+            case SemaExprCast cast:
+            {
+                switch (cast.CastKind)
+                {
+                    default:
+                    {
+                        Context.Diag.ICE(expr.Location, $"Unimplemented Laye cast kind in Choir builder/codegen: {cast.CastKind}");
+                        throw new UnreachableException();
+                    }
+
+                    case CastKind.LValueToRValue: return builder.BuildLoad(cast.Location, NextName("lv2rv"), GenerateType(cast.Type), BuildExpr(builder, cast.Operand));
+                }
+            }
+
+            case SemaExprLookupSimple lookupSimple:
+            {
+                Context.Assert(lookupSimple.ReferencedEntity is not null, lookupSimple.Location, "Lookup was not resolved to an entity during sema, should not get to codegen.");
+                Context.Assert(_declaredValues.ContainsKey(lookupSimple.ReferencedEntity), lookupSimple.Location, "Entity to lookup was not declared in codegen yet. May have been generated incorrectly.");
+                return _declaredValues[lookupSimple.ReferencedEntity];
             }
         }
     }

@@ -4,7 +4,7 @@ namespace Choir.Front.Laye.Sema;
 
 public abstract record class Symbol;
 public sealed record class NamespaceSymbol(Scope Symbols) : Symbol;
-public sealed record class EntitySymbol(SemaDecl Entity) : Symbol;
+public sealed record class EntitySymbol(SemaDeclNamed Entity) : Symbol;
 
 public sealed class Scope(Scope? parent = null)
     : IEnumerable<(string Name, IReadOnlyList<Symbol> Symbols)>, IEquatable<Scope>
@@ -32,9 +32,9 @@ public sealed class Scope(Scope? parent = null)
         GetSymbolSet(name).Add(new NamespaceSymbol(@namespace));
     }
 
-    public void AddDecl(string name, SemaDecl entity)
+    public void AddDecl(SemaDeclNamed entity)
     {
-        GetSymbolSet(name).Add(new EntitySymbol(entity));
+        GetSymbolSet(entity.Name).Add(new EntitySymbol(entity));
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using System.Numerics;
+using System.Xml.Linq;
 
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
+
+using ClangSharp;
 
 namespace Choir.Front.Laye.Sema;
 
@@ -27,12 +30,22 @@ public partial class Sema
 
         foreach (var topLevelNode in module.TopLevelSyntax)
             sema.ForwardDeclareIfAllowedOutOfOrder(topLevelNode);
-        
+
         if (module.Context.HasIssuedError) return;
 
         foreach (var topLevelNode in module.TopLevelSyntax)
         {
             var decl = sema.AnalyseTopLevelDecl(topLevelNode);
+
+            if (decl is SemaDeclFunction declFunction && declFunction.Name == "main")
+            {
+                if (declFunction.Linkage is not Linkage.Internal and not Linkage.Exported)
+                    module.Context.Diag.Error("The 'main' function must either be defined with no linkage or as 'export'.");
+
+                declFunction.ForeignSymbolName = "main";
+                declFunction.Linkage = Linkage.Exported;
+            }
+
             module.AddDecl(decl);
         }
     }
@@ -45,12 +58,13 @@ public partial class Sema
     public Module Module { get; }
     public ChoirContext Context { get; }
     public TranslationUnit TranslationUnit { get; }
+    public Colors Colors { get; }
 
     private readonly Dictionary<SyntaxNode, SemaDecl> _forwardDeclNodes = [];
     private readonly Stack<Scope> _scopes = [];
     private readonly Stack<SemaDeclFunction> _functions = [];
 
-    private Scope Scope => _scopes.Count == 0 ? Module.FileScope : _scopes.Peek();
+    private Scope CurrentScope => _scopes.Count == 0 ? Module.FileScope : _scopes.Peek();
     private SemaDeclFunction CurrentFunction
     {
         get
@@ -68,6 +82,7 @@ public partial class Sema
         Module = module;
         Context = module.Context;
         TranslationUnit = module.TranslationUnit!;
+        Colors = new(module.Context.UseColor);
     }
 
     private void ResolveModuleImports()
@@ -106,7 +121,7 @@ public partial class Sema
             }
 
             var importedFile = Context.GetSourceFile(importedFileInfo);
-            if (TranslationUnit.FindModuleBySourceFile(importedFile) is {} importedModuleResult)
+            if (TranslationUnit.FindModuleBySourceFile(importedFile) is { } importedModuleResult)
                 importedModule = importedModuleResult;
             else
             {
@@ -115,13 +130,13 @@ public partial class Sema
                 Lexer.ReadTokens(importedModule);
                 Parser.ParseSyntax(importedModule);
             }
-            
+
             importDecl.ReferencedModule = importedModule;
             if (Context.HasIssuedError) return;
 
             Analyse(importedModule);
 
-            handle_imports_and_exports:;
+        handle_imports_and_exports:;
             if (importDecl.IsAliased)
             {
                 Module.FileScope.AddNamespace(importDecl.AliasNameText, importedModule.ExportScope);
@@ -259,7 +274,7 @@ public partial class Sema
 
     private void ForwardDeclareIfAllowedOutOfOrder(SyntaxNode node)
     {
-        SemaDecl forwardDecl;
+        SemaDeclNamed forwardDecl;
         // if we're in file scope, scoping will be handled separately (for now)
         Scope? nonFileScope = _scopes.TryPeek(out var scope2) ? scope2 : null;
         switch (node)
@@ -269,25 +284,25 @@ public partial class Sema
             case SyntaxDeclAlias declAlias:
             {
                 forwardDecl = new SemaDeclAlias(declAlias.Location, declAlias.TokenName.TextValue, declAlias.IsStrict);
-                nonFileScope?.AddDecl(declAlias.TokenName.TextValue, forwardDecl);
+                nonFileScope?.AddDecl(forwardDecl);
             } break;
 
             case SyntaxDeclStruct declStruct:
             {
                 forwardDecl = new SemaDeclStruct(declStruct.Location, declStruct.TokenName.TextValue);
-                nonFileScope?.AddDecl(declStruct.TokenName.TextValue, forwardDecl);
+                nonFileScope?.AddDecl(forwardDecl);
             } break;
 
             case SyntaxDeclEnum declEnum:
             {
                 forwardDecl = new SemaDeclEnum(declEnum.Location, declEnum.TokenName.TextValue);
-                nonFileScope?.AddDecl(declEnum.TokenName.TextValue, forwardDecl);
+                nonFileScope?.AddDecl(forwardDecl);
             } break;
 
             case SyntaxDeclBinding declBinding:
             {
                 forwardDecl = new SemaDeclBinding(declBinding.Location, declBinding.TokenName.TextValue);
-                nonFileScope?.AddDecl(declBinding.TokenName.TextValue, forwardDecl);
+                nonFileScope?.AddDecl(forwardDecl);
             } break;
 
             case SyntaxDeclFunction declFunction:
@@ -295,7 +310,7 @@ public partial class Sema
                 if (declFunction.Name is not SyntaxToken tokenIdent || tokenIdent.Kind != TokenKind.Identifier)
                     throw new NotImplementedException("need to have a generic entity name type");
                 forwardDecl = new SemaDeclFunction(declFunction.Location, tokenIdent.TextValue);
-                nonFileScope?.AddDecl(tokenIdent.TextValue, forwardDecl);
+                nonFileScope?.AddDecl(forwardDecl);
             } break;
         }
 
@@ -318,7 +333,7 @@ public partial class Sema
                 var semaNode = new SemaDeclImport(declImport.Location, declImport.ReferencedModule, declImport.IsExported, []);
                 return semaNode;
             }
-            
+
             case SyntaxDeclAlias or SyntaxDeclStruct or SyntaxDeclEnum or SyntaxDeclBinding or SyntaxDeclFunction:
                 return (SemaDecl)AnalyseStmtOrDecl(decl);
         }
@@ -408,9 +423,18 @@ public partial class Sema
                 using var _f = EnterFunction(semaNode);
 
                 semaNode.ReturnType = AnalyseType(declFunction.ReturnType);
-                
-                Context.Assert(declFunction.Params.Count == 0, declFunction.Location, "TODO: implement sema for top-level function parameters");
-                
+
+                var paramDecls = new List<SemaDeclParam>();
+                foreach (var param in declFunction.Params)
+                {
+                    var paramType = AnalyseType(param.ParamType);
+                    var paramDecl = new SemaDeclParam(param.Location, param.TokenName.TextValue, paramType);
+                    DeclareInScope(paramDecl);
+                    paramDecls.Add(paramDecl);
+                }
+
+                semaNode.ParameterDecls = [.. paramDecls];
+
                 if (declFunction.Body is SyntaxCompound bodyCompound)
                     semaNode.Body = (SemaStmtCompound)AnalyseStmtOrDecl(bodyCompound, inheritCurrentScope: true);
                 else if (declFunction.Body is not null)
@@ -447,6 +471,12 @@ public partial class Sema
         }
     }
 
+    private void DeclareInScope(SemaDeclNamed decl)
+    {
+        Context.Assert(_scopes.Count != 0, decl.Location, "currently it is assumed that top-level declarations are handled separately from other scoped declarations. there are currently no non-top-level scopes.");
+        CurrentScope.AddDecl(decl);
+    }
+
     private SemaExpr AnalyseExpr(SyntaxNode expr)
     {
         if (expr is SyntaxTypeBuffer or SyntaxTypeBuiltIn or SyntaxTypeNilable or SyntaxTypePointer or SyntaxTypeReference or SyntaxTypeSlice)
@@ -454,7 +484,7 @@ public partial class Sema
             Context.Assert(false, $"shouldn't ever call {nameof(AnalyseExpr)} on nodes which can only be types; those should only exist in a type context and go through {nameof(AnalyseType)}");
             throw new UnreachableException();
         }
-        
+
         switch (expr)
         {
             default:
@@ -462,7 +492,10 @@ public partial class Sema
                 Context.Assert(false, $"TODO: implement {expr.GetType().Name} for {nameof(AnalyseExpr)}");
                 throw new UnreachableException();
             }
-            
+
+            case SyntaxNameref nameref: return AnalyseLookup(nameref);
+            case SyntaxExprBinary binary: return AnalyseBinary(binary);
+
             case SyntaxToken tokenInteger when tokenInteger.Kind == TokenKind.LiteralInteger:
             {
                 SemaType intTypeUnqual;
@@ -493,6 +526,142 @@ public partial class Sema
         }
     }
 
+    private SemaExprLookup CreateEntityLookupFromScope(SyntaxNode nameNode, Scope scope)
+    {
+        switch (nameNode)
+        {
+            default:
+            {
+                Context.Assert(false, nameNode.Location, "Currently only handling the base case of an identifier name.");
+                throw new UnreachableException();
+            }
+
+            case SyntaxToken nameIdent when nameIdent.Kind == TokenKind.Identifier:
+            {
+                string lookupName = nameIdent.TextValue;
+
+                IReadOnlyList<Symbol> symbols = [];
+                Scope? lookupScope = scope;
+
+                while (lookupScope is not null)
+                {
+                    symbols = lookupScope.GetSymbols(lookupName);
+                    if (symbols.Count != 0) break;
+                    lookupScope = lookupScope.Parent;
+                }
+
+                SemaDeclNamed? entity = null;
+                SemaTypeQual type = SemaTypePoison.InstanceQualified;
+                ValueCategory valueCategory = ValueCategory.LValue;
+
+                if (symbols.Count == 0)
+                {
+                    Context.Diag.Error(nameNode.Location, $"The name '{lookupName}' does not exist in the current context.");
+                }
+                else if (symbols.Count == 1)
+                {
+                    if (symbols[0] is EntitySymbol entitySymbol)
+                    {
+                        entity = entitySymbol.Entity;
+                        switch (entity)
+                        {
+                            default:
+                            {
+                                Context.Assert(false, nameNode.Location, $"Unhandled entity declaration in lookup type resolution: {entity.GetType().FullName}.");
+                                throw new UnreachableException();
+                            }
+
+                            case SemaDeclParam declParam: type = declParam.ParamType; break;
+                            case SemaDeclFunction declFunction:
+                            {
+                                type = declFunction.FunctionType(Context).Qualified(entity.Location);
+                                valueCategory = ValueCategory.RValue;
+                            } break;
+                        }
+                    }
+                    else
+                    {
+                        Context.Diag.Error(nameNode.Location, $"'{lookupName}' is a namespace but is used like a variable.");
+                    }
+                }
+                else
+                {
+                    Context.Diag.Error(nameNode.Location, $"Overload resolution is not currently supported.");
+                }
+
+                var dependence = ExprDependence.None;
+                if (entity is null) dependence |= ExprDependence.Error;
+
+                return new SemaExprLookupSimple(nameIdent, type, entity)
+                {
+                    Dependence = dependence,
+                    ValueCategory = valueCategory,
+                };
+            }
+        }
+    }
+
+    private SemaExprLookup AnalyseLookup(SyntaxNameref nameref)
+    {
+        Context.Assert(nameref.Names.Count == 1, nameref.Location, "Currently only handling the base case of a single name in a nameref.");
+        return CreateEntityLookupFromScope(nameref.Names[0], CurrentScope);
+    }
+
+    private static readonly Dictionary<BinaryOperatorKind, (TokenKind TokenKind, BinaryOperatorKind OperatorKind)[]> _builtinBinaryOperators = new()
+    {
+        { BinaryOperatorKind.Integer, [
+            (TokenKind.Plus, BinaryOperatorKind.Add),
+            (TokenKind.Minus, BinaryOperatorKind.Sub),
+            (TokenKind.Star, BinaryOperatorKind.Mul),
+        ] },
+    };
+
+    private SemaExprBinary AnalyseBinary(SyntaxExprBinary binary)
+    {
+        var left = LValueToRValue(AnalyseExpr(binary.Left), false);
+        var right = LValueToRValue(AnalyseExpr(binary.Right), false);
+
+        if (left.Type.IsPoison || right.Type.IsPoison)
+            return UndefinedOperator();
+
+        var leftType = left.Type.CanonicalType;
+        var rightType = right.Type.CanonicalType;
+
+        if (leftType.IsBuiltin && rightType.IsBuiltin)
+        {
+            //var leftTypeKind = ((SemaTypeBuiltIn)leftType.Type).Kind;
+            //var rightTypeKind = ((SemaTypeBuiltIn)rightType.Type).Kind;
+
+            var operatorKind = BinaryOperatorKind.Undefined;
+            if (leftType.IsInteger && rightType.IsInteger)
+                operatorKind |= BinaryOperatorKind.Integer;
+            else return UndefinedOperator();
+
+            if (!_builtinBinaryOperators.TryGetValue(operatorKind, out var availableOperators))
+                return UndefinedOperator();
+
+            var definedOperator = availableOperators.Where(kv => kv.TokenKind == binary.TokenOperator.Kind).Select(kv => kv.OperatorKind).SingleOrDefault();
+            if (definedOperator == BinaryOperatorKind.Undefined) return UndefinedOperator();
+
+            operatorKind |= definedOperator;
+
+            SemaTypeQual binaryType;
+            if (!ConvertToCommonTypeOrError(ref left, ref right))
+                binaryType = SemaTypePoison.InstanceQualified;
+            else binaryType = left.Type;
+
+            return new SemaExprBinaryBuiltIn(operatorKind, binary.TokenOperator, binaryType, left, right);
+        }
+
+        return UndefinedOperator();
+
+        SemaExprBinary UndefinedOperator()
+        {
+            Context.Diag.Error(binary.Location, $"Binary operator '{binary.TokenOperator.Location.Span(Context)}' is not defined for operands {left.Type.ToDebugString(Colors)} and {right.Type.ToDebugString(Colors)}.");
+            return new SemaExprBinaryBuiltIn(BinaryOperatorKind.Undefined, binary.TokenOperator, SemaTypePoison.InstanceQualified, left, right);
+        }
+    }
+
     private bool TryEvaluate(SemaExpr expr, out EvaluatedConstant value)
     {
         var evaluator = new ConstantEvaluator();
@@ -519,6 +688,8 @@ public partial class Sema
             expr = LValueToRValue(expr, false);
             from = expr.Type.Requalified();
         }
+
+        if (from.Type == to.Type) return ConvertScoreNoOp;
 
         // TODO(local): type-equals
 
@@ -560,7 +731,7 @@ public partial class Sema
     {
         if (expr.IsErrored) return expr;
         if (!Convert(ref expr, to))
-            Context.Diag.Error(expr.Location, $"expression of type {expr.Type} is not convertible to {expr.Type}");
+            Context.Diag.Error(expr.Location, $"Expression of type {expr.Type.ToDebugString(Colors)} is not convertible to {expr.Type.ToDebugString(Colors)}.");
 
         return expr;
     }
@@ -585,6 +756,17 @@ public partial class Sema
             return Convert(ref a, b.Type);
         
         return Convert(ref b, a.Type);
+    }
+
+    private bool ConvertToCommonTypeOrError(ref SemaExpr a, ref SemaExpr b)
+    {
+        if (!ConvertToCommonType(ref a, ref b))
+        {
+            Context.Diag.Error(a.Location, $"Can't convert expressions of type {a.Type.ToDebugString(Colors)} and {b.Type.ToDebugString(Colors)} to a common type.");
+            return false;
+        }
+
+        return true;
     }
 
     private bool ImplicitDereference(ref SemaExpr expr)
@@ -670,7 +852,7 @@ public partial class Sema
         public ScopeDisposableNoPush(Sema sema)
         {
             _sema = sema;
-            _scope = sema.Scope;
+            _scope = sema.CurrentScope;
         }
 
         public void Dispose()
