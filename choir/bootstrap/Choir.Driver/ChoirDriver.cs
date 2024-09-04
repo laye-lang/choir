@@ -1,11 +1,9 @@
 using System.Diagnostics;
-using Choir.CommandLine;
+
 using Choir.Front.Laye;
 using Choir.Front.Laye.Codegen;
 using Choir.Front.Laye.Sema;
 using Choir.Front.Laye.Syntax;
-using Choir.IR;
-using Choir.Qbe;
 
 namespace Choir;
 
@@ -23,8 +21,7 @@ public enum ChoirDriverStage
 
 public enum ChoirAssemblerFormat
 {
-    Choir,
-    QBE,
+    Assembler,
     LLVM,
 }
 
@@ -155,9 +152,9 @@ public abstract class ChoirJob(ChoirDriver driver)
                 {
                     foreach (var module in tu.Modules)
                     {
-                        if (module.ChoirModule is not null)
-                            Console.WriteLine(module.ChoirModule.ToIRString());
-                        else Console.WriteLine($"<no Choir module for '{module.SourceFile.FileInfo.FullName}'>");
+                        if (module.LlvmModule is { } llvmModule)
+                            llvmModule.Dump();
+                        else Console.WriteLine($"<no LLVM module for '{module.SourceFile.FileInfo.FullName}'>");
                     }
                 }
 
@@ -172,19 +169,18 @@ public abstract class ChoirJob(ChoirDriver driver)
                 Debug.Assert(Driver.Options.InputFiles.Count == 1, "exactly one file should have been specified when requesting output to stdout.");
                 Debug.Assert(Driver.Options.DriverStage == ChoirDriverStage.Compile, "when specifying output to stdout, -S (the 'compile only' flag) should have been set.");
                 var firstModule = tu.Modules.First();
-                Debug.Assert(firstModule.ChoirModule is not null);
+                Debug.Assert(firstModule.LlvmModule is not null);
                 compilationModules = [firstModule];
             }
             else
             {
-                Debug.Assert(tu.Modules.All(m => m.ChoirModule is not null));
+                Debug.Assert(tu.Modules.All(m => m.LlvmModule is not null));
                 compilationModules = tu.Modules.ToArray();
             }
 
             switch (Driver.Options.AssemblerFormat)
             {
-                case ChoirAssemblerFormat.Choir:
-                case ChoirAssemblerFormat.QBE:
+                case ChoirAssemblerFormat.LLVM:
                     break;
                 default:
                 {
@@ -198,8 +194,30 @@ public abstract class ChoirJob(ChoirDriver driver)
             {
                 foreach (var module in compilationModules)
                 {
-                    var cm = module.ChoirModule!;
+                    var llvmModule = module.LlvmModule!.Value;
 
+                    if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.LLVM)
+                    {
+                        if (Driver.Options.OutputFile == "-")
+                            llvmModule.Dump();
+                        else if (Driver.Options.DriverStage == ChoirDriverStage.Compile)
+                        {
+                            if (Driver.Options.OutputFile is not null)
+                                llvmModule.PrintToFile(Driver.Options.OutputFile);
+                            else llvmModule.PrintToFile("a.ll");
+                        }
+                        else
+                        {
+                            var intermediateFile = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + "-" + Path.GetFileNameWithoutExtension(module.SourceFile.FileInfo.Name) + ".ll"));
+                            llvmModule.PrintToFile(intermediateFile.FullName);
+                            intermediateFiles.Add(intermediateFile);
+                        }
+
+                        continue;
+                    }
+                    else throw new UnreachableException();
+
+#if false
                     TextWriter outputFileWriter;
                     if (Driver.Options.OutputFile == "-")
                     {
@@ -220,13 +238,7 @@ public abstract class ChoirJob(ChoirDriver driver)
                     }
                     else
                     {
-                        if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.Choir)
-                        {
-                            var choirOutputFileInfo = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + "-" + Path.GetFileNameWithoutExtension(module.SourceFile.FileInfo.Name) + ".choir"));
-                            intermediateFiles.Add(choirOutputFileInfo);
-                            outputFileWriter = new StreamWriter(choirOutputFileInfo.FullName);
-                        }
-                        else if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.QBE)
+                        if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.QBE)
                         {
                             var qbeOutputFileInfo = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + "-" + Path.GetFileNameWithoutExtension(module.SourceFile.FileInfo.Name) + ".ssa"));
                             intermediateFiles.Add(qbeOutputFileInfo);
@@ -235,14 +247,13 @@ public abstract class ChoirJob(ChoirDriver driver)
                         else throw new UnreachableException();
                     }
 
-                    if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.Choir)
-                        outputFileWriter.Write(cm.ToIRString());
-                    else if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.QBE)
-                        outputFileWriter.Write(cm.ToQbeString().ReplaceLineEndings("\n"));
+                    if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.QBE)
+                        outputFileWriter.Write(llvmModule.ToQbeString().ReplaceLineEndings("\n"));
                     else throw new UnreachableException();
 
                     outputFileWriter.Flush();
                     outputFileWriter.Close();
+#endif
                 }
 
                 if (Driver.Options.DriverStage == ChoirDriverStage.Compile)
@@ -334,7 +345,7 @@ public sealed class ChoirDriverOptions
     public List<InputFileInfo> InputFiles { get; set; } = [];
     public string? OutputFile { get; set; }
     public ChoirDriverStage DriverStage { get; set; } = ChoirDriverStage.Link;
-    public ChoirAssemblerFormat AssemblerFormat { get; set; } = ChoirAssemblerFormat.QBE;
+    public ChoirAssemblerFormat AssemblerFormat { get; set; } = ChoirAssemblerFormat.Assembler;
     public bool PrintTokens { get; set; }
     public bool PrintAst { get; set; }
     public bool PrintIR { get; set; }

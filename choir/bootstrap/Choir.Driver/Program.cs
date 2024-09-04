@@ -132,10 +132,6 @@ public static class Program
                 options.DriverStage = ChoirDriverStage.Compile;
             else if (arg == "-c")
                 options.DriverStage = ChoirDriverStage.Assemble;
-            else if (arg == "-emit-choir")
-                options.AssemblerFormat = ChoirAssemblerFormat.Choir;
-            else if (arg == "-emit-qbe")
-                options.AssemblerFormat = ChoirAssemblerFormat.QBE;
             else if (arg == "-emit-llvm")
                 options.AssemblerFormat = ChoirAssemblerFormat.LLVM;
             else if (arg == "--tokens")
