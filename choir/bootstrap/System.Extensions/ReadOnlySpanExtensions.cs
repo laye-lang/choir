@@ -1,4 +1,4 @@
-namespace Choir;
+namespace System;
 
 public static class ReadOnlySpanExtensions
 {

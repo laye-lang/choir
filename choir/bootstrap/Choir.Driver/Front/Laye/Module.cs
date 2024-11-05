@@ -28,6 +28,7 @@ public sealed class Module(SourceFile sourceFile)
     public bool HasSemaDecls => _decls.Count != 0;
     public IEnumerable<SemaDecl> SemaDecls => _decls;
 
+    public LLVMSharp.Interop.LLVMContextRef? LlvmContext { get; set; }
     public LLVMSharp.Interop.LLVMModuleRef? LlvmModule { get; set; }
 
     public void AddToken(SyntaxToken token) => _tokens.Add(token);

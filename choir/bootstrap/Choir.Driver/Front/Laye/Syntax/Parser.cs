@@ -488,7 +488,6 @@ public partial class Parser(Module module)
 
         SyntaxToken? tokenAs;
         SyntaxToken? tokenAlias = null;
-        SyntaxImportCFlags? cflags = null;
         SyntaxToken? tokenSemiColon = null;
 
         bool isQueryless = At(TokenKind.LiteralString) ||
@@ -503,9 +502,7 @@ public partial class Parser(Module module)
             if (TryAdvance("as", TokenKind.As, out tokenAs))
                 ExpectIdentifier(out tokenAlias);
 
-            if (At("cflags"))
-                cflags = ParseCFlags();
-            else ExpectSemiColon(out tokenSemiColon);
+            ExpectSemiColon(out tokenSemiColon);
 
             return new SyntaxDeclImport(tokenImport)
             {
@@ -516,7 +513,6 @@ public partial class Parser(Module module)
                 TokenModuleName = tokenModuleName,
                 TokenAs = tokenAs,
                 TokenAlias = tokenAlias,
-                CFlags = cflags,
                 TokenSemiColon = tokenSemiColon,
             };
         }
@@ -533,9 +529,7 @@ public partial class Parser(Module module)
         if (TryAdvance("as", TokenKind.As, out tokenAs))
             ExpectIdentifier(out tokenAlias);
 
-        if (At("cflags"))
-            cflags = ParseCFlags();
-        else ExpectSemiColon(out tokenSemiColon);
+        ExpectSemiColon(out tokenSemiColon);
 
         return new SyntaxDeclImport(tokenImport)
         {
@@ -547,26 +541,8 @@ public partial class Parser(Module module)
             TokenModuleName = tokenPath,
             TokenAs = tokenAs,
             TokenAlias = tokenAlias,
-            CFlags = cflags,
             TokenSemiColon = tokenSemiColon,
         };
-
-        SyntaxImportCFlags ParseCFlags()
-        {
-            if (!TryAdvance("cflags", TokenKind.CFlags, out var tokenCFlags))
-                throw new UnreachableException();
-            
-            Expect(TokenKind.OpenBrace, "'{'", out var tokenOpenBrace);
-            var flags = ParseDelimited(() =>
-            {
-                if (!Consume(TokenKind.LiteralString, out var tokenFlag))
-                    Context.Diag.Error(CurrentLocation, "expected a string literal");
-                return tokenFlag;
-            }, TokenKind.Comma, "a string literal", true, TokenKind.CloseBrace);
-            Expect(TokenKind.CloseBrace, "'}'", out var tokenCloseBrace);
-            
-            return new SyntaxImportCFlags(tokenCFlags, tokenOpenBrace, [.. flags], tokenCloseBrace);
-        }
     }
 
     private SyntaxDeclAlias ParseAliasDeclaration(SyntaxTemplateParams? templateParams, IReadOnlyList<SyntaxAttrib> attribs)

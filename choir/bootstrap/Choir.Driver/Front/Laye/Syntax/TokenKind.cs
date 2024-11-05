@@ -1,5 +1,3 @@
-using ClangSharp.Interop;
-
 namespace Choir.Front.Laye.Syntax;
 
 public enum TokenKind : ushort

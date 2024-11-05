@@ -121,7 +121,6 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(token
     public required SyntaxToken TokenModuleName { get; init; }
     public SyntaxToken? TokenAs { get; init; }
     public SyntaxToken? TokenAlias { get; init; }
-    public required SyntaxImportCFlags? CFlags { get; init; }
     public required SyntaxToken? TokenSemiColon { get; init; }
 
     public bool IsLibraryModule => ImportKind == ImportKind.Library;
@@ -149,8 +148,6 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport) : SyntaxNode(token
                 yield return TokenAs;
             if (TokenAlias is not null)
                 yield return TokenAlias;
-            if (CFlags is not null)
-                yield return CFlags;
             if (TokenSemiColon is not null)
                 yield return TokenSemiColon;
         }

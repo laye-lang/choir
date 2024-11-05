@@ -1,11 +1,8 @@
 using System.Diagnostics;
 using System.Numerics;
-using System.Xml.Linq;
 
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
-
-using ClangSharp;
 
 namespace Choir.Front.Laye.Sema;
 
@@ -48,11 +45,6 @@ public partial class Sema
 
             module.AddDecl(decl);
         }
-    }
-
-    private static bool IsImportDeclForCHeader(SyntaxDeclImport importDecl)
-    {
-        return importDecl.ImportKind == ImportKind.FilePath && importDecl.ModuleNameText.EndsWith(".h", StringComparison.InvariantCultureIgnoreCase);
     }
 
     public Module Module { get; }
@@ -98,15 +90,6 @@ public partial class Sema
 
         void ResolveModuleImport(SyntaxDeclImport importDecl)
         {
-            Module importedModule;
-            if (IsImportDeclForCHeader(importDecl))
-            {
-                importedModule = ParseCHeaderFromImport(importDecl);
-                //var cSema = new Sema(importedModule);
-                importDecl.ReferencedModule = importedModule;
-                goto handle_imports_and_exports;
-            }
-
             if (importDecl.IsLibraryModule)
             {
                 Context.Assert(false, importDecl.TokenModuleName.Location, "Library imports are currently not supported.");
@@ -120,6 +103,7 @@ public partial class Sema
                 return;
             }
 
+            Module importedModule;
             var importedFile = Context.GetSourceFile(importedFileInfo);
             if (TranslationUnit.FindModuleBySourceFile(importedFile) is { } importedModuleResult)
                 importedModule = importedModuleResult;
@@ -136,7 +120,6 @@ public partial class Sema
 
             Analyse(importedModule);
 
-        handle_imports_and_exports:;
             if (importDecl.IsAliased)
             {
                 Module.FileScope.AddNamespace(importDecl.AliasNameText, importedModule.ExportScope);

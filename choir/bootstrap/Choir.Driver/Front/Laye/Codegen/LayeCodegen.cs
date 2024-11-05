@@ -10,14 +10,36 @@ public sealed class LayeCodegen(Module module, LLVMContextRef llvmContext)
 {
     public static void GenerateIR(TranslationUnit tu)
     {
+        var llvmContext = LLVMContextRef.Create();
+        tu.LlvmContext = llvmContext;
+
         foreach (var module in tu.Modules)
+        {
+            module.LlvmContext = tu.LlvmContext;
             GenerateIR(module);
+        }
+
+        if (tu.Modules.Count() > 1)
+        {
+            unsafe
+            {
+                tu.LlvmModule = llvmContext.CreateModuleWithName("translation-unit");
+                foreach (var module in tu.Modules)
+                {
+                    LLVM.LinkModules2((LLVMOpaqueModule*)tu.LlvmModule!.Value.Handle, (LLVMOpaqueModule*)module.LlvmModule!.Value.Handle);
+                }
+            }
+        }
+        else
+        {
+            tu.LlvmModule = tu.Modules.Single().LlvmModule;
+        }
     }
 
     public static void GenerateIR(Module module)
     {
-        var llvmContext = LLVMContextRef.Create();
-        
+        var llvmContext = module.LlvmContext!.Value;
+
         var llvmModule = llvmContext.CreateModuleWithName(module.SourceFile.FileInfo.FullName);
         module.LlvmModule = llvmModule;
 

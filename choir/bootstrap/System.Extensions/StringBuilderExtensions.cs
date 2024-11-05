@@ -1,6 +1,4 @@
-using System.Text;
-
-namespace Choir;
+namespace System.Text;
 
 public static class StringBuilderExtensions
 {

@@ -179,12 +179,14 @@ public sealed class ChoirContext
     public List<string> LibraryDirectories { get; set; } = [];
     public TypeStorage Types { get; }
 
-    public ChoirContext(ChoirTarget target, bool useColor)
+    public ChoirContext(DiagnosticWriter diag, ChoirTarget target, bool useColor)
     {
         Target = target;
         UseColor = useColor;
-        Diag = new StreamingDiagnosticWriter(this, Console.Error);
+        Diag = diag;
         Types = new(this);
+
+        diag.AddContext(this);
     }
 
     private void OnDiagnosticIssue(DiagnosticKind kind)

@@ -1,0 +1,4 @@
+// R %choir %s --codegen --ir
+int main() {
+    return 0;
+}

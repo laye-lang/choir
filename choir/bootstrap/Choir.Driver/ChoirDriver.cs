@@ -1,9 +1,14 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
 
+using Choir.CommandLine;
 using Choir.Front.Laye;
 using Choir.Front.Laye.Codegen;
 using Choir.Front.Laye.Sema;
 using Choir.Front.Laye.Syntax;
+
+using LLVMSharp.Interop;
 
 namespace Choir;
 
@@ -146,38 +151,38 @@ public abstract class ChoirJob(ChoirDriver driver)
             LayeCodegen.GenerateIR(tu);
             Context.Diag.Flush();
 
+            Debug.Assert(tu.LlvmContext.HasValue);
+            Debug.Assert(tu.LlvmModule.HasValue);
+
+            var llvmContext = tu.LlvmContext.Value;
+            var llvmModule = tu.LlvmModule.Value;
+
             if (Driver.Options.DriverStage == ChoirDriverStage.Codegen)
             {
                 if (Driver.Options.PrintIR)
-                {
-                    foreach (var module in tu.Modules)
-                    {
-                        if (module.LlvmModule is { } llvmModule)
-                            llvmModule.Dump();
-                        else Console.WriteLine($"<no LLVM module for '{module.SourceFile.FileInfo.FullName}'>");
-                    }
-                }
+                    llvmModule.Dump();
 
                 return 0;
             }
 
             if (Context.HasIssuedError) return 1;
 
-            Module[] compilationModules;
+            //Module[] compilationModules;
             if (Driver.Options.OutputFile == "-")
             {
                 Debug.Assert(Driver.Options.InputFiles.Count == 1, "exactly one file should have been specified when requesting output to stdout.");
                 Debug.Assert(Driver.Options.DriverStage == ChoirDriverStage.Compile, "when specifying output to stdout, -S (the 'compile only' flag) should have been set.");
                 var firstModule = tu.Modules.First();
                 Debug.Assert(firstModule.LlvmModule is not null);
-                compilationModules = [firstModule];
+                //compilationModules = [firstModule];
             }
             else
             {
                 Debug.Assert(tu.Modules.All(m => m.LlvmModule is not null));
-                compilationModules = tu.Modules.ToArray();
+                //compilationModules = tu.Modules.ToArray();
             }
 
+#if false
             switch (Driver.Options.AssemblerFormat)
             {
                 case ChoirAssemblerFormat.LLVM:
@@ -188,96 +193,215 @@ public abstract class ChoirJob(ChoirDriver driver)
                     throw new UnreachableException();
                 }
             }
+#endif
 
-            var intermediateFiles = new List<FileInfo>();
-            try
+            void EmitLLVMModuleToFile(string outputFilePath, LLVMCodeGenFileType fileType = LLVMCodeGenFileType.LLVMObjectFile)
             {
-                foreach (var module in compilationModules)
-                {
-                    var llvmModule = module.LlvmModule!.Value;
+                LLVM.LinkInMCJIT();
+                LLVM.InitializeAllTargetMCs();
+                LLVM.InitializeAllTargets();
+                LLVM.InitializeAllTargetInfos();
+                LLVM.InitializeAllAsmParsers();
+                LLVM.InitializeAllAsmPrinters();
 
-                    if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.LLVM)
+                var target = LLVMTargetRef.GetTargetFromTriple(LLVMTargetRef.DefaultTriple);
+                var machine = target.CreateTargetMachine(LLVMTargetRef.DefaultTriple, "generic", "", LLVMCodeGenOptLevel.LLVMCodeGenLevelNone, LLVMRelocMode.LLVMRelocDefault, LLVMCodeModel.LLVMCodeModelDefault);
+
+                if (!machine.TryEmitToFile(llvmModule, outputFilePath, fileType, out string message))
+                {
+                    Context.Diag.ICE($"LLVM Emit to File Error: {message}");
+                }
+            }
+
+            if (Driver.Options.DriverStage == ChoirDriverStage.Compile)
+            {
+                switch (Driver.Options.AssemblerFormat)
+                {
+                    case ChoirAssemblerFormat.Assembler:
+                    {
+                        if (Driver.Options.OutputFile == "-")
+                        {
+                            string tempFilePath = Path.GetTempFileName();
+                            try
+                            {
+                                EmitLLVMModuleToFile(tempFilePath, LLVMCodeGenFileType.LLVMAssemblyFile);
+                                Console.Write(File.ReadAllText(tempFilePath));
+                            }
+                            finally
+                            {
+                                File.Delete(tempFilePath);
+                            }
+                        }
+                        else if (Driver.Options.OutputFile is not null)
+                            EmitLLVMModuleToFile(Driver.Options.OutputFile, LLVMCodeGenFileType.LLVMAssemblyFile);
+                        else EmitLLVMModuleToFile("a.s", LLVMCodeGenFileType.LLVMAssemblyFile);
+                    } break;
+                    
+                    case ChoirAssemblerFormat.LLVM:
                     {
                         if (Driver.Options.OutputFile == "-")
                             llvmModule.Dump();
-                        else if (Driver.Options.DriverStage == ChoirDriverStage.Compile)
-                        {
-                            if (Driver.Options.OutputFile is not null)
-                                llvmModule.PrintToFile(Driver.Options.OutputFile);
-                            else llvmModule.PrintToFile("a.ll");
-                        }
-                        else
-                        {
-                            var intermediateFile = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + "-" + Path.GetFileNameWithoutExtension(module.SourceFile.FileInfo.Name) + ".ll"));
-                            llvmModule.PrintToFile(intermediateFile.FullName);
-                            intermediateFiles.Add(intermediateFile);
-                        }
+                        else if (Driver.Options.OutputFile is not null)
+                            llvmModule.PrintToFile(Driver.Options.OutputFile);
+                        else llvmModule.PrintToFile("a.ll");
+                    } break;
+                }
 
-                        continue;
-                    }
-                    else throw new UnreachableException();
+                return 0;
+            }
 
-#if false
-                    TextWriter outputFileWriter;
-                    if (Driver.Options.OutputFile == "-")
+            if (Driver.Options.DriverStage == ChoirDriverStage.Assemble)
+            {
+                if (Driver.Options.OutputFile == "-")
+                {
+                    string tempFilePath = Path.GetTempFileName();
+                    try
                     {
-                        // remember: if output file == "-", this is the last stage; we can write directly to it
-                        outputFileWriter = Console.Out;
+                        EmitLLVMModuleToFile(tempFilePath, LLVMCodeGenFileType.LLVMAssemblyFile);
+                        byte[] bytes = File.ReadAllBytes(tempFilePath);
+                        using var stdout = Console.OpenStandardOutput();
+                        stdout.Write(bytes);
+                        stdout.Flush();
                     }
-                    else if (Driver.Options.DriverStage == ChoirDriverStage.Compile)
+                    finally
                     {
-                        if (Driver.Options.OutputFile is not null)
+                        File.Delete(tempFilePath);
+                    }
+                }
+                else if (Driver.Options.OutputFile is not null)
+                    EmitLLVMModuleToFile(Driver.Options.OutputFile);
+                else EmitLLVMModuleToFile("a.o");
+
+                return 0;
+            }
+
+            Debug.Assert(Driver.Options.DriverStage == ChoirDriverStage.Link);
+
+            void LinkLLVMModuleToFile(string filePath)
+            {
+                string moduleTempPath = Path.Combine(Path.GetTempPath(), $"temp{DateTime.Now.Ticks}.o");
+                try
+                {
+                    EmitLLVMModuleToFile(moduleTempPath, LLVMCodeGenFileType.LLVMObjectFile);
+
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {
+                        var startInfo = new ProcessStartInfo("clang", ["-o", filePath, moduleTempPath]);
+
+                        var process = Process.Start(startInfo);
+                        Debug.Assert(process is not null, "whoops");
+                        process.WaitForExit();
+
+                        if (process.ExitCode != 0 || !File.Exists(filePath))
                         {
-                            outputFileWriter = new StreamWriter(Driver.Options.OutputFile);
-                        }
-                        else
-                        {
-                            var aoutFileInfo = new FileInfo("a.out");
-                            outputFileWriter = new StreamWriter(aoutFileInfo.FullName);
+                            Context.Diag.ICE($"Failed to link to output file '{filePath}'.");
                         }
                     }
                     else
                     {
-                        if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.QBE)
-                        {
-                            var qbeOutputFileInfo = new FileInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + "-" + Path.GetFileNameWithoutExtension(module.SourceFile.FileInfo.Name) + ".ssa"));
-                            intermediateFiles.Add(qbeOutputFileInfo);
-                            outputFileWriter = new StreamWriter(qbeOutputFileInfo.FullName);
-                        }
-                        else throw new UnreachableException();
+                        Context.Diag.ICE("This compiler driver is too stupid to link an executable on this operating system, sorry!!");
                     }
-
-                    if (Driver.Options.AssemblerFormat == ChoirAssemblerFormat.QBE)
-                        outputFileWriter.Write(llvmModule.ToQbeString().ReplaceLineEndings("\n"));
-                    else throw new UnreachableException();
-
-                    outputFileWriter.Flush();
-                    outputFileWriter.Close();
-#endif
                 }
-
-                if (Driver.Options.DriverStage == ChoirDriverStage.Compile)
+                finally
                 {
-                    Debug.Assert(intermediateFiles.Count == 0, "expected to not track output files when the compile only flag is set. they won't need to be deleted");
-                    return 0;
+                    if (File.Exists(moduleTempPath)) File.Delete(moduleTempPath);
                 }
             }
-            finally
+
+            if (Driver.Options.OutputFile == "-")
             {
-                foreach (var intermediateFile in intermediateFiles)
+                string tempFilePath = Path.GetTempFileName();
+                try
                 {
-                    intermediateFile.Delete();
+                    LinkLLVMModuleToFile(tempFilePath);
+                    byte[] bytes = File.ReadAllBytes(tempFilePath);
+                    using var stdout = Console.OpenStandardOutput();
+                    stdout.Write(bytes);
+                    stdout.Flush();
+                }
+                finally
+                {
+                    File.Delete(tempFilePath);
                 }
             }
+            else if (Driver.Options.OutputFile is not null)
+                LinkLLVMModuleToFile(Driver.Options.OutputFile);
+            else LinkLLVMModuleToFile($"a{(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : ".out")}");
 
-            Context.Diag.ICE("Going any farther than compilation is not yet supported");
-            return 0;
+            return Context.Diag.HasIssuedErrors ? 1 : 0;
         }
     }
 }
 
+public enum OutputColoring
+{
+    Auto,
+    Always,
+    Never,
+}
+
 public sealed class ChoirDriver
 {
+    private const string DriverVersion = @"choir 0.1.0";
+
+    private const string DriverOptions = @"Usage: choir [options] file...
+Options:
+    --help                   Display this information
+    --version                Display compiler version information";
+
+    public static int RunWithArgs(DiagnosticWriter diag, string[] args)
+    {
+        switch (args.Length == 0 ? null : args[0])
+        {
+            default:
+            {
+                var options = ChoirDriverOptions.Parse(diag, new CliArgumentIterator(args));
+                if (diag.HasIssuedErrors) return 1;
+
+                if (options.ShowVersion)
+                {
+                    Console.WriteLine(DriverVersion);
+                    return 0;
+                }
+
+                if (options.ShowHelp)
+                {
+                    Console.WriteLine(DriverOptions);
+                    return 0;
+                }
+
+                if (!options.NoStandardLibrary)
+                {
+                    var selfExe = new FileInfo(typeof(Program).Assembly.Location);
+                    var searchDir = selfExe.Directory;
+
+                    DirectoryInfo? liblayeDir = null;
+                    while (searchDir is not null && liblayeDir is null)
+                    {
+                        var checkDir = new DirectoryInfo(Path.Combine(searchDir.FullName, "lib/laye"));
+                        if (checkDir.Exists)
+                            liblayeDir = checkDir;
+                        else searchDir = searchDir.Parent;
+                    }
+
+                    if (liblayeDir is not null)
+                        options.IncludeDirectories.Add(liblayeDir.FullName);
+                    else diag.Error("Could not find the Laye standard library. If this is intentional, pass the '-nostdlib' flag.");
+                }
+
+                var driver = ChoirDriver.Create(diag, options);
+                return driver.Execute();
+            }
+
+            case "cc":
+            {
+                string[] ccArgs = args.Skip(1).ToArray();
+                var driver = new ChoirCCDriver(diag, ccArgs);
+                return driver.Execute();
+            }
+        }
+    }
+
     public static ChoirDriver Create(DiagnosticWriter diag, ChoirDriverOptions options)
     {
         if (options.InputFiles.Any(inputFile => inputFile.Language == InputFileLanguage.Default))
@@ -286,16 +410,16 @@ public sealed class ChoirDriver
             throw new UnreachableException();
         }
 
-        return new ChoirDriver(options);
+        return new ChoirDriver(diag, options);
     }
 
     public ChoirDriverOptions Options { get; }
     public ChoirContext Context { get; }
 
-    private ChoirDriver(ChoirDriverOptions options)
+    private ChoirDriver(DiagnosticWriter diag, ChoirDriverOptions options)
     {
         Options = options;
-        Context = new(ChoirTarget.X86_64, options.OutputColoring)
+        Context = new(diag, ChoirTarget.X86_64, options.OutputColoring)
         {
             IncludeDirectories = options.IncludeDirectories,
             LibraryDirectories = options.LibraryDirectories,
@@ -364,4 +488,237 @@ public sealed class ChoirDriverOptions
     public bool NoLibC { get; set; }
 
     #endregion
+
+    public static ChoirDriverOptions Parse(DiagnosticWriter diag, CliArgumentIterator args)
+    {
+        var options = new ChoirDriverOptions();
+
+        var currentFileType = InputFileLanguage.Default;
+        var outputColoring = Choir.OutputColoring.Auto;
+
+        while (args.Shift(out string arg))
+        {
+            if (arg == "--help")
+                options.ShowHelp = true;
+            else if (arg == "--version")
+                options.ShowVersion = true;
+            else if (arg == "-v")
+                options.ShowVerboseOutput = true;
+            else if (arg == "-###")
+            {
+                options.ShowVerboseOutput = true;
+                options.QuoteAndDoNotExecute = true;
+            }
+            else if (arg == "-x" || arg == "--file-type")
+            {
+                if (!args.Shift(out string? fileType))
+                    diag.Error($"argument to '{arg}' is missing (expected 1 value)");
+                else
+                {
+                    switch (fileType)
+                    {
+                        default: diag.Error($"language not recognized: '{fileType}'"); break;
+
+                        case "laye": currentFileType = InputFileLanguage.Laye; break;
+
+                        case "choir": currentFileType = InputFileLanguage.Choir; break;
+
+                        case "c": currentFileType = InputFileLanguage.C; break;
+                        case "c-header": currentFileType = InputFileLanguage.C | InputFileLanguage.Header; break;
+                        case "cpp-output": currentFileType = InputFileLanguage.C | InputFileLanguage.NoPreprocess; break;
+
+                        case "c++": currentFileType = InputFileLanguage.CXX; break;
+                        case "c++-header": currentFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                        case "c++-cpp-output": currentFileType = InputFileLanguage.CXX | InputFileLanguage.NoPreprocess; break;
+
+                        case "objective-c": currentFileType = InputFileLanguage.ObjC; break;
+                        case "objective-c-header": currentFileType = InputFileLanguage.ObjC | InputFileLanguage.Header; break;
+                        case "objective-c-cpp-output": currentFileType = InputFileLanguage.ObjC | InputFileLanguage.NoPreprocess; break;
+
+                        case "objective-c++": currentFileType = InputFileLanguage.ObjCXX; break;
+                        case "objective-c++-header": currentFileType = InputFileLanguage.ObjCXX | InputFileLanguage.Header; break;
+                        case "objective-c++-cpp-output": currentFileType = InputFileLanguage.ObjCXX | InputFileLanguage.NoPreprocess; break;
+
+                        case "assembler": currentFileType = InputFileLanguage.Assembler | InputFileLanguage.NoPreprocess; break;
+                        case "assembler-with-cpp": currentFileType = InputFileLanguage.Assembler; break;
+                    }
+                }
+            }
+            else if (arg == "-E")
+                options.DriverStage = ChoirDriverStage.Preprocess;
+            else if (arg == "-flex-only")
+                options.DriverStage = ChoirDriverStage.Lex;
+            else if (arg == "-fsyntax-only")
+                options.DriverStage = ChoirDriverStage.Parse;
+            else if (arg == "-fsema-only")
+                options.DriverStage = ChoirDriverStage.Sema;
+            else if (arg == "--codegen")
+                options.DriverStage = ChoirDriverStage.Codegen;
+            else if (arg == "-S")
+                options.DriverStage = ChoirDriverStage.Compile;
+            else if (arg == "-c")
+                options.DriverStage = ChoirDriverStage.Assemble;
+            else if (arg == "-emit-llvm")
+                options.AssemblerFormat = ChoirAssemblerFormat.LLVM;
+            else if (arg == "--tokens")
+            {
+                options.DriverStage = ChoirDriverStage.Lex;
+                options.PrintTokens = true;
+            }
+            else if (arg == "--ast")
+                options.PrintAst = true;
+            else if (arg == "--ir")
+                options.PrintIR = true;
+            else if (arg == "--file-scopes")
+                options.PrintFileScopes = true;
+            else if (arg == "--print-cli-files-only")
+                options.PrintCliFilesOnly = true;
+            else if (arg == "-e")
+            {
+                if (!args.Shift(out string? entryName))
+                    diag.Error($"argument to '{arg}' is missing (expected 1 value)");
+                else options.EntryName = entryName;
+            }
+            else if (arg == "-nostartfiles")
+                options.NoStartFiles = true;
+            else if (arg == "--no-standard-libraries" || arg == "-nostdlib")
+                options.NoStandardLibrary = true;
+            else if (arg == "-nodefaultlibs")
+            {
+                options.NoStandardLibrary = true;
+            }
+            else if (arg == "-nolibc")
+                options.NoLibC = true;
+            else if (arg == "-I")
+            {
+                if (!args.Shift(out string? includeDirectory))
+                    diag.Error($"argument to '{arg}' is missing (expected 1 value)");
+                else options.IncludeDirectories.Add(includeDirectory);
+            }
+            else if (arg.StartsWith("-I"))
+            {
+                string includeDirectory = arg.Substring(2);
+                if (string.IsNullOrWhiteSpace(includeDirectory))
+                    diag.Error($"argument to '-I' is missing (expected 1 value)");
+                else options.IncludeDirectories.Add(includeDirectory);
+            }
+            else if (arg == "-L")
+            {
+                if (!args.Shift(out string? libraryDirectory))
+                    diag.Error($"argument to '{arg}' is missing (expected 1 value)");
+                else options.LibraryDirectories.Add(libraryDirectory);
+            }
+            else if (arg.StartsWith("-L"))
+            {
+                string libraryDirectory = arg.Substring(2);
+                if (string.IsNullOrWhiteSpace(libraryDirectory))
+                    diag.Error($"argument to '-L' is missing (expected 1 value)");
+                else options.IncludeDirectories.Add(libraryDirectory);
+            }
+            else if (arg == "-l")
+            {
+                if (!args.Shift(out string? linkLibrary))
+                    diag.Error($"argument to '{arg}' is missing (expected 1 value)");
+                else options.LinkLibraries.Add(linkLibrary);
+            }
+            else if (arg.StartsWith("-l"))
+            {
+                string linkLibrary = arg.Substring(2);
+                if (string.IsNullOrWhiteSpace(linkLibrary))
+                    diag.Error($"argument to '-l' is missing (expected 1 value)");
+                else options.LinkLibraries.Add(linkLibrary);
+            }
+            else if (arg == "-o")
+            {
+                if (!args.Shift(out string? outputFilePath))
+                    diag.Error($"argument to '{arg}' is missing (expected 1 value)");
+                else options.OutputFile = outputFilePath;
+            }
+            else
+            {
+                var inputFileInfo = new FileInfo(arg);
+                if (!inputFileInfo.Exists)
+                    diag.Error($"no such file or directory: '{arg}'");
+                else
+                {
+                    var inputFileType = currentFileType;
+                    if (inputFileType == InputFileLanguage.Default)
+                    {
+                        string inputFileExtension = inputFileInfo.Extension;
+                        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && inputFileExtension is ".C" or ".CPP")
+                            inputFileType = InputFileLanguage.CXX;
+                        else if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && inputFileExtension is ".HPP")
+                            inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header;
+                        else if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && inputFileExtension is ".M")
+                            inputFileType = InputFileLanguage.ObjCXX;
+                        else if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && inputFileExtension is ".S")
+                            inputFileType = InputFileLanguage.Assembler;
+                        else switch (inputFileExtension.ToLower())
+                            {
+                                case ".laye": inputFileType = InputFileLanguage.Laye; break;
+
+                                case ".h": inputFileType = InputFileLanguage.C | InputFileLanguage.CXX | InputFileLanguage.ObjC | InputFileLanguage.ObjCXX | InputFileLanguage.Header; break;
+
+                                case ".c": inputFileType = InputFileLanguage.C; break;
+                                case ".i": inputFileType = InputFileLanguage.C | InputFileLanguage.NoPreprocess; break;
+
+                                case ".cc": inputFileType = InputFileLanguage.CXX; break;
+                                case ".cp": inputFileType = InputFileLanguage.CXX; break;
+                                case ".cxx": inputFileType = InputFileLanguage.CXX; break;
+                                case ".cpp": inputFileType = InputFileLanguage.CXX; break;
+                                case ".c++": inputFileType = InputFileLanguage.CXX; break;
+                                case ".ixx": inputFileType = InputFileLanguage.CXX; break;
+                                case ".ccm": inputFileType = InputFileLanguage.CXX; break;
+                                case ".ii": inputFileType = InputFileLanguage.CXX | InputFileLanguage.NoPreprocess; break;
+
+                                case ".hh": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".hp": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".hxx": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".hpp": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".h++": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+                                case ".tcc": inputFileType = InputFileLanguage.CXX | InputFileLanguage.Header; break;
+
+                                case ".m": inputFileType = InputFileLanguage.ObjC; break;
+                                case ".mi": inputFileType = InputFileLanguage.ObjC | InputFileLanguage.NoPreprocess; break;
+
+                                case ".mm": inputFileType = InputFileLanguage.ObjCXX; break;
+                                case ".mii": inputFileType = InputFileLanguage.ObjCXX | InputFileLanguage.NoPreprocess; break;
+
+                                case ".s": inputFileType = InputFileLanguage.Assembler | InputFileLanguage.NoPreprocess; break;
+                                case ".sx": inputFileType = InputFileLanguage.Assembler; break;
+
+                                default: inputFileType = InputFileLanguage.Object; break;
+                            }
+                    }
+
+                    options.InputFiles.Add(new(inputFileType, inputFileInfo));
+                }
+            }
+        }
+
+        if (options.InputFiles.Count == 0)
+        {
+            if (!options.ShowHelp && !options.ShowVersion)
+                diag.Error("No input files.");
+        }
+
+        if (options.OutputFile == "-")
+        {
+            if (options.InputFiles.Count != 1)
+                diag.Error("Can only output to stdout (`-o -`) with a single input file.");
+
+            if (options.DriverStage != ChoirDriverStage.Compile)
+                diag.Error("Can only output to stdout (`-o -`) when specifying the 'compile only' flag `-S`.");
+        }
+
+        if (outputColoring == Choir.OutputColoring.Auto)
+            outputColoring = Console.IsErrorRedirected ? Choir.OutputColoring.Never : Choir.OutputColoring.Always;
+        options.OutputColoring = outputColoring == Choir.OutputColoring.Always;
+
+        if (options.PrintFileScopes && options.DriverStage > ChoirDriverStage.Sema)
+            diag.Error("'--file-scopes' can only be used with '--lex', '--parse' and '--sema'");
+
+        diag.Flush();
+        return options;
+    }
 }

@@ -43,10 +43,21 @@ public readonly struct DiagnosticInfo(DiagnosticKind kind, Location? location, s
 
 public abstract class DiagnosticWriter(ChoirContext? context, bool? useColor = null)
 {
-    public ChoirContext? Context { get; } = context;
-    public Colors Colors { get; } = new Colors(useColor ?? context?.UseColor ?? false);
+    public ChoirContext? Context { get; private set; } = context;
+    public Colors Colors { get; private set; } = new Colors(useColor ?? context?.UseColor ?? false);
 
     internal Action<DiagnosticKind>? OnIssue;
+    public Action? OnICE;
+
+    public bool HasIssuedErrors { get; private set; }
+
+    public void AddContext(ChoirContext context, bool? useColor = null)
+    {
+        Debug.Assert(Context is null, "Cannot change the context of a diagnostic writer once it has been set");
+        Context = context;
+        if (useColor is not null)
+            Colors = new Colors(useColor ?? context.UseColor);
+    }
 
     public virtual void Flush()
     {
@@ -55,12 +66,17 @@ public abstract class DiagnosticWriter(ChoirContext? context, bool? useColor = n
     protected abstract void IssueInternal(DiagnosticKind kind, Location? location, string message, bool includeStackTrace);
     public void Issue(DiagnosticKind kind, Location? location, string message, [DoesNotReturnIf(true)] bool exit = false)
     {
+        HasIssuedErrors |= kind >= DiagnosticKind.Error;
+
         OnIssue?.Invoke(kind);
         IssueInternal(kind, location, message, includeStackTrace: exit);
+
         if (exit)
         {
             Flush();
-            Environment.Exit(1);
+            if (OnICE is not null)
+                OnICE();
+            else Environment.Exit(1);
         }
     }
 

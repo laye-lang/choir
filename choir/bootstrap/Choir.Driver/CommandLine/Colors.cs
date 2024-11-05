@@ -1,5 +1,3 @@
-using ClangSharp.Interop;
-
 namespace Choir.CommandLine;
 
 public enum Color

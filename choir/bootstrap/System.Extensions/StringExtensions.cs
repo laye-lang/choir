@@ -1,4 +1,4 @@
-namespace Choir;
+namespace System;
 
 public static class StringExtensions
 {
@@ -7,7 +7,7 @@ public static class StringExtensions
     {
         for (int i = 0; i < s.Length; i++)
         {
-            foreach (var c in chars)
+            foreach (char c in chars)
             {
                 if (s[i] == c)
                     return true;

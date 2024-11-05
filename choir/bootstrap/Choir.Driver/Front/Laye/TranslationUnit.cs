@@ -7,6 +7,9 @@ public sealed class TranslationUnit(ChoirContext context)
 
     public ChoirContext Context { get; } = context;
     public IEnumerable<Module> Modules => _modules;
+    
+    public LLVMSharp.Interop.LLVMContextRef? LlvmContext { get; set; }
+    public LLVMSharp.Interop.LLVMModuleRef? LlvmModule { get; set; }
 
     public void AddModule(Module module)
     {
