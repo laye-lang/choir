@@ -1,5 +1,6 @@
 // R %choir %s --codegen --ir
 
 int main() {
-    return 0;
+    int exit_code = 0;
+    return exit_code;
 }

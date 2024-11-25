@@ -3,6 +3,8 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
+using Choir.Driver;
+
 namespace Choir.TestRunner;
 
 public enum TestStatus

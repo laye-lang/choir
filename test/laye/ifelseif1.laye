@@ -1,0 +1,11 @@
+// R %choir %s --codegen --ir
+
+int main() {
+    if (false) {
+        return 1;
+    } else if (true) {
+        return 0;
+    } else {
+        return 2;
+    }
+}

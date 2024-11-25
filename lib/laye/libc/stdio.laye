@@ -1,3 +1,5 @@
+module libc;
+
 export import
   printf
 from "stdio.h";

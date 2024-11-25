@@ -1,0 +1,10 @@
+// R %choir %s --codegen --ir
+
+struct foo {
+    int value;
+}
+
+int main() {
+    var f = foo { value = 0 };
+    return f.value;
+}
