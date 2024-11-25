@@ -33,12 +33,14 @@ public partial class Sema
             {
                 var decl = sema.AnalyseTopLevelDecl(topLevelNode);
 
-                if (decl is SemaDeclFunction declFunction && declFunction.Name == "main")
+                if (decl is SemaDeclFunction declFunction && declFunction.Name == "main" &&
+                    declFunction.ReturnType.CanonicalType.Type == context.Types.LayeTypeInt &&
+                    declFunction.ParameterDecls.Count == 0)
                 {
                     if (declFunction.Linkage is not Linkage.Internal and not Linkage.Exported)
                         module.Context.Diag.Error("The 'main' function must either be defined with no linkage or as 'export'.");
 
-                    declFunction.ForeignSymbolName = "main";
+                    //declFunction.ForeignSymbolName = "main";
                     declFunction.Linkage = Linkage.Exported;
                 }
 
@@ -514,6 +516,31 @@ public partial class Sema
                 Context.Assert(semaNodeCheck is SemaDeclFunction, declFunction.Location, "function declaration did not have sema node of function type");
                 var semaNode = (SemaDeclFunction)semaNodeCheck;
 
+                foreach (var attrib in declFunction.Attribs)
+                {
+                    switch (attrib)
+                    {
+                        case SyntaxAttribForeign attribForeign:
+                        {
+                            if (semaNode.IsForeign)
+                            {
+                                Context.Diag.Error(attrib.Location, "Duplicate `foreign` attribute.");
+                                break;
+                            }
+
+                            semaNode.IsForeign = true;
+                            if (attribForeign.HasForeignName)
+                                semaNode.ForeignSymbolName = attribForeign.ForeignNameText;
+                            else
+                            {
+                                if (declFunction.Name is SyntaxToken { Kind: TokenKind.Identifier } nameToken)
+                                    semaNode.ForeignSymbolName = nameToken.TextValue;
+                                else Context.Diag.Error(attribForeign.Location, "Cannot mark a function with a non-identifier name as foreign without providing an explicit foreign name.");
+                            }
+                        } break;
+                    }
+                }
+
                 using var _f = EnterFunction(semaNode);
 
                 semaNode.ReturnType = AnalyseType(declFunction.ReturnType);
@@ -674,8 +701,9 @@ public partial class Sema
             }
 
             case SyntaxNameref nameref: return AnalyseLookup(nameref, SymbolKind.Data);
-            case SyntaxExprBinary binary: return AnalyseBinary(binary);
-            case SyntaxExprCall call: return AnalyseCall(call);
+            case SyntaxExprBinary binary: return AnalyseBinary(binary, typeHint);
+            case SyntaxExprCall call: return AnalyseCall(call, typeHint);
+            case SyntaxExprCast cast: return AnalyseCast(cast, typeHint);
 
             case SyntaxToken tokenInteger when tokenInteger.Kind == TokenKind.LiteralInteger:
             {
@@ -845,7 +873,7 @@ public partial class Sema
         ] },
     };
 
-    private SemaExprBinary AnalyseBinary(SyntaxExprBinary binary)
+    private SemaExprBinary AnalyseBinary(SyntaxExprBinary binary, SemaTypeQual? typeHint = null)
     {
         var left = LValueToRValue(AnalyseExpr(binary.Left), false);
         var right = LValueToRValue(AnalyseExpr(binary.Right), false);
@@ -891,7 +919,7 @@ public partial class Sema
         }
     }
 
-    private SemaExprCall AnalyseCall(SyntaxExprCall call)
+    private SemaExprCall AnalyseCall(SyntaxExprCall call, SemaTypeQual? typeHint = null)
     {
         var callee = AnalyseExpr(call.Callee);
         var callableType = callee.Type.Type;
@@ -903,18 +931,18 @@ public partial class Sema
                 SemaExpr[] arguments = new SemaExpr[call.Args.Count];
                 for (int i = 0; i < arguments.Length; i++)
                 {
-                    SemaTypeQual? typeHint = null;
+                    SemaTypeQual? argTypeHint = null;
                     if (i < typeFunction.ParamTypes.Count)
-                        typeHint = typeFunction.ParamTypes[i];
+                        argTypeHint = typeFunction.ParamTypes[i];
 
-                    var argument = AnalyseExpr(call.Args[i], typeHint);
-                    if (typeHint is not null)
-                        argument = ConvertOrError(argument, typeHint);
+                    var argument = AnalyseExpr(call.Args[i], argTypeHint);
+                    if (argTypeHint is not null)
+                        argument = ConvertOrError(argument, argTypeHint);
 
                     arguments[i] = argument;
                 }
 
-                return new SemaExprCall(call.Location, callee.Type, callee, arguments);
+                return new SemaExprCall(call.Location, typeFunction.ReturnType, callee, arguments);
             }
 
             default:
@@ -927,6 +955,41 @@ public partial class Sema
         }
 
         throw new NotImplementedException();
+    }
+
+    private SemaExpr AnalyseCast(SyntaxExprCast cast, SemaTypeQual? typeHint = null)
+    {
+        SemaTypeQual castType;
+        if (cast.IsAutoCast)
+        {
+            if (typeHint is null)
+            {
+                Context.Diag.Error(cast.Location, "Unable to determine the type of the auto-cast. Specify the desired type manually.");
+                castType = Context.Types.LayeTypePoison.Qualified(cast.Location);
+            }
+            else castType = typeHint;
+        }
+        else castType = AnalyseType(cast.TargetType!);
+
+        var expr = AnalyseExpr(cast.Expr);
+        if (Convert(ref expr, castType))
+            return expr;
+
+        if (expr.Type.IsInteger && castType.IsInteger)
+        {
+            CastKind castKind;
+            if (expr.Type.Size == castType.Size)
+                castKind = CastKind.NoOp;
+            else if (expr.Type.Size > castType.Size)
+                castKind = CastKind.IntegralTruncate;
+            // TODO(local): zero extend casting for handling unsigned types
+            else castKind = CastKind.IntegralSignExtend;
+
+            return new SemaExprCast(cast.Location, castKind, castType, expr);
+        }
+
+        Context.Diag.Error(cast.Location, $"Cannot convert from {expr.Type.ToDebugString(Colors)} to {castType.ToDebugString(Colors)}.");
+        return new SemaExprCast(cast.Location, CastKind.Invalid, castType, expr);
     }
 
     private bool TryEvaluate(SemaExpr expr, out EvaluatedConstant value)

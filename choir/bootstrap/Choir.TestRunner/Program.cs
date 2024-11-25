@@ -50,8 +50,8 @@ public sealed record class ExecTestInstance(FileInfo SourceFile) : TestInstance(
         try
         {
 
-            int exitCode = ChoirDriver.RunWithArgs(diag, [SourceFile.FullName, "-o", outputFile.FullName]);
-            //int exitCode = ChoirDriver.RunWithArgs(diag, [SourceFile.FullName, "--codegen", "--ir"]);
+            //int exitCode = LayecDriver.RunWithArgs(diag, [SourceFile.FullName, "-o", outputFile.FullName]);
+            int exitCode = LayecDriver.RunWithArgs(diag, [SourceFile.FullName, "--sema", "--ast"]);
             if (exitCode != 0)
             {
                 Status = TestStatus.Failed;

@@ -257,6 +257,7 @@ public abstract class SemaDeclNamed(Location location, string name)
     : SemaDecl(location)
 {
     public string Name { get; } = name;
+    public string? ForeignSymbolName { get; set; }
 }
 
 public abstract class SemaExpr(Location location, SemaTypeQual type) : BaseSemaNode

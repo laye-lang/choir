@@ -73,7 +73,6 @@ public sealed class SemaDeclFunction(Location location, string name)
     
     public Linkage Linkage { get; set; } = Linkage.Internal;
     public bool IsForeign { get; set; } = false;
-    public string? ForeignSymbolName { get; set; }
     public CallingConvention CallingConvention { get; set; } = CallingConvention.Laye;
 
     public override IEnumerable<BaseSemaNode> Children
@@ -132,7 +131,6 @@ public sealed class SemaDeclBinding(Location location, string name)
     
     public Linkage Linkage { get; set; } = Linkage.Internal;
     public bool IsForeign { get; set; } = false;
-    public string? ForeignSymbolName { get; set; }
 
     public override IEnumerable<BaseSemaNode> Children
     {

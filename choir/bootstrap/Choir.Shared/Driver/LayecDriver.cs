@@ -3,6 +3,7 @@ using System.Diagnostics.Metrics;
 
 using Choir.CommandLine;
 using Choir.Front.Laye;
+using Choir.Front.Laye.Codegen;
 using Choir.Front.Laye.Sema;
 using Choir.Front.Laye.Syntax;
 
@@ -67,7 +68,10 @@ Options:
         }
 
         var driver = Create(diag, options);
-        return driver.Execute();
+        int exitCode = driver.Execute();
+
+        diag.Flush();
+        return exitCode;
     }
 
     public static LayecDriver Create(DiagnosticWriter diag, LayecDriverOptions options, string programName = "layec")
@@ -135,6 +139,13 @@ Options:
         if (Options.DriverStage == DriverStage.Sema)
             return SemaOnly();
 
+        var llvmModule = LayeCodegen.GenerateIR(module);
+
+        if (Context.Diag.HasIssuedErrors) return 1;
+
+        if (Options.DriverStage == DriverStage.Codegen)
+            return CodegenOnly();
+
         Context.Assert(false, "The `layec` driver is not yet implemented.");
         return 1;
 
@@ -199,6 +210,16 @@ Options:
             if (Options.PrintAst)
             {
                 semaPrinter.PrintModule(module);
+            }
+
+            return 0;
+        }
+
+        int CodegenOnly()
+        {
+            if (Options.PrintIR)
+            {
+                llvmModule.Dump();
             }
 
             return 0;

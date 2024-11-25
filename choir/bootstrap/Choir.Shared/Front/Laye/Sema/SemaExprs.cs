@@ -7,7 +7,12 @@ namespace Choir.Front.Laye.Sema;
 public enum CastKind
 {
     Invalid,
-    Dependent,
+    //Dependent,
+    IntegralTruncate,
+    IntegralZeroExtend,
+    IntegralSignExtend,
+    IntegerToFloat,
+    FloatToInteger,
     BitCast,
     LValueBitCast,
     LValueToRValueBitCast,

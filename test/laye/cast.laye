@@ -1,0 +1,9 @@
+int foo()
+{
+    return 0;
+}
+
+i32 main()
+{
+    return cast(i32) foo();
+}

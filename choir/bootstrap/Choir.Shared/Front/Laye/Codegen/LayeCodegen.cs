@@ -7,50 +7,17 @@ using Choir.CommandLine;
 
 namespace Choir.Front.Laye.Codegen;
 
-public sealed class LayeCodegen(OldModule module, LLVMContextRef llvmContext)
+public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 {
-    public static void GenerateIR(TranslationUnit tu)
+    public static LLVMModuleRef GenerateIR(LayeModule module)
     {
         var llvmContext = LLVMContextRef.Create();
-        tu.LlvmContext = llvmContext;
+        var llvmModule = llvmContext.CreateModuleWithName(module.ModuleName ?? "<program>");
 
-        foreach (var module in tu.Modules)
-        {
-            module.LlvmContext = tu.LlvmContext;
-            GenerateIR(module);
-        }
-
-        if (tu.Modules.Count() > 1)
-        {
-            unsafe
-            {
-                tu.LlvmModule = llvmContext.CreateModuleWithName("translation-unit");
-                foreach (var module in tu.Modules)
-                {
-                    LLVM.LinkModules2((LLVMOpaqueModule*)tu.LlvmModule!.Value.Handle, (LLVMOpaqueModule*)module.LlvmModule!.Value.Handle);
-                }
-            }
-        }
-        else
-        {
-            tu.LlvmModule = tu.Modules.Single().LlvmModule;
-        }
-    }
-
-    public static void GenerateIR(OldModule module)
-    {
-        var llvmContext = module.LlvmContext!.Value;
-
-        var llvmModule = llvmContext.CreateModuleWithName(module.SourceFile.FileInfo.FullName);
-        module.LlvmModule = llvmModule;
-
-        //var diBuilder = llvmModule.CreateDIBuilder();
-        //diBuilder.CreateCompileUnit(LLVMDWARFSourceLanguage.LLVMDWARFSourceLanguageC, diBuilder.CreateFile(module.SourceFile.FileInfo.FullName, ""), "Choir Compiler", 0, "", 0, "", LLVMDWARFEmissionKind.LLVMDWARFEmissionFull, 0, 0, 0, "", "");
-
-        var cg = new LayeCodegen(module, llvmContext);
+        var cg = new LayeCodegen(module, llvmModule);
 
         // generate declarations
-        foreach (var decl in module.SemaDecls)
+        foreach (var decl in module.Declarations)
         {
             LLVMValueRef declDef;
             if (decl is SemaDeclFunction function)
@@ -59,7 +26,7 @@ public sealed class LayeCodegen(OldModule module, LLVMContextRef llvmContext)
         }
 
         // generate definitions
-        foreach (var decl in module.SemaDecls)
+        foreach (var decl in module.Declarations)
         {
             LLVMValueRef declDef;
             if (decl is SemaDeclFunction function)
@@ -69,12 +36,20 @@ public sealed class LayeCodegen(OldModule module, LLVMContextRef llvmContext)
             }
             else throw new NotImplementedException($"for decl type {decl.GetType().FullName}");
         }
+
+        return llvmModule;
+    }
+
+    public static void GenerateIR(TranslationUnit tu)
+    {
+        throw new NotImplementedException();
     }
 
     public ChoirContext Context { get; } = module.Context;
-    public OldModule Module { get; } = module;
-    public LLVMContextRef LlvmContext { get; } = llvmContext;
-    public LLVMModuleRef LlvmModule { get; } = module.LlvmModule!.Value;
+    public LayeModule Module { get; } = module;
+    public LLVMContextRef LlvmContext { get; } = llvmModule.Context;
+    public LLVMModuleRef LlvmModule { get; } = llvmModule;
+    public LayeNameMangler Mangler { get; } = new(module.Context, module);
 
     private readonly Dictionary<SemaDeclNamed, LLVMValueRef> _declaredValues = [];
 
@@ -118,9 +93,10 @@ public sealed class LayeCodegen(OldModule module, LLVMContextRef llvmContext)
 
     private LLVMValueRef GenerateDeclaration(SemaDeclFunction function)
     {
+        string functionName = Mangler.GetMangledName(function);
         var paramTypes = function.ParameterDecls.Select(p => GenerateType(p.ParamType)).ToArray();
         var functionType = LLVMTypeRef.CreateFunction(GenerateType(function.ReturnType), paramTypes);
-        var f = LlvmModule.AddFunction(function.Name, functionType);
+        var f = LlvmModule.AddFunction(functionName, functionType);
         return _declaredValues[function] = f;
     }
 
@@ -361,6 +337,12 @@ public sealed class LayeCodegen(OldModule module, LLVMContextRef llvmContext)
                             throw new UnreachableException();
                         }
 
+                        case CastKind.IntegralTruncate:
+                        {
+                            var type = GenerateType(cast.Type);
+                            return builder.BuildTrunc(BuildExpr(builder, cast.Operand), type, "inttrunc");
+                        }
+
                         case CastKind.LValueToRValue:
                         {
                             var type = GenerateType(cast.Type);
@@ -373,10 +355,10 @@ public sealed class LayeCodegen(OldModule module, LLVMContextRef llvmContext)
 
                 case SemaExprCall call:
                 {
-                    Context.Assert(call.Type.CanonicalType.Type is SemaTypeFunction, "The call expression only works on functions");
+                    Context.Assert(call.Callee.Type.CanonicalType.Type is SemaTypeFunction, "The call expression only works on functions");
                     var callee = BuildExpr(builder, call.Callee);
                     var arguments = call.Arguments.Select(e => BuildExpr(builder, e)).ToArray();
-                    var resultType = GenerateType(((SemaTypeFunction)call.Type.CanonicalType.Type).ReturnType);
+                    var resultType = GenerateType(((SemaTypeFunction)call.Callee.Type.CanonicalType.Type).ReturnType);
 
                     LLVMTypeRef calleeType = LLVM.GlobalGetValueType(callee);
                     return builder.BuildCall2(calleeType, callee, arguments, "call");
