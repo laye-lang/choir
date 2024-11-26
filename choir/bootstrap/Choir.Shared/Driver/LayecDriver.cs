@@ -102,11 +102,88 @@ Options:
         Console.Error.WriteLine(message);
     }
 
+    private bool LoadDependencies(out LayeModule[] dependencies)
+    {
+        dependencies = [];
+
+        var moduleHeaders = Options.BinaryDependencyFiles
+            .Select(file => LayeModule.DeserializeHeaderFromObject(Context, file)).ToList();
+
+        for (int i = 0; i < moduleHeaders.Count; i++)
+        {
+            if (moduleHeaders[i].ModuleName is null)
+            {
+                Context.Diag.Error("Detected circular dependencies.");
+                return false;
+            }
+        }
+
+        var moduleNamesToDependencies = moduleHeaders
+            .ToDictionary(header => header.ModuleName!, header => header.DependencyNames);
+
+        var moduleNamesToFiles = Options.BinaryDependencyFiles.Zip(moduleHeaders)
+            .ToDictionary(pair => pair.Second.ModuleName!, pair => pair.First);
+
+        HashSet<string> allModuleNames = [];
+        foreach ((string? moduleName, string[] dependencyNames) in moduleHeaders)
+        {
+            allModuleNames.Add(moduleName!);
+            foreach (string dependencyName in dependencyNames)
+                allModuleNames.Add(dependencyName);
+        }
+
+        List<(string From, string To)> dependencyEdges = [];
+        foreach ((string? moduleName, string[] dependencyNames) in moduleHeaders)
+        {
+            foreach (string dependencyName in dependencyNames)
+                dependencyEdges.Add((moduleName!, dependencyName));
+        }
+
+        var sortResult = TopologicalSort.Sort(allModuleNames, dependencyEdges);
+        if (sortResult.CircularDependencies)
+        {
+            // TODO(local): report discovered circular dependencies
+            Context.Diag.Error("Detected circular dependencies.");
+            return false;
+        }
+
+        dependencies = new LayeModule[sortResult.Sorted.Length];
+        for (int i = 0; i < dependencies.Length; i++)
+        {
+            string moduleName = sortResult.Sorted[i];
+            if (!moduleNamesToFiles.TryGetValue(moduleName, out var moduleFile))
+            {
+                Context.Diag.ICE($"A dependency (module '{moduleName}') did not have an associated binary file.");
+                return false;
+            }
+
+            if (!moduleNamesToDependencies.TryGetValue(moduleName, out string[]? moduleDependencyNames))
+            {
+                Context.Diag.ICE($"A dependency (module '{moduleName}') did not have an associated dependencies.");
+                return false;
+            }
+
+            var moduleDependencies = dependencies.Take(i)
+                .Where(d => moduleDependencyNames.Contains(d.ModuleName!))
+                .ToArray();
+
+            Context.Assert(moduleDependencies.Length == moduleDependencyNames.Length, $"Failed to map a list of dependency names ({(string.Join(", ", moduleDependencyNames.Select(n => $"'{n}'")))}) to their loaded modules.");
+            dependencies[i] = LayeModule.DeserializeFromObject(Context, moduleDependencies, moduleFile);
+        }
+
+        return true;
+    }
+
     public int Execute()
     {
         LogVerbose(string.Format(DriverVersion, ProgramName));
 
-        var module = new LayeModule(Context, Options.ModuleSourceFiles.Select(Context.GetSourceFile));
+        if (!LoadDependencies(out var dependencies))
+            return 1;
+
+        var sourceFiles = Options.ModuleSourceFiles.Select(Context.GetSourceFile);
+
+        var module = new LayeModule(Context, sourceFiles, dependencies);
         var syntaxPrinter = new SyntaxPrinter(Context, false);
         var semaPrinter = new SemaPrinter(Context, false);
 
@@ -164,7 +241,7 @@ Options:
                 stdout.Write(File.ReadAllBytes(tempFilePath));
                 File.Delete(tempFilePath);
             }
-            else File.Move(tempFilePath, GetOutputFilePath(isObject: true));
+            else File.Move(tempFilePath, GetOutputFilePath(isObject: true), true);
         }
         catch (Exception ex)
         {
@@ -264,11 +341,11 @@ Options:
                     Console.Write(File.ReadAllText(tempFilePath));
                     File.Delete(tempFilePath);
                 }
-                else File.Move(tempFilePath, GetOutputFilePath(isObject: false));
+                else File.Move(tempFilePath, GetOutputFilePath(isObject: false), true);
             }
             catch (Exception ex)
             {
-                Context.Diag.ICE($"Failed to generate LLVM IR text: {ex.Message}");
+                Context.Diag.ICE($"Failed to emit assembler file: {ex.Message}");
                 return 1;
             }
 
@@ -293,9 +370,10 @@ Options:
 
         void PrintLLVMModuleToFile(string outputFilePath)
         {
+            File.Delete(outputFilePath);
             if (!llvmModule.TryPrintToFile(outputFilePath, out string printError))
             {
-                Context.Diag.ICE($"Failed to generate LLVM IR text: {printError}");
+                Context.Diag.ICE($"Failed to print LLVM IR to file '{outputFilePath}': {printError}");
             }
         }
 

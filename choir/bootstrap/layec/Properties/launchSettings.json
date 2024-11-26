@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "layec": {
+      "commandName": "Project",
+      "commandLineArgs": "test/laye/basic.laye core.mod",
+      "workingDirectory": "C:\\Users\\Nashiora\\dev\\choir"
+    }
+  }
+}

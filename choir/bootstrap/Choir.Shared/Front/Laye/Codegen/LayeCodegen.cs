@@ -4,6 +4,7 @@ using LLVMSharp.Interop;
 
 using Choir.Front.Laye.Sema;
 using Choir.CommandLine;
+using System.Text;
 
 namespace Choir.Front.Laye.Codegen;
 
@@ -12,7 +13,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
     public static LLVMModuleRef GenerateIR(LayeModule module)
     {
         var llvmContext = LLVMContextRef.Create();
-        var llvmModule = llvmContext.CreateModuleWithName(module.ModuleName ?? "<program>");
+        var llvmModule = llvmContext.CreateModuleWithName(module.ModuleName ?? ".program");
 
         var cg = new LayeCodegen(module, llvmModule);
 
@@ -36,6 +37,10 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
             }
             else throw new NotImplementedException($"for decl type {decl.GetType().FullName}");
         }
+
+        byte[] moduleData = module.Serialize();
+        string sectionName = LayeConstants.GetModuleDescriptionSectionName(module.ModuleName);
+        llvmModule.EmbedBuffer(moduleData, sectionName);
 
         return llvmModule;
     }

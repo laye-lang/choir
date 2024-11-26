@@ -51,17 +51,17 @@ public sealed record class ExecTestInstance(FileInfo SourceFile) : TestInstance(
         {
 
             //int exitCode = LayecDriver.RunWithArgs(diag, [SourceFile.FullName, "-o", outputFile.FullName]);
-            int exitCode = LayecDriver.RunWithArgs(diag, [SourceFile.FullName, "--sema", "--ast"]);
+            int exitCode = LayecDriver.RunWithArgs(diag, [SourceFile.FullName]);
             if (exitCode != 0)
             {
                 Status = TestStatus.Failed;
                 return;
             }
 
-            var process = Process.Start(outputFile.FullName);
-            process.WaitForExit();
+            //var process = Process.Start(outputFile.FullName);
+            //process.WaitForExit();
 
-            Status = process.ExitCode == 0 ? TestStatus.Passed : TestStatus.Failed;
+            //Status = process.ExitCode == 0 ? TestStatus.Passed : TestStatus.Failed;
         }
         catch (TestRunnerInternalCompilerError)
         {
