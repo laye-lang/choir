@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.Contracts;
 using System.Diagnostics.Metrics;
 
 using Choir.CommandLine;
@@ -6,6 +7,8 @@ using Choir.Front.Laye;
 using Choir.Front.Laye.Codegen;
 using Choir.Front.Laye.Sema;
 using Choir.Front.Laye.Syntax;
+
+using LLVMSharp.Interop;
 
 namespace Choir.Driver;
 
@@ -25,11 +28,12 @@ Options:
                              one of: 'auto', 'always', 'never'
 
     -i                       Read source text from stdin rather than a list of source files
+    --file-kind <kind>       Specify the kind of subsequent input files, or 'default' to infer it from the extension
+                             one of: 'default', 'laye', 'module'
     -o <path>                Override the output module object file path
                              To emit output to stdout, specify a path of '-'
                              default: '<module-name>.mod'
-    --file-kind <kind>       Specify the kind of subsequent input files, or 'default' to infer it from the extension
-                             one of: 'default', 'laye', 'module'
+    --emit-llvm              Emit LLVM IR instead of Assembler when compiling with `--compile`.
 
     --no-corelib             Do not link against the the default Laye core library
                              This also implies '--no-stdlib'
@@ -146,8 +150,29 @@ Options:
         if (Options.DriverStage == DriverStage.Codegen)
             return CodegenOnly();
 
-        Context.Assert(false, "The `layec` driver is not yet implemented.");
-        return 1;
+        if (Options.DriverStage == DriverStage.Compile)
+            return CompileOnly();
+
+        try
+        {
+            string tempFilePath = Path.GetTempFileName();
+            EmitLLVMModuleToFile(tempFilePath, LLVMCodeGenFileType.LLVMObjectFile);
+
+            if (Options.ObjectFilePath == "-")
+            {
+                using var stdout = Console.OpenStandardOutput();
+                stdout.Write(File.ReadAllBytes(tempFilePath));
+                File.Delete(tempFilePath);
+            }
+            else File.Move(tempFilePath, GetOutputFilePath(isObject: true));
+        }
+        catch (Exception ex)
+        {
+            Context.Diag.ICE($"Failed to generate LLVM IR text: {ex.Message}");
+            return 1;
+        }
+
+        return 0;
 
         #endregion
 
@@ -225,6 +250,73 @@ Options:
             return 0;
         }
 
+        int CompileOnly()
+        {
+            try
+            {
+                string tempFilePath = Path.GetTempFileName();
+                if (Options.AssemblerFormat == AssemblerFormat.Assembler)
+                    EmitLLVMModuleToFile(tempFilePath, LLVMCodeGenFileType.LLVMAssemblyFile);
+                else PrintLLVMModuleToFile(tempFilePath);
+
+                if (Options.ObjectFilePath == "-")
+                {
+                    Console.Write(File.ReadAllText(tempFilePath));
+                    File.Delete(tempFilePath);
+                }
+                else File.Move(tempFilePath, GetOutputFilePath(isObject: false));
+            }
+            catch (Exception ex)
+            {
+                Context.Diag.ICE($"Failed to generate LLVM IR text: {ex.Message}");
+                return 1;
+            }
+
+            return 0;
+        }
+
+        string GetOutputFilePath(bool isObject)
+        {
+            Context.Assert(Options.ObjectFilePath != "-", "Handle output to stdio separately.");
+
+            string? objectFilePath = Options.ObjectFilePath;
+            if (objectFilePath is null)
+            {
+                string objectFileName = module.ModuleName ?? "a";
+                if (isObject)
+                    objectFilePath = $"{objectFileName}.mod";
+                else objectFilePath = Options.AssemblerFormat == AssemblerFormat.LLVM ? $"{objectFileName}.ll" : $"{objectFileName}.s";
+            }
+
+            return objectFilePath;
+        }
+
+        void PrintLLVMModuleToFile(string outputFilePath)
+        {
+            if (!llvmModule.TryPrintToFile(outputFilePath, out string printError))
+            {
+                Context.Diag.ICE($"Failed to generate LLVM IR text: {printError}");
+            }
+        }
+
+        void EmitLLVMModuleToFile(string outputFilePath, LLVMCodeGenFileType fileType = LLVMCodeGenFileType.LLVMObjectFile)
+        {
+            LLVM.LinkInMCJIT();
+            LLVM.InitializeAllTargetMCs();
+            LLVM.InitializeAllTargets();
+            LLVM.InitializeAllTargetInfos();
+            LLVM.InitializeAllAsmParsers();
+            LLVM.InitializeAllAsmPrinters();
+
+            var target = LLVMTargetRef.GetTargetFromTriple(LLVMTargetRef.DefaultTriple);
+            var machine = target.CreateTargetMachine(LLVMTargetRef.DefaultTriple, "generic", "", LLVMCodeGenOptLevel.LLVMCodeGenLevelNone, LLVMRelocMode.LLVMRelocDefault, LLVMCodeModel.LLVMCodeModelDefault);
+
+            if (!machine.TryEmitToFile(llvmModule, outputFilePath, fileType, out string message))
+            {
+                Context.Diag.ICE($"LLVM Emit to File Error: {message}");
+            }
+        }
+
         #endregion
     }
 }
@@ -286,6 +378,12 @@ public sealed record class LayecDriverOptions
     /// It is assumed the invoker, a build system or a compiler driver will delegate work to a linker.
     /// </summary>
     public string? ObjectFilePath { get; set; }
+
+    /// <summary>
+    /// The format of assembler output when compiling with the `--compile` flag.
+    /// Defaults to traditional assembler code, but can be switched to LLVM IR with the `--emit-llvm` flag.
+    /// </summary>
+    public AssemblerFormat AssemblerFormat { get; set; } = AssemblerFormat.Assembler;
 
     /// <summary>
     /// The `--no-corelib` flag.
@@ -399,12 +497,6 @@ public sealed record class LayecDriverOptions
                 } break;
 
                 case "-i": options.ReadFromStdIn = true; break;
-                case "-o":
-                {
-                    if (!args.Shift(out string? outputPath))
-                        diag.Error($"Argument to '{arg}' is missing; expected 1 value.");
-                    else options.ObjectFilePath = outputPath;
-                } break;
 
                 case "--file-kind":
                 {
@@ -421,6 +513,15 @@ public sealed record class LayecDriverOptions
                         }
                     }
                 } break;
+                
+                case "-o":
+                {
+                    if (!args.Shift(out string? outputPath))
+                        diag.Error($"Argument to '{arg}' is missing; expected 1 value.");
+                    else options.ObjectFilePath = outputPath;
+                } break;
+
+                case "--emit-llvm": options.AssemblerFormat = AssemblerFormat.LLVM; break;
 
                 case "--no-corelib": options.NoCoreLibrary = true; break;
                 case "--no-stdlib": options.NoStandardLibrary = true; break;
