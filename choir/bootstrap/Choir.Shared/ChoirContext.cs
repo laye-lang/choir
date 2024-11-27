@@ -360,6 +360,18 @@ public sealed class ChoirContext
         Diag.ICE($"reached unreachable code: {message}");
     }
 
+    [DoesNotReturn]
+    public void Unreachable(Location location, string message)
+    {
+        Diag.ICE(location, $"reached unreachable code: {message}");
+    }
+
+    [DoesNotReturn]
+    public void Todo(string message)
+    {
+        Diag.ICE($"TODO: {message}");
+    }
+
     public void Assert([DoesNotReturnIf(false)] bool condition, [InterpolatedStringHandlerArgument("condition")] ref AssertInterpolatedStringHandler message)
     {
         if (condition) return;

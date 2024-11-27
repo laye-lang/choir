@@ -2,7 +2,7 @@
   "profiles": {
     "layec": {
       "commandName": "Project",
-      "commandLineArgs": "test/laye/basic.laye core.mod",
+      "commandLineArgs": "lib/laye/core/entry.laye",
       "workingDirectory": "C:\\Users\\Nashiora\\dev\\choir"
     }
   }

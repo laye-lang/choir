@@ -2,6 +2,8 @@ namespace System;
 
 public static class StringExtensions
 {
+    public static bool IsNullOrEmpty(this string? s) => string.IsNullOrEmpty(s);
+
     public static bool ContainsAny(this string s, params char[] chars) => s.ContainsAny((IEnumerable<char>)chars);
     public static bool ContainsAny(this string s, IEnumerable<char> chars)
     {

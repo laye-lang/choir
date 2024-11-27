@@ -15,12 +15,14 @@ public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sou
     public IReadOnlyList<SourceFile> SourceFiles = [.. sourceFiles];
     public IReadOnlyList<LayeModule> Dependencies = [.. dependencies];
 
-    public string? ModuleName { get; set; }
+    public string ModuleName { get; set; } = LayeConstants.ProgramModuleName;
 
     public Scope ModuleScope { get; } = new();
     public Scope ExportScope { get; } = new();
 
     public IEnumerable<BaseSemaNode> Declarations => _declarations;
+    //public IEnumerable<SemaDeclNamed> ExportedDeclarations => ExportScope.SelectMany(s => s.Symbols).Select(s => s);
+    public IEnumerable<SemaDeclNamed> ExportedDeclarations => _declarations.Where(decl => decl is SemaDeclNamed { Linkage: Linkage.Exported }).Cast<SemaDeclNamed>();
 
     public void AddDecl(SemaDecl decl)
     {
@@ -76,7 +78,7 @@ public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sou
         throw new UnreachableException();
     }
 
-    public static (string? ModuleName, string[] DependencyNames) DeserializeHeaderFromObject(ChoirContext context, FileInfo objectFileInfo)
+    public static (string ModuleName, string[] DependencyNames) DeserializeHeaderFromObject(ChoirContext context, FileInfo objectFileInfo)
     {
         using var stream = GetModuleDataStreamFromObjectFile(context, objectFileInfo);
         return DeclarationDeserializer.DeserializeHeaderFromStream(context, stream);

@@ -177,6 +177,22 @@ public sealed class SemaTypeBuiltIn(ChoirContext context, BuiltinTypeKind kind, 
     public override bool TypeEquals(SemaTypeBuiltIn other, TypeComparison comp) => other.Kind == Kind && (!IsExplicitlySized || other.BitWidth == BitWidth);
 }
 
+public sealed class SemaTypeOverloadSet
+    : SemaType<SemaTypeOverloadSet>
+{
+    public static SemaTypeOverloadSet Instance { get; } = new();
+
+    public override Size Size { get; } = Size.FromBytes(1);
+    public override Align Align { get; } = Align.ByteAligned;
+
+    private SemaTypeOverloadSet()
+    {
+    }
+
+    public override string ToDebugString(Colors colors) => $"{colors.LayeKeyword()}overloads";
+    public override bool TypeEquals(SemaTypeOverloadSet other, TypeComparison comp = TypeComparison.WithQualifiers) => false;
+}
+
 public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedType)
     : SemaType<SemaTypeElaborated>
 {

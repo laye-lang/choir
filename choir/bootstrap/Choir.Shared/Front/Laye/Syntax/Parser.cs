@@ -538,14 +538,13 @@ public partial class Parser(SourceFile sourceFile)
             return new SyntaxImportQueryWildcard(tokenStar);
         else
         {
-            if (At("as")) CurrentToken.Kind = TokenKind.As;
-            var queryNameref = ParseNamerefNoTemplateArguments();
+            var queryTokenName = ExpectIdentifier();
 
             SyntaxToken? tokenAlias = null;
             if (TryAdvance("as", TokenKind.As, out SyntaxToken? tokenAs))
                 ExpectIdentifier(out tokenAlias);
 
-            return new SyntaxImportQueryNamed(queryNameref, tokenAs, tokenAlias);
+            return new SyntaxImportQueryNamed(queryTokenName, tokenAs, tokenAlias);
         }
     }
 

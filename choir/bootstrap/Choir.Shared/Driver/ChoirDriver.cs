@@ -198,8 +198,7 @@ public abstract class ChoirJob(ChoirDriver driver)
                             else if (Driver.Options.OutputFile is not null)
                                 EmitLLVMModuleToFile(Driver.Options.OutputFile, LLVMCodeGenFileType.LLVMAssemblyFile);
                             else EmitLLVMModuleToFile("a.s", LLVMCodeGenFileType.LLVMAssemblyFile);
-                        }
-                        break;
+                        } break;
 
                     case AssemblerFormat.LLVM:
                         {
@@ -208,8 +207,7 @@ public abstract class ChoirJob(ChoirDriver driver)
                             else if (Driver.Options.OutputFile is not null)
                                 llvmModule.PrintToFile(Driver.Options.OutputFile);
                             else llvmModule.PrintToFile("a.ll");
-                        }
-                        break;
+                        } break;
                 }
 
                 return 0;

@@ -257,7 +257,9 @@ public abstract class SemaDeclNamed(Location location, string name)
     : SemaDecl(location)
 {
     public string Name { get; } = name;
+    public bool IsForeign { get; set; } = false;
     public string? ForeignSymbolName { get; set; }
+    public Linkage Linkage { get; set; } = Linkage.Internal;
 }
 
 public abstract class SemaExpr(Location location, SemaTypeQual type) : BaseSemaNode

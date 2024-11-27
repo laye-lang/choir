@@ -58,9 +58,10 @@ public sealed class SyntaxImportQueryWildcard(SyntaxToken tokenStar) : SyntaxImp
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenStar];
 }
 
-public sealed class SyntaxImportQueryNamed(SyntaxNameref query, SyntaxToken? tokenAs, SyntaxToken? tokenAlias) : SyntaxImportQuery(query.Location)
+public sealed class SyntaxImportQueryNamed(SyntaxToken tokenQueryName, SyntaxToken? tokenAs, SyntaxToken? tokenAlias)
+    : SyntaxImportQuery(tokenQueryName.Location)
 {
-    public SyntaxNameref Query { get; } = query;
+    public SyntaxToken TokenQueryName { get; } = tokenQueryName;
     public SyntaxToken? TokenAs { get; } = tokenAs;
     public SyntaxToken? TokenAlias { get; } = tokenAlias;
 
@@ -70,7 +71,7 @@ public sealed class SyntaxImportQueryNamed(SyntaxNameref query, SyntaxToken? tok
     {
         get
         {
-            yield return Query;
+            yield return TokenQueryName;
             if (TokenAs is not null)
                 yield return TokenAs;
             if (TokenAlias is not null)

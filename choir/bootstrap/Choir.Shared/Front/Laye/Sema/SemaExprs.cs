@@ -37,16 +37,16 @@ public enum BinaryOperatorKind : long
     TypeMask = ~OperatorMask,
 }
 
-public abstract class SemaExprLookup(Location location, SemaTypeQual type, SemaDeclNamed? entity)
+public sealed class SemaExprLookup(Location location, SemaTypeQual type, SemaDeclNamed? entity)
     : SemaExpr(location, type)
 {
     public SemaDeclNamed? ReferencedEntity { get; } = entity;
 }
 
-public sealed class SemaExprLookupSimple(Location location, string lookupName, SemaTypeQual type, SemaDeclNamed? entity)
-    : SemaExprLookup(location, type, entity)
+public sealed class SemaExprOverloadSet(Location location, SemaDeclNamed[] overloads)
+    : SemaExpr(location, SemaTypeOverloadSet.Instance.Qualified(location))
 {
-    public string Name { get; } = lookupName;
+    public IReadOnlyList<SemaDeclNamed> Overloads { get; } = overloads;
 }
 
 public abstract class SemaExprBinary(SyntaxToken operatorToken, SemaTypeQual type, SemaExpr left, SemaExpr right)

@@ -2,45 +2,45 @@ using System.Collections;
 
 namespace Choir.Front.Laye.Sema;
 
-public abstract record class Symbol;
-public sealed record class NamespaceSymbol(Scope Symbols) : Symbol;
-public sealed record class EntitySymbol(SemaDeclNamed Entity) : Symbol;
-
 public sealed class Scope(Scope? parent = null)
-    : IEnumerable<(string Name, IReadOnlyList<Symbol> Symbols)>, IEquatable<Scope>
+    : IEnumerable<(string Name, IReadOnlyList<SemaDeclNamed> Symbols)>, IEquatable<Scope>
 {
     public Scope? Parent { get; } = parent;
     public int Count => _symbols.Count;
 
-    private readonly Dictionary<string, HashSet<Symbol>> _symbols = [];
+    private readonly Dictionary<string, HashSet<SemaDeclNamed>> _symbols = [];
 
-    public IReadOnlyList<Symbol> GetSymbols(string name) => [.. GetSymbolSet(name)];
-    private HashSet<Symbol> GetSymbolSet(string name)
+    public IReadOnlyList<SemaDeclNamed> LookUp(string name) => [.. GetDeclSet(name)];
+    private HashSet<SemaDeclNamed> GetDeclSet(string name)
     {
         if (!_symbols.TryGetValue(name, out var symbols))
             _symbols[name] = symbols = [];
         return symbols;
     }
 
-    public void AddSymbol(string name, Symbol symbol)
+    public bool AddDecl(SemaDeclNamed entity)
     {
-        GetSymbolSet(name).Add(symbol);
-    }
+        var decls = GetDeclSet(entity.Name);
 
-    public void AddNamespace(string name, Scope @namespace)
-    {
-        GetSymbolSet(name).Add(new NamespaceSymbol(@namespace));
-    }
+        bool result = true;
+        if (decls.Count > 0)
+        {
+            bool canOverload = entity is SemaDeclFunction && decls.All(d => d is SemaDeclFunction);
+            if (!canOverload)
+            {
+                result = false;
+                decls.Clear();
+            }
+        }
 
-    public void AddDecl(SemaDeclNamed entity)
-    {
-        GetSymbolSet(entity.Name).Add(new EntitySymbol(entity));
+        decls.Add(entity);
+        return result;
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-    public IEnumerator<(string Name, IReadOnlyList<Symbol> Symbols)> GetEnumerator()
+    public IEnumerator<(string Name, IReadOnlyList<SemaDeclNamed> Symbols)> GetEnumerator()
     {
-        return _symbols.Select(kv => (kv.Key, (IReadOnlyList<Symbol>)[.. kv.Value])).GetEnumerator();
+        return _symbols.Select(kv => (kv.Key, (IReadOnlyList<SemaDeclNamed>)[.. kv.Value])).GetEnumerator();
     }
 
     public override int GetHashCode() => _symbols.GetHashCode();

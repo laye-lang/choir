@@ -20,7 +20,7 @@ public sealed class LayeNameMangler(ChoirContext context, LayeModule module)
     {
         get
         {
-            return _moduleNameMangledCached ??= Module.ModuleName is null ? "" : $"{ModuleNameSpecifier}{MangleIdentifier(Module.ModuleName)}";
+            return _moduleNameMangledCached ??= Module.ModuleName is LayeConstants.ProgramModuleName ? "" : $"{ModuleNameSpecifier}{MangleIdentifier(Module.ModuleName)}";
         }
     }
 
@@ -73,7 +73,7 @@ public sealed class LayeNameMangler(ChoirContext context, LayeModule module)
     {
         static bool IsValidNameCharacter(char c) => char.IsAsciiLetterOrDigit(c) || c == '_';
         bool isValid = identifier.All(IsValidNameCharacter);
-        Context.Assert(isValid, "Only ASCII identifiers are supported");
+        Context.Assert(isValid, $"Only ASCII identifiers are supported (got '{identifier}')");
         return identifier;
     }
 

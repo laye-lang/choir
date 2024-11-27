@@ -356,6 +356,7 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
                                 var chunk = TakeColumns(ref utf32, chunkSize).Runes;
                                 chunks.Add(chunk);
                             }
+
                             EmitRestOfLine(first, chunks.ToArray());
                         }
                     }

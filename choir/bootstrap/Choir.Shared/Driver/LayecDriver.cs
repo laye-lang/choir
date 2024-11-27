@@ -111,9 +111,9 @@ Options:
 
         for (int i = 0; i < moduleHeaders.Count; i++)
         {
-            if (moduleHeaders[i].ModuleName is null)
+            if (moduleHeaders[i].ModuleName == ".program")
             {
-                Context.Diag.Error("Detected circular dependencies.");
+                Context.Diag.Error("A program module cannot be a dependency.");
                 return false;
             }
         }
@@ -213,7 +213,7 @@ Options:
         if (Options.DriverStage == DriverStage.Parse)
             return ParseOnly();
 
-        Sema.AnalyseModule(module, unitDecls, []);
+        Sema.AnalyseModule(module, unitDecls);
 
         if (Context.Diag.HasIssuedErrors) return 1;
 
@@ -359,7 +359,7 @@ Options:
             string? objectFilePath = Options.ObjectFilePath;
             if (objectFilePath is null)
             {
-                string objectFileName = module.ModuleName ?? "a";
+                string objectFileName = module.ModuleName is LayeConstants.ProgramModuleName ? "a" : module.ModuleName;
                 if (isObject)
                     objectFilePath = $"{objectFileName}.mod";
                 else objectFilePath = Options.AssemblerFormat == AssemblerFormat.LLVM ? $"{objectFileName}.ll" : $"{objectFileName}.s";

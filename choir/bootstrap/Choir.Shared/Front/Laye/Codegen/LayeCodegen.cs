@@ -4,7 +4,6 @@ using LLVMSharp.Interop;
 
 using Choir.Front.Laye.Sema;
 using Choir.CommandLine;
-using System.Text;
 
 namespace Choir.Front.Laye.Codegen;
 
@@ -13,7 +12,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
     public static LLVMModuleRef GenerateIR(LayeModule module)
     {
         var llvmContext = LLVMContextRef.Create();
-        var llvmModule = llvmContext.CreateModuleWithName(module.ModuleName ?? ".program");
+        var llvmModule = llvmContext.CreateModuleWithName(module.ModuleName);
 
         var cg = new LayeCodegen(module, llvmModule);
 
@@ -369,11 +368,17 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     return builder.BuildCall2(calleeType, callee, arguments, "call");
                 }
 
-                case SemaExprLookupSimple lookupSimple:
+                case SemaExprOverloadSet:
                 {
-                    Context.Assert(lookupSimple.ReferencedEntity is not null, lookupSimple.Location, "Lookup was not resolved to an entity during sema, should not get to codegen.");
-                    Context.Assert(_declaredValues.ContainsKey(lookupSimple.ReferencedEntity), lookupSimple.Location, "Entity to lookup was not declared in codegen yet. May have been generated incorrectly.");
-                    return _declaredValues[lookupSimple.ReferencedEntity];
+                    Context.Unreachable("Overload set expressions should never escape analysis.");
+                    throw new UnreachableException();
+                }
+
+                case SemaExprLookup lookup:
+                {
+                    Context.Assert(lookup.ReferencedEntity is not null, lookup.Location, "Lookup was not resolved to an entity during sema, should not get to codegen.");
+                    Context.Assert(_declaredValues.ContainsKey(lookup.ReferencedEntity), lookup.Location, "Entity to lookup was not declared in codegen yet. May have been generated incorrectly.");
+                    return _declaredValues[lookup.ReferencedEntity];
                 }
             }
         }

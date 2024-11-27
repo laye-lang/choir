@@ -2,7 +2,7 @@ using Choir.Front.Laye.Sema;
 
 namespace Choir.Front.Laye;
 
-public sealed class ScopePrinter : BaseTreePrinter<(string Name, Symbol Symbol)>
+public sealed class ScopePrinter : BaseTreePrinter<(string Name, SemaDeclNamed DeclNamed)>
 {
     public ScopePrinter(bool useColor)
         : base(useColor)
@@ -16,21 +16,13 @@ public sealed class ScopePrinter : BaseTreePrinter<(string Name, Symbol Symbol)>
         PrintChildren(scope.SelectMany(kv => kv.Symbols.Select(s => (kv.Name, s))));
     }
 
-    protected override void Print((string Name, Symbol Symbol) info)
+    protected override void Print((string Name, SemaDeclNamed DeclNamed) info)
     {
-        if (info.Symbol is NamespaceSymbol @namespace)
-        {
-            Console.WriteLine($"{C[ColorBase]}Scope {C[ColorName]}{info.Name}");
-            PrintChildren(@namespace.Symbols.SelectMany(kv => kv.Symbols.Select(s => (kv.Name, s))));
-        }
-        else if (info.Symbol is EntitySymbol entity)
-        {
-            Console.WriteLine($"{C[ColorBase]}Entity {C[ColorName]}{info.Name} :: ");
-            PrintEntity(entity.Entity);
-        }
+        Console.WriteLine($"{C[ColorName]}{info.Name}");
+        PrintEntity(info.DeclNamed);
     }
 
-    private void PrintEntity(SemaDecl node)
+    private void PrintEntity(SemaDeclNamed node)
     {
     }
 }

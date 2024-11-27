@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Text;
 
 using Choir.Front.Laye.Sema;
 
@@ -9,20 +10,20 @@ internal static class SerializerConstants
     public const uint Magic = (uint)(byte)'l' | ((byte)'a' << 8) | ((byte)'y' << 16) | ((byte)'e' << 24);
 }
 
-public sealed class DeclarationSerializer
+public sealed class DeclarationSerializer : IDisposable
 {
     public static byte[] SerializeToBytes(ChoirContext context, LayeModule module)
     {
         using var memoryStream = new MemoryStream();
         SerializeToStream(context, module, memoryStream);
         memoryStream.Flush();
-        return memoryStream.GetBuffer();
+        return memoryStream.ToArray();
     }
 
     public static void SerializeToStream(ChoirContext context, LayeModule module, Stream stream)
     {
         using var writer = new BinaryWriter(stream);
-        var s = new DeclarationSerializer(context, module, writer);
+        using var s = new DeclarationSerializer(context, module, writer);
         s.Serialize();
     }
 
@@ -30,20 +31,34 @@ public sealed class DeclarationSerializer
     private readonly LayeModule _module;
     private readonly BinaryWriter _writer;
 
+    private readonly BinaryWriter _typesWriter;
+    //private readonly BinaryWriter _typesWriter;
+
     private DeclarationSerializer(ChoirContext context, LayeModule module, BinaryWriter writer)
     {
         _context = context;
         _module = module;
         _writer = writer;
+
+        _typesWriter = new BinaryWriter(new MemoryStream(), Encoding.UTF8, false);
+    }
+
+    public void Dispose()
+    {
+        _typesWriter.Dispose();
     }
 
     private void Serialize()
     {
+        foreach (var export in _module.ExportedDeclarations)
+        {
+        }
+
         _writer.Write(SerializerConstants.Magic);
-        _writer.Write(_module.ModuleName ?? "");
+        _writer.Write(_module.ModuleName);
         _writer.Write(_module.Dependencies.Count);
         foreach (var dependency in _module.Dependencies)
-            _writer.Write(dependency.ModuleName ?? "");
+            _writer.Write(dependency.ModuleName);
     }
 
     private int SerializeType(SemaTypeQual typeQual)
@@ -81,7 +96,7 @@ public sealed class DeclarationSerializer
 
 public sealed class DeclarationDeserializer
 {
-    public static (string? ModuleName, string[] DependencyNames) DeserializeHeaderFromStream(ChoirContext context, Stream stream)
+    public static (string ModuleName, string[] DependencyNames) DeserializeHeaderFromStream(ChoirContext context, Stream stream)
     {
         using var reader = new BinaryReader(stream);
         var d = new DeclarationDeserializer(context, [], reader);
@@ -106,14 +121,12 @@ public sealed class DeclarationDeserializer
         _reader = reader;
     }
 
-    private (string? ModuleName, string[] DependencyNames) ReadModuleHeader()
+    private (string ModuleName, string[] DependencyNames) ReadModuleHeader()
     {
         uint magic = _reader.ReadUInt32();
         _context.Assert(magic == SerializerConstants.Magic, "Invalid Laye module header.");
 
-        string? moduleName = _reader.ReadString();
-        if (moduleName.Length == 0)
-            moduleName = null;
+        string moduleName = _reader.ReadString();
 
         int dependencyCount = _reader.ReadInt32();
         string[] dependencyNames = new string[dependencyCount];

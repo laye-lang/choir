@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Xml.Linq;
 
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
@@ -9,43 +11,74 @@ namespace Choir.Front.Laye.Sema;
 #pragma warning disable CA1822 // Mark members as static
 public partial class Sema
 {
-    public static void AnalyseModule(LayeModule module, SyntaxDeclModuleUnit[] unitDecls, LayeModule[] dependencies)
+    public static void AnalyseModule(LayeModule module, SyntaxDeclModuleUnit[] unitDecls)
     {
         var context = module.Context;
-        //context.Assert(dependencies.Length == 0, "Currently, module dependencies are not supported.");
 
         var sema = new Sema(module);
+        sema.ResolveModuleImports(unitDecls);
+
         foreach (var unitDecl in unitDecls)
         {
-            context.Assert(unitDecl.Header.ImportDeclarations.Count == 0,
-                unitDecl.Header.ImportDeclarations.FirstOrDefault()?.Location ?? default,
-                "Currently, module dependencies are not supported; imports cannot be processed.");
+            context.Assert(sema._fileImports.ContainsKey(unitDecl.SourceFile), $"No file import table found for this unit's source file ('{unitDecl.SourceFile.FileInfo.FullName}').");
+            context.Assert(sema._fileScopes.ContainsKey(unitDecl.SourceFile), $"No file scope found for this unit's source file ('{unitDecl.SourceFile.FileInfo.FullName}').");
+            context.Assert(sema._scopeStack.Count == 1 && sema.CurrentScope == module.ModuleScope, "Sema should be at module scope right now.");
+
+            var fileScope = sema._fileScopes[unitDecl.SourceFile];
+            using var _ = sema.EnterScope(fileScope);
+
+            sema._currentFileImports = sema._fileImports[unitDecl.SourceFile];
 
             foreach (var topLevelNode in unitDecl.TopLevelDeclarations)
-                sema.ForwardDeclareIfAllowedOutOfOrder(topLevelNode);
+            {
+                if (sema.ForwardDeclareIfAllowedOutOfOrder(topLevelNode, out var declNamed, sema.ModuleScope))
+                {
+                    if (declNamed.Linkage == Linkage.Exported)
+                    {
+                        // We're not checking the result of this call here, since it *should* produce the same results
+                        // as the forward declaration to module scope.
+                        // when it doesn't it should be because it was more permissive, not conflicting with other exports only.
+                        bool __ = module.ExportScope.AddDecl(declNamed);
+                    }
+                }
+            }
+
+            sema._currentFileImports = [];
         }
 
         if (module.Context.HasIssuedError) return;
 
         foreach (var unitDecl in unitDecls)
         {
+            context.Assert(sema._fileImports.ContainsKey(unitDecl.SourceFile), $"No file import table found for this unit's source file ('{unitDecl.SourceFile.FileInfo.FullName}').");
+            context.Assert(sema._fileScopes.ContainsKey(unitDecl.SourceFile), $"No file scope found for this unit's source file ('{unitDecl.SourceFile.FileInfo.FullName}').");
+            context.Assert(sema._scopeStack.Count == 1 && sema.CurrentScope == module.ModuleScope, "Sema should be at module scope right now.");
+
+            var fileScope = sema._fileScopes[unitDecl.SourceFile];
+            using var _ = sema.EnterScope(fileScope);
+
+            sema._currentFileImports = sema._fileImports[unitDecl.SourceFile];
+
             foreach (var topLevelNode in unitDecl.TopLevelDeclarations)
             {
                 var decl = sema.AnalyseTopLevelDecl(topLevelNode);
 
                 if (decl is SemaDeclFunction declFunction && declFunction.Name == "main" &&
                     declFunction.ReturnType.CanonicalType.Type == context.Types.LayeTypeInt &&
-                    declFunction.ParameterDecls.Count == 0)
+                    declFunction.ParameterDecls.Count == 0 &&
+                    declFunction.Body is not null &&
+                    module.ModuleName == LayeConstants.ProgramModuleName)
                 {
                     if (declFunction.Linkage is not Linkage.Internal and not Linkage.Exported)
                         module.Context.Diag.Error("The 'main' function must either be defined with no linkage or as 'export'.");
 
-                    //declFunction.ForeignSymbolName = "main";
                     declFunction.Linkage = Linkage.Exported;
                 }
 
                 module.AddDecl(decl);
             }
+
+            sema._currentFileImports = [];
         }
     }
 
@@ -94,17 +127,21 @@ public partial class Sema
     public ChoirContext Context { get; }
     public Colors Colors { get; }
 
-    private readonly Dictionary<SyntaxNode, SemaDecl> _forwardDeclNodes = [];
-    private readonly Stack<Scope> _scopes = [];
-    private readonly Stack<SemaDeclFunction> _functions = [];
+    private readonly Dictionary<SourceFile, Dictionary<string, Scope>> _fileImports = [];
+    private readonly Dictionary<SourceFile, Scope> _fileScopes = [];
+    private readonly Dictionary<SyntaxNode, SemaDeclNamed> _forwardDeclNodes = [];
+    private readonly Stack<Scope> _scopeStack = [];
+    private readonly Stack<SemaDeclFunction> _functionStack = [];
+
+    private Dictionary<string, Scope> _currentFileImports = [];
 
     private Scope ModuleScope => Module.ModuleScope;
-    private Scope CurrentScope => _scopes.Count == 0 ? ModuleScope : _scopes.Peek();
+    private Scope CurrentScope => _scopeStack.Peek();
     private SemaDeclFunction CurrentFunction
     {
         get
         {
-            if (_functions.TryPeek(out var function))
+            if (_functionStack.TryPeek(out var function))
                 return function;
 
             Context.Diag.ICE("Attempt to access the current function during sema from outside any function.");
@@ -117,10 +154,20 @@ public partial class Sema
         Module = module;
         Context = module.Context;
         Colors = new(module.Context.UseColor);
+
+        _scopeStack.Push(module.ModuleScope);
+        foreach (var sourceFile in module.SourceFiles)
+            _fileScopes[sourceFile] = new(module.ModuleScope);
     }
 
-    private void ResolveModuleImports()
+    private void ResolveModuleImports(SyntaxDeclModuleUnit[] unitDecls)
     {
+        foreach (var unitDecl in unitDecls)
+        {
+            var sourceFile = unitDecl.SourceFile;
+            _fileImports[sourceFile] = [];
+        }
+
 #if false
         foreach (var topLevelSyntax in OldModule.TopLevelSyntax)
             ProcessTopLevelSyntax(topLevelSyntax);
@@ -298,51 +345,119 @@ public partial class Sema
         }
     }
 
-    private void ForwardDeclareIfAllowedOutOfOrder(SyntaxNode node)
+    private void SetForeignStatusForDeclaration(SemaDeclNamed declNamed, IReadOnlyList<SyntaxAttrib> attribs)
     {
-        SemaDeclNamed forwardDecl;
-        Scope declaringScope = CurrentScope;
+        foreach (var attrib in attribs)
+        {
+            switch (attrib)
+            {
+                case SyntaxAttribForeign attribForeign:
+                {
+                    if (declNamed.IsForeign)
+                    {
+                        Context.Diag.Error(attrib.Location, "Duplicate `foreign` attribute.");
+                        break;
+                    }
+
+                    declNamed.IsForeign = true;
+                    if (attribForeign.HasForeignName)
+                        declNamed.ForeignSymbolName = attribForeign.ForeignNameText;
+                    else declNamed.ForeignSymbolName = declNamed.Name;
+                } break;
+            }
+        }
+    }
+
+    private Linkage GetLinkageFromAttributeList(IReadOnlyList<SyntaxAttrib> attribs)
+    {
+        var exportAttribs = attribs.Where(attrib => attrib is SyntaxAttribExport).ToArray();
+        if (exportAttribs.Length >= 2)
+            Context.Diag.Error(exportAttribs[1].Location, "Duplicate `export` attributes.");
+
+        if (exportAttribs.Length != 0)
+            return Linkage.Exported;
+
+        return Linkage.Internal;
+    }
+
+    private bool ForwardDeclareIfAllowedOutOfOrder(SyntaxNode node, [NotNullWhen(true)] out SemaDeclNamed? forwardDecl, Scope? scope = null)
+    {
+        forwardDecl = null;
+
+        var declaringScope = scope ?? CurrentScope;
+        bool isAtModuleScope = declaringScope == ModuleScope;
+
+        IReadOnlyList<SyntaxAttrib> attribs;
+
         switch (node)
         {
-            default: return;
+            default: return false;
 
             case SyntaxDeclAlias declAlias:
             {
+                attribs = declAlias.Attribs;
                 forwardDecl = new SemaDeclAlias(declAlias.Location, declAlias.TokenName.TextValue, declAlias.IsStrict);
-                declaringScope.AddDecl(forwardDecl);
             } break;
 
             case SyntaxDeclStruct declStruct:
             {
-                forwardDecl = new SemaDeclStruct(declStruct.Location, declStruct.TokenName.TextValue);
-                declaringScope.AddDecl(forwardDecl);
+                attribs = declStruct.Attribs;
+
+                var declScope = new Scope(declaringScope);
+                forwardDecl = new SemaDeclStruct(declStruct.Location, declStruct.TokenName.TextValue)
+                {
+                    ParentStruct = null,
+                    Scope = declScope,
+                };
             } break;
 
             case SyntaxDeclEnum declEnum:
             {
-                forwardDecl = new SemaDeclEnum(declEnum.Location, declEnum.TokenName.TextValue);
-                declaringScope.AddDecl(forwardDecl);
+                attribs = declEnum.Attribs;
+
+                var declScope = new Scope(declaringScope);
+                forwardDecl = new SemaDeclEnum(declEnum.Location, declEnum.TokenName.TextValue)
+                {
+                    Scope = declScope,
+                };
             } break;
 
             case SyntaxDeclBinding declBinding:
             {
-                if (declaringScope != ModuleScope)
-                    return;
+                if (!isAtModuleScope)
+                    return false;
 
+                attribs = declBinding.Attribs;
                 forwardDecl = new SemaDeclBinding(declBinding.Location, declBinding.TokenName.TextValue);
-                declaringScope.AddDecl(forwardDecl);
             } break;
 
             case SyntaxDeclFunction declFunction:
             {
-                if (declFunction.Name is not SyntaxToken tokenIdent || tokenIdent.Kind != TokenKind.Identifier)
-                    throw new NotImplementedException("need to have a generic entity name type");
-                forwardDecl = new SemaDeclFunction(declFunction.Location, tokenIdent.TextValue);
-                declaringScope.AddDecl(forwardDecl);
+                // operators will have an empty name, you can't look them up normally
+                string functionName = "";
+                if (declFunction.Name is SyntaxToken { Kind: TokenKind.Identifier } tokenIdent)
+                    functionName = tokenIdent.TextValue;
+
+                attribs = declFunction.Attribs;
+                forwardDecl = new SemaDeclFunction(declFunction.Location, functionName);
             } break;
         }
 
+        Context.Assert(forwardDecl is not null, "Didn't generate the a forward declaration node.");
+
+        forwardDecl.Linkage = GetLinkageFromAttributeList(attribs);
+        SetForeignStatusForDeclaration(forwardDecl, attribs);
+
+        if (forwardDecl is SemaDeclFunction f && f.IsForeign && f.ForeignSymbolName is null &&
+            ((SyntaxDeclFunction)node).Name is SyntaxOperatorName functionNameOperator)
+        {
+            Context.Diag.Error(f.Location, "Operator functions cannot be marked as foreign without an explicit foreign name provided.");
+        }
+
         _forwardDeclNodes[node] = forwardDecl;
+        DeclareInScope(forwardDecl, declaringScope);
+
+        return true;
     }
 
     private SemaDecl AnalyseTopLevelDecl(SyntaxNode decl)
@@ -382,9 +497,25 @@ public partial class Sema
 
             case SyntaxNameref typeNamed:
             {
-                var lookup = AnalyseLookup(typeNamed, SymbolKind.Type);
-                Context.Assert(false, typeNamed.Location, $"{lookup.Location}");
-                throw new NotImplementedException();
+                var res = LookupName(typeNamed, CurrentScope);
+                if (res is LookupSuccess success)
+                {
+                    switch (success.Decl)
+                    {
+                        default:
+                        {
+                            Context.Diag.Error(typeNamed.Location, "This is not a type name.");
+                            return SemaTypePoison.InstanceQualified;
+                        }
+
+                        case SemaDeclStruct declStruct: return new SemaTypeStruct(declStruct).Qualified(type.Location);
+                        case SemaDeclEnum declEnum: return new SemaTypeEnum(declEnum).Qualified(type.Location);
+                        case SemaDeclAlias declAlias: return new SemaTypeAlias(declAlias).Qualified(type.Location);
+                    }
+                }
+
+                Context.Diag.Error(typeNamed.Location, "This is not a type name.");
+                return SemaTypePoison.InstanceQualified;
             }
 
             case SyntaxTypeBuffer typeBuffer:
@@ -432,10 +563,7 @@ public partial class Sema
             case SyntaxDeclAlias declAlias:
             {
                 if (!_forwardDeclNodes.TryGetValue(stmt, out var semaNodeCheck))
-                {
-                    semaNodeCheck = new SemaDeclAlias(declAlias.Location, declAlias.TokenName.TextValue, declAlias.IsStrict);
-                    DeclareInScope((SemaDeclAlias)semaNodeCheck);
-                }
+                    Context.Unreachable("Alias declarations should have been forward declared.");
 
                 Context.Assert(semaNodeCheck is SemaDeclAlias, declAlias.Location, "alias declaration did not have sema node of alias type");
                 var semaNode = (SemaDeclAlias)semaNodeCheck;
@@ -445,12 +573,8 @@ public partial class Sema
 
             case SyntaxDeclStruct declStruct:
             {
-                using var _ = EnterScope();
                 if (!_forwardDeclNodes.TryGetValue(stmt, out var semaNodeCheck))
-                {
-                    semaNodeCheck = new SemaDeclStruct(declStruct.Location, declStruct.TokenName.TextValue);
-                    DeclareInScope((SemaDeclStruct)semaNodeCheck);
-                }
+                    Context.Unreachable("Struct declarations should have been forward declared.");
 
                 Context.Assert(semaNodeCheck is SemaDeclStruct, declStruct.Location, "struct declaration did not have sema node of struct type");
                 var semaNode = (SemaDeclStruct)semaNodeCheck;
@@ -461,10 +585,7 @@ public partial class Sema
             case SyntaxDeclEnum declEnum:
             {
                 if (!_forwardDeclNodes.TryGetValue(stmt, out var semaNodeCheck))
-                {
-                    semaNodeCheck = new SemaDeclEnum(declEnum.Location, declEnum.TokenName.TextValue);
-                    DeclareInScope((SemaDeclEnum)semaNodeCheck);
-                }
+                    Context.Unreachable("Enum declarations should have been forward declared.");
 
                 Context.Assert(semaNodeCheck is SemaDeclEnum, declEnum.Location, "enum declaration did not have sema node of enum type");
                 var semaNode = (SemaDeclEnum)semaNodeCheck;
@@ -507,39 +628,10 @@ public partial class Sema
                 using var _s = EnterScope();
 
                 if (!_forwardDeclNodes.TryGetValue(stmt, out var semaNodeCheck))
-                {
-                    if (declFunction.Name is not SyntaxToken tokenIdent || tokenIdent.Kind != TokenKind.Identifier)
-                        throw new NotImplementedException("need to have a generic entity name type");
-                    semaNodeCheck = new SemaDeclFunction(declFunction.Location, tokenIdent.TextValue);
-                }
+                    Context.Unreachable("Function declarations should have been forward declared.");
 
                 Context.Assert(semaNodeCheck is SemaDeclFunction, declFunction.Location, "function declaration did not have sema node of function type");
                 var semaNode = (SemaDeclFunction)semaNodeCheck;
-
-                foreach (var attrib in declFunction.Attribs)
-                {
-                    switch (attrib)
-                    {
-                        case SyntaxAttribForeign attribForeign:
-                        {
-                            if (semaNode.IsForeign)
-                            {
-                                Context.Diag.Error(attrib.Location, "Duplicate `foreign` attribute.");
-                                break;
-                            }
-
-                            semaNode.IsForeign = true;
-                            if (attribForeign.HasForeignName)
-                                semaNode.ForeignSymbolName = attribForeign.ForeignNameText;
-                            else
-                            {
-                                if (declFunction.Name is SyntaxToken { Kind: TokenKind.Identifier } nameToken)
-                                    semaNode.ForeignSymbolName = nameToken.TextValue;
-                                else Context.Diag.Error(attribForeign.Location, "Cannot mark a function with a non-identifier name as foreign without providing an explicit foreign name.");
-                            }
-                        } break;
-                    }
-                }
 
                 using var _f = EnterFunction(semaNode);
 
@@ -571,7 +663,7 @@ public partial class Sema
             {
                 using var _ = EnterScope(!inheritCurrentScope);
                 foreach (var node in stmtCompound.Body)
-                    ForwardDeclareIfAllowedOutOfOrder(node);
+                    ForwardDeclareIfAllowedOutOfOrder(node, out var _);
                 // TODO(local): handle forward declarations in compound statements
                 // TODO(local): create scopes in compound statements.
                 var childStatements = stmtCompound.Body.Select(node => AnalyseStmtOrDecl(node)).ToArray();
@@ -636,10 +728,11 @@ public partial class Sema
         }
     }
 
-    private void DeclareInScope(SemaDeclNamed decl)
+    private void DeclareInScope(SemaDeclNamed decl, Scope? thisScope = null)
     {
-        Context.Assert(_scopes.Count != 0, decl.Location, "currently it is assumed that top-level declarations are handled separately from other scoped declarations. there are currently no non-top-level scopes.");
-        CurrentScope.AddDecl(decl);
+        thisScope ??= CurrentScope;
+        if (!thisScope.AddDecl(decl))
+            Context.Diag.Error(decl.Location, $"Redeclaration of '{decl.Name}' in a non-overloadable context.");
     }
 
     private SemaDeclAlias AnalyseAlias(SyntaxDeclAlias declAlias, SemaDeclAlias semaNode)
@@ -666,9 +759,14 @@ public partial class Sema
         {
             var syntaxDeclVariant = declStruct.Variants[i];
 
-            var variantNode = new SemaDeclStruct(syntaxDeclVariant.Location, syntaxDeclVariant.TokenName.TextValue);
-            variantNode = AnalyseStruct(syntaxDeclVariant, variantNode);
+            var variantScope = new Scope(semaNode.Scope);
+            var variantNode = new SemaDeclStruct(syntaxDeclVariant.Location, syntaxDeclVariant.TokenName.TextValue)
+            {
+                ParentStruct = semaNode,
+                Scope = variantScope,
+            };
 
+            variantNode = AnalyseStruct(syntaxDeclVariant, variantNode);
             variantDecls[i] = variantNode;
         }
 
@@ -700,7 +798,7 @@ public partial class Sema
                 throw new UnreachableException();
             }
 
-            case SyntaxNameref nameref: return AnalyseLookup(nameref, SymbolKind.Data);
+            case SyntaxNameref nameref: return AnalyseLookup(nameref, CurrentScope);
             case SyntaxExprBinary binary: return AnalyseBinary(binary, typeHint);
             case SyntaxExprCall call: return AnalyseCall(call, typeHint);
             case SyntaxExprCast cast: return AnalyseCast(cast, typeHint);
@@ -768,100 +866,185 @@ public partial class Sema
         }
     }
 
-    enum SymbolKind
-    {
-        Data,
-        Type,
-    }
+    private abstract record class LookupResult(string Name);
+    private sealed record class LookupSuccess(string Name, SemaDeclNamed Decl) : LookupResult(Name);
+    private sealed record class LookupNotFound(string Name) : LookupResult(Name);
+    private sealed record class LookupOverloads(string Name, SemaDeclNamed[] Decls) : LookupResult(Name);
+    private sealed record class LookupAmbiguous(string Name, SemaDeclNamed[] Decls) : LookupResult(Name);
+    private sealed record class LookupNonScopeInPath(string Name, SemaDeclNamed Decl) : LookupResult(Name);
 
-    private SemaExprLookup CreateEntityLookupFromScope(SyntaxNode nameNode, Scope scope, SymbolKind symbolKind)
+    private LookupResult LookUpUnqualifiedName(string name, Scope scope, bool thisScopeOnly)
     {
-        SemaExprLookup ForSimpleName(Location location, string lookupName)
+        if (name.IsNullOrEmpty()) return new LookupNotFound(name);
+
+        var overloads = new List<SemaDeclNamed>();
+
+        Scope? scopeCheck = scope;
+        while (scopeCheck is not null)
         {
-            IReadOnlyList<Symbol> symbols = [];
-            Scope? lookupScope = scope;
-
-            while (lookupScope is not null)
+            var decls = scopeCheck.LookUp(name);
+            if (decls.Count == 0)
             {
-                symbols = lookupScope.GetSymbols(lookupName);
-                if (symbols.Count != 0) break;
-                lookupScope = lookupScope.Parent;
+                if (thisScopeOnly) break;
+                scopeCheck = scopeCheck.Parent;
+                continue;
             }
 
-            SemaDeclNamed? entity = null;
-            SemaTypeQual type = SemaTypePoison.InstanceQualified;
-            ValueCategory valueCategory = ValueCategory.LValue;
+            if (decls.Count == 1 && decls[0] is not SemaDeclFunction)
+                return new LookupSuccess(name, decls[0]);
 
-            if (symbols.Count == 0)
-            {
-                Context.Diag.Error(nameNode.Location, $"The name '{lookupName}' does not exist in the current context.");
-            }
-            else if (symbols.Count == 1)
-            {
-                if (symbols[0] is EntitySymbol entitySymbol)
-                {
-                    entity = entitySymbol.Entity;
-                    switch (entity)
-                    {
-                        default:
-                        {
-                            Context.Assert(false, nameNode.Location, $"Unhandled entity declaration in lookup type resolution: {entity.GetType().FullName}.");
-                            throw new UnreachableException();
-                        }
+            Context.Assert(decls.All(d => d is SemaDeclFunction),
+                "At this point in unqualified name lookup, all declarations should be functions.");
+            overloads.AddRange(decls);
 
-                        case SemaDeclBinding declBinding: type = declBinding.BindingType; break;
-                        case SemaDeclParam declParam: type = declParam.ParamType; break;
-                        case SemaDeclFunction declFunction:
-                        {
-                            type = declFunction.FunctionType(Context).Qualified(entity.Location);
-                            valueCategory = ValueCategory.RValue;
-                        } break;
-                    }
-                }
-                else
-                {
-                    Context.Diag.Error(nameNode.Location, $"'{lookupName}' is a namespace but is used like a variable.");
-                }
-            }
-            else
-            {
-                Context.Diag.Error(nameNode.Location, $"Overload resolution is not currently supported.");
-            }
-
-            var dependence = ExprDependence.None;
-            if (entity is null) dependence |= ExprDependence.Error;
-
-            return new SemaExprLookupSimple(location, lookupName, type, entity)
-            {
-                Dependence = dependence,
-                ValueCategory = valueCategory,
-            };
+            scopeCheck = scopeCheck.Parent;
         }
 
+        if (overloads.Count == 0)
+            return new LookupNotFound(name);
+
+        if (overloads.Count == 1)
+            return new LookupSuccess(name, overloads[0]);
+
+        return new LookupOverloads(name, [.. overloads]);
+    }
+
+    private LookupResult LookUpQualifiedName(string[] names, Scope scope)
+    {
+        Context.Assert(names.Length > 1, "Should not be unqualified lookup.");
+
+        string firstName = names[0];
+        var res = LookUpUnqualifiedName(firstName, scope, false);
+        switch (res)
+        {
+            // can't do scope resolution on an ambiguous name.
+            case LookupAmbiguous: return res;
+            // unqualified lookup should never complain about this.
+            case LookupNonScopeInPath:
+            {
+                Context.Unreachable("Non-scope error in unqualified lookup.");
+                throw new UnreachableException();
+            }
+
+            case LookupSuccess success:
+            {
+                var nextScope = GetScopeFromDecl(success.Decl);
+                if (nextScope is null)
+                    return new LookupNonScopeInPath(firstName, success.Decl);
+                scope = nextScope;
+            } break;
+
+            // no name found, look through module imports.
+            case LookupNotFound:
+            {
+                if (!_currentFileImports.TryGetValue(firstName, out var importedModuleScope))
+                    return res;
+
+                scope = importedModuleScope;
+            } break;
+        }
+
+        for (int i = 1; i < names.Length - 1; i++)
+        {
+            string middleName = names[i];
+
+            var decls = scope.LookUp(middleName);
+            if (decls.Count == 0)
+                return new LookupNotFound(middleName);
+
+            if (decls.Count != 1)
+                return new LookupAmbiguous(middleName, [.. decls]);
+
+            var declScope = GetScopeFromDecl(decls[0]);
+            if (declScope is null)
+                return new LookupNonScopeInPath(firstName, decls[0]);
+
+            scope = declScope;
+        }
+
+        return LookUpUnqualifiedName(names[^1], scope, true);
+    }
+
+    private Scope? GetScopeFromDecl(SemaDeclNamed decl)
+    {
+        switch (decl)
+        {
+            default: return null;
+            case SemaDeclStruct declStruct: return declStruct.Scope;
+            case SemaDeclEnum declEnum: return declEnum.Scope;
+        }
+    }
+
+    private LookupResult LookupName(SyntaxNode nameNode, Scope scope)
+    {
         switch (nameNode)
         {
             default:
             {
-                Context.Assert(false, nameNode.Location, "Currently only handling the base case of an identifier name.");
+                Context.Unreachable(nameNode.Location, $"Unsupported name syntax node: {nameNode.GetType().FullName}.");
                 throw new UnreachableException();
             }
 
             case SyntaxToken { Kind: TokenKind.Identifier } nameIdent:
-            {
-                return ForSimpleName(nameIdent.Location, nameIdent.TextValue);
-            }
+                return LookUpUnqualifiedName(nameIdent.TextValue, scope, false);
 
             case SyntaxNameref { NamerefKind: NamerefKind.Default, Names: [SyntaxToken { Kind: TokenKind.Identifier } nameIdent] }:
+                return LookUpUnqualifiedName(nameIdent.TextValue, scope, false);
+
+            case SyntaxNameref { NamerefKind: NamerefKind.Default } defaultNameref when defaultNameref.Names.All(nameNode => nameNode is SyntaxToken { Kind: TokenKind.Identifier }):
+                return LookUpQualifiedName(defaultNameref.Names.Select(n => ((SyntaxToken)n).TextValue).ToArray(), scope);
+
+            case SyntaxNameref:
             {
-                return ForSimpleName(nameIdent.Location, nameIdent.TextValue);
+                Context.Unreachable(nameNode.Location, $"Unsupported nameref syntax in name resolution.");
+                throw new UnreachableException();
             }
         }
     }
 
-    private SemaExprLookup AnalyseLookup(SyntaxNameref nameref, SymbolKind kind)
+    private SemaExpr AnalyseLookup(SyntaxNameref nameref, Scope scope)
     {
-        Context.Assert(nameref.Names.Count == 1, nameref.Location, "Currently only handling the base case of a single name in a nameref.");
-        return CreateEntityLookupFromScope(nameref.Names[0], CurrentScope, kind);
+        var res = LookupName(nameref, scope);
+        switch (res)
+        {
+            default:
+            {
+                Context.Diag.Error(nameref.Location, $"This does not exist in this context.");
+                return new SemaExprLookup(nameref.Location, SemaTypePoison.InstanceQualified, null)
+                {
+                    Dependence = ExprDependence.ErrorDependent,
+                };
+            }
+
+            case LookupSuccess success:
+            {
+                var decl = success.Decl;
+                var valueCategory = ValueCategory.LValue;
+
+                SemaTypeQual? exprType;
+                switch (decl)
+                {
+                    default:
+                    {
+                        Context.Assert(false, nameref.Location, $"Unhandled entity declaration in lookup type resolution: {decl.GetType().FullName}.");
+                        throw new UnreachableException();
+                    }
+
+                    case SemaDeclBinding declBinding: exprType = declBinding.BindingType; break;
+                    case SemaDeclParam declParam: exprType = declParam.ParamType; break;
+                    case SemaDeclFunction declFunction:
+                    {
+                        exprType = declFunction.FunctionType(Context).Qualified(decl.Location);
+                        valueCategory = ValueCategory.RValue;
+                    } break;
+                }
+
+                return new SemaExprLookup(nameref.Location, exprType, success.Decl)
+                {
+                    ValueCategory = valueCategory,
+                };
+            }
+        }
     }
 
     private static readonly Dictionary<BinaryOperatorKind, (TokenKind TokenKind, BinaryOperatorKind OperatorKind)[]> _builtinBinaryOperators = new()
@@ -1172,6 +1355,11 @@ public partial class Sema
         return expr;
     }
 
+    private IDisposable EnterScope(Scope scope)
+    {
+        return new ScopeDisposable(this, scope);
+    }
+
     private IDisposable EnterScope(bool createNewScope = true)
     {
         return createNewScope ? new ScopeDisposable(this) : new ScopeDisposableNoPush(this);
@@ -1195,7 +1383,7 @@ public partial class Sema
 
         public void Dispose()
         {
-            if (!_sema._scopes.TryPeek(out var scope))
+            if (!_sema._scopeStack.TryPeek(out var scope))
             {
                 _sema.Context.Diag.ICE($"Exited a {nameof(ScopeDisposableNoPush)}, but there were no scopes");
                 throw new UnreachableException();
@@ -1210,16 +1398,16 @@ public partial class Sema
         private readonly Sema _sema;
         private readonly Scope _scope;
 
-        public ScopeDisposable(Sema sema)
+        public ScopeDisposable(Sema sema, Scope? scope = null)
         {
             _sema = sema;
-            _scope = new Scope(sema.CurrentScope);
-            sema._scopes.Push(_scope);
+            _scope = scope ?? new Scope(sema.CurrentScope);
+            sema._scopeStack.Push(_scope);
         }
 
         public void Dispose()
         {
-            if (!_sema._scopes.TryPop(out var scope))
+            if (!_sema._scopeStack.TryPop(out var scope))
             {
                 _sema.Context.Diag.ICE($"Exited a {nameof(ScopeDisposable)}, but there were no scopes");
                 throw new UnreachableException();
@@ -1238,12 +1426,12 @@ public partial class Sema
         {
             _sema = sema;
             _function = function;
-            sema._functions.Push(function);
+            sema._functionStack.Push(function);
         }
 
         public void Dispose()
         {
-            if (!_sema._functions.TryPop(out var function))
+            if (!_sema._functionStack.TryPop(out var function))
             {
                 _sema.Context.Diag.ICE($"Exited a {nameof(CurrentFunctionDisposable)}, but there were no functions");
                 throw new UnreachableException();

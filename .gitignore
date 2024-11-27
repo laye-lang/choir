@@ -9,3 +9,4 @@ obj/
 *.so
 *.so.*
 *.a
+*.mod

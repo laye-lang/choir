@@ -1,5 +1,7 @@
 // R %choir %s --codegen --ir
 
+import core;
+
 int main() {
     return 0;
 }

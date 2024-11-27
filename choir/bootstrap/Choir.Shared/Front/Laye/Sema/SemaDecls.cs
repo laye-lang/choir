@@ -31,11 +31,6 @@ public sealed class SemaDeclImport(Location location, OldModule module, bool isE
     public override IEnumerable<BaseSemaNode> Children { get; } = queries;
 }
 
-public sealed class SemaDeclOverloadSet(Location location, string name)
-    : SemaDeclNamed(location, name)
-{
-}
-
 public abstract class SemaDeclTemplateParameter(Location location, string name) : SemaDeclNamed(location, name);
 
 public sealed class SemaDeclTemplateTypeParameter(Location location, string name, bool isDuckTyped)
@@ -71,8 +66,6 @@ public sealed class SemaDeclFunction(Location location, string name)
     public SemaDeclTemplateParameters? TemplateParameters { get; set; }
     public SemaStmt? Body { get; set; }
     
-    public Linkage Linkage { get; set; } = Linkage.Internal;
-    public bool IsForeign { get; set; } = false;
     public CallingConvention CallingConvention { get; set; } = CallingConvention.Laye;
 
     public override IEnumerable<BaseSemaNode> Children
@@ -102,7 +95,6 @@ public sealed class SemaDeclDelegate(Location location, string name)
     public IReadOnlyList<SemaDeclParam> ParameterDecls { get; set; } = [];
     public SemaDeclTemplateParameters? TemplateParameters { get; set; }
     
-    public Linkage Linkage { get; set; } = Linkage.Internal;
     public CallingConvention CallingConvention { get; set; } = CallingConvention.Laye;
 
     public override IEnumerable<BaseSemaNode> Children
@@ -128,9 +120,6 @@ public sealed class SemaDeclBinding(Location location, string name)
 {
     public SemaTypeQual BindingType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
     public SemaExpr? InitialValue { get; set; }
-    
-    public Linkage Linkage { get; set; } = Linkage.Internal;
-    public bool IsForeign { get; set; } = false;
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -157,9 +146,13 @@ public sealed class SemaDeclStruct(Location location, string name)
     public IReadOnlyList<SemaDeclField> FieldDecls { get; set; } = [];
     public IReadOnlyList<SemaDeclStruct> VariantDecls { get; set; } = [];
     public SemaDeclTemplateParameters? TemplateParameters { get; init; }
-    
-    public Linkage Linkage { get; set; } = Linkage.Internal;
 
+    public required SemaDeclStruct? ParentStruct { get; init; }
+    public required Scope Scope { get; init; }
+
+    public bool IsVariant => ParentStruct is not null;
+    public bool IsLeaf => VariantDecls.Count == 0;
+    
     public override IEnumerable<BaseSemaNode> Children
     {
         get
@@ -184,8 +177,8 @@ public sealed class SemaDeclEnum(Location location, string name)
     : SemaDeclNamed(location, name)
 {
     public IReadOnlyList<SemaDeclEnumVariant> Variants { get; set; } = [];
-    
-    public Linkage Linkage { get; set; } = Linkage.Internal;
+
+    public required Scope Scope { get; init; }
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -203,8 +196,6 @@ public sealed class SemaDeclAlias(Location location, string name, bool isStrict 
     public bool IsStrict { get; set; } = isStrict;
     public SemaTypeQual AliasedType { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
     public SemaDeclTemplateParameters? TemplateParameters { get; set; }
-    
-    public Linkage Linkage { get; set; } = Linkage.Internal;
 
     public override IEnumerable<BaseSemaNode> Children
     {

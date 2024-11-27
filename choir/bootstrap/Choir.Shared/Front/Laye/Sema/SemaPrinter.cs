@@ -19,7 +19,7 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
 
     public void PrintModuleHeader(LayeModule module)
     {
-        Console.WriteLine($"{C[ColorMisc]}// Laye Module '{(module.ModuleName ?? ".program")}'");
+        Console.WriteLine($"{C[ColorMisc]}// Laye Module '{(module.ModuleName)}'");
 
         if (_printScopes)
         {
@@ -156,10 +156,10 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
                 Console.Write(cast.CastKind);
             } break;
 
-            case SemaExprLookupSimple lookupSimple:
+            case SemaExprLookup lookupSimple:
             {
                 Console.Write(C.LayeName());
-                Console.Write(lookupSimple.Name);
+                Console.Write(lookupSimple.ReferencedEntity?.Name ?? "<no decl>");
             } break;
 
             case SemaExprBinaryBuiltIn binaryBuiltIn:
