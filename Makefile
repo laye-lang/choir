@@ -12,6 +12,12 @@ CHOIR_DOTNET_EXE = $(CHOIR_DOTNET_BINDIR)Choir.Driver$(EXE_EXT)
 .PHONY: all
 all: choir-dotnet
 
+.PHONY: basic
+basic:
+	dotnet build choir\bootstrap\layec
+	choir\bootstrap\layec\bin\Debug\net8.0\layec.exe lib/laye/core/entry.laye
+	REM choir\bootstrap\layec\bin\Debug\net8.0\layec.exe test/laye/basic.laye core.mod
+
 .PHONY: choir-dotnet
 choir-dotnet:
 	dotnet publish ./choir/bootstrap/Choir.Driver -r $(RID)
