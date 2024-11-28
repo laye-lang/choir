@@ -372,6 +372,12 @@ public sealed class ChoirContext
         Diag.ICE($"TODO: {message}");
     }
 
+    [DoesNotReturn]
+    public void Todo(Location location, string message)
+    {
+        Diag.ICE(location, $"TODO: {message}");
+    }
+
     public void Assert([DoesNotReturnIf(false)] bool condition, [InterpolatedStringHandlerArgument("condition")] ref AssertInterpolatedStringHandler message)
     {
         if (condition) return;

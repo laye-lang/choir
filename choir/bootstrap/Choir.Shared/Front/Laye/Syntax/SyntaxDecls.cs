@@ -108,7 +108,7 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport)
     public bool IsAliased => TokenAlias is not null;
     public string AliasNameText => TokenAlias?.TextValue ?? "";
 
-    public OldModule? ReferencedModule { get; set; }
+    //public LayeModule? ReferencedModule { get; set; }
 
     public override bool IsDecl { get; } = true;
     public override IEnumerable<SyntaxNode> Children

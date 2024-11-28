@@ -6,6 +6,8 @@ using System.Xml.Linq;
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
 
+using LLVMSharp;
+
 namespace Choir.Front.Laye.Sema;
 
 #pragma warning disable CA1822 // Mark members as static
@@ -165,7 +167,22 @@ public partial class Sema
         foreach (var unitDecl in unitDecls)
         {
             var sourceFile = unitDecl.SourceFile;
-            _fileImports[sourceFile] = [];
+            var importScopes = _fileImports[sourceFile] = [];
+
+            foreach (var importDecl in unitDecl.Header.ImportDeclarations)
+            {
+                Context.Assert(importDecl.Queries.Count == 0, importDecl.Location, "Import queries are currently not supported.");
+
+                var referencedModule = Module.Dependencies.Where(m => m.ModuleName == importDecl.ModuleNameText).SingleOrDefault();
+                if (referencedModule is null)
+                {
+                    Context.Diag.Error(importDecl.TokenModuleName.Location, $"Module '{importDecl.ModuleNameText}' not found.");
+                    continue;
+                }
+
+                string scopeName = importDecl.IsAliased ? importDecl.AliasNameText : importDecl.ModuleNameText;
+                importScopes[scopeName] = referencedModule.ModuleScope;
+            }
         }
 
 #if false
@@ -468,13 +485,6 @@ public partial class Sema
             {
                 Context.Unreachable($"invalid top level declaration node {decl.GetType().Name}");
                 throw new UnreachableException();
-            }
-
-            case SyntaxDeclImport declImport:
-            {
-                Context.Assert(declImport.ReferencedModule is not null, declImport.Location, "import syntax should have a referenced module if we're getting this far");
-                var semaNode = new SemaDeclImport(declImport.Location, declImport.ReferencedModule, declImport.IsExported, []);
-                return semaNode;
             }
 
             case SyntaxDeclAlias or SyntaxDeclStruct or SyntaxDeclEnum or SyntaxDeclBinding or SyntaxDeclFunction:
@@ -1109,6 +1119,12 @@ public partial class Sema
 
         switch (callableType)
         {
+            case SemaTypePoison typePoison:
+            {
+                var arguments = call.Args.Select(arg => AnalyseExpr(arg)).ToArray();
+                return new SemaExprCall(call.Location, SemaTypePoison.InstanceQualified, callee, arguments);
+            }
+
             case SemaTypeFunction typeFunction:
             {
                 SemaExpr[] arguments = new SemaExpr[call.Args.Count];
@@ -1137,7 +1153,8 @@ public partial class Sema
             } break;
         }
 
-        throw new NotImplementedException();
+        Context.Todo(call.Location, "Handle other kinds of calls.");
+        throw new UnreachableException();
     }
 
     private SemaExpr AnalyseCast(SyntaxExprCast cast, SemaTypeQual? typeHint = null)
