@@ -16,6 +16,17 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
         var cg = new LayeCodegen(module, llvmModule);
 
+        foreach (var dependency in module.Dependencies)
+        {
+            foreach (var decl in dependency.ExportedDeclarations)
+            {
+                LLVMValueRef declDef;
+                if (decl is SemaDeclFunction function)
+                    declDef = cg.GenerateDeclaration(function);
+                else throw new NotImplementedException($"for decl type {decl.GetType().FullName}");
+            }
+        }
+
         // generate declarations
         foreach (var decl in module.Declarations)
         {

@@ -181,7 +181,7 @@ public partial class Sema
                 }
 
                 string scopeName = importDecl.IsAliased ? importDecl.AliasNameText : importDecl.ModuleNameText;
-                importScopes[scopeName] = referencedModule.ModuleScope;
+                importScopes[scopeName] = referencedModule.ExportScope;
             }
         }
 

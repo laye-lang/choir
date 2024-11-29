@@ -21,8 +21,8 @@ public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sou
     public Scope ExportScope { get; } = new();
 
     public IEnumerable<BaseSemaNode> Declarations => _declarations;
-    //public IEnumerable<SemaDeclNamed> ExportedDeclarations => ExportScope.SelectMany(s => s.Symbols).Select(s => s);
-    public IEnumerable<SemaDeclNamed> ExportedDeclarations => _declarations.Where(decl => decl is SemaDeclNamed { Linkage: Linkage.Exported }).Cast<SemaDeclNamed>();
+    public IEnumerable<SemaDeclNamed> ExportedDeclarations => ExportScope.SelectMany(s => s.Symbols).Select(s => s);
+    //public IEnumerable<SemaDeclNamed> ExportedDeclarations => _declarations.Where(decl => decl is SemaDeclNamed { Linkage: Linkage.Exported }).Cast<SemaDeclNamed>();
 
     public void AddDecl(SemaDecl decl)
     {

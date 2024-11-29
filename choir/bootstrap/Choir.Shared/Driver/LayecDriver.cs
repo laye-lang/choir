@@ -91,15 +91,10 @@ Options:
     {
         ProgramName = programName;
         Options = options;
-        Context = new(diag, ChoirTarget.X86_64, options.OutputColoring);
-    }
-
-    public void LogVerbose(string message)
-    {
-        if (!Options.ShowVerboseOutput)
-            return;
-
-        Console.Error.WriteLine(message);
+        Context = new(diag, ChoirTarget.X86_64, options.OutputColoring)
+        {
+            EmitVerboseLogs = options.ShowVerboseOutput,
+        };
     }
 
     private bool LoadDependencies(out LayeModule[] dependencies)
@@ -176,7 +171,7 @@ Options:
 
     public int Execute()
     {
-        LogVerbose(string.Format(DriverVersion, ProgramName));
+        Context.LogVerbose(string.Format(DriverVersion, ProgramName));
 
         if (!LoadDependencies(out var dependencies))
             return 1;

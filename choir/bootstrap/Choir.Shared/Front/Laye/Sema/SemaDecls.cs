@@ -65,8 +65,10 @@ public sealed class SemaDeclFunction(Location location, string name)
     public IReadOnlyList<SemaDeclParam> ParameterDecls { get; set; } = [];
     public SemaDeclTemplateParameters? TemplateParameters { get; set; }
     public SemaStmt? Body { get; set; }
-    
+
     public CallingConvention CallingConvention { get; set; } = CallingConvention.Laye;
+    public bool IsInline { get; set; } = false;
+    public bool IsDiscardable { get; set; } = false;
 
     public override IEnumerable<BaseSemaNode> Children
     {

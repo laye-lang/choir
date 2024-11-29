@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 
+using Choir.CommandLine;
 using Choir.Front.Laye.Sema;
 
 namespace Choir;
@@ -224,6 +225,8 @@ public sealed class ChoirContext
         }
     }
 
+    public bool EmitVerboseLogs { get; set; } = false;
+
     public int ErrorLimit { get; set; } = 10;
     public bool HasIssuedError { get; private set; } = false;
 
@@ -348,6 +351,29 @@ public sealed class ChoirContext
         internal readonly string GetFormattedText() => builder.ToString();
     }
 
+    [InterpolatedStringHandler]
+    public readonly ref struct VerboseInterpolatedStringHandler
+    {
+        private readonly StringBuilder builder;
+
+        public VerboseInterpolatedStringHandler(int literalLength, int formattedCount)
+        {
+            builder = new(literalLength);
+        }
+
+        public readonly void AppendLiteral(string s)
+        {
+            builder.Append(s);
+        }
+
+        public readonly void AppendFormatted<T>(T t)
+        {
+            builder.Append(t?.ToString());
+        }
+
+        internal readonly string GetFormattedText() => builder.ToString();
+    }
+
     [DoesNotReturn]
     public void Unreachable()
     {
@@ -400,5 +426,17 @@ public sealed class ChoirContext
     {
         if (condition) return;
         Diag.ICE(location, message);
+    }
+
+    public void LogVerbose(ref VerboseInterpolatedStringHandler message)
+    {
+        if (!EmitVerboseLogs) return;
+        Console.Error.WriteLine(message.GetFormattedText());
+    }
+
+    public void LogVerbose(string message)
+    {
+        if (!EmitVerboseLogs) return;
+        Console.Error.WriteLine(message);
     }
 }
