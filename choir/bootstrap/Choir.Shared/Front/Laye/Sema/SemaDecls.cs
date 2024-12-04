@@ -10,28 +10,6 @@ public sealed class SemaDeclTemplateParameters(IReadOnlyList<SemaDeclTemplatePar
     public override IEnumerable<BaseSemaNode> Children { get; } = templateParams;
 }
 
-public abstract class SemaDeclImportQuery(Location location)
-    : SemaDecl(location)
-{
-}
-
-public sealed class SemaDeclImportQueryWildcard(Location location)
-    : SemaDeclImportQuery(location)
-{
-}
-
-public sealed class SemaDeclImport(Location location, OldModule module, bool isExport, IReadOnlyList<SemaDeclImportQuery> queries)
-    : SemaDecl(location)
-{
-    public OldModule ImportedModule { get; } = module;
-
-    public bool IsExport { get; } = isExport;
-    public IReadOnlyList<SemaDeclImportQuery> Queries { get; } = queries;
-    public bool IsWildcard => Queries.Count == 1 && Queries[0] is SemaDeclImportQueryWildcard;
-
-    public override IEnumerable<BaseSemaNode> Children { get; } = queries;
-}
-
 public abstract class SemaDeclTemplateParameter(Location location, string name) : SemaDeclNamed(location, name);
 
 public sealed class SemaDeclTemplateTypeParameter(Location location, string name, bool isDuckTyped)

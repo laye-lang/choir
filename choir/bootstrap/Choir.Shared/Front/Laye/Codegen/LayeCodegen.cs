@@ -55,11 +55,6 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         return llvmModule;
     }
 
-    public static void GenerateIR(TranslationUnit tu)
-    {
-        throw new NotImplementedException();
-    }
-
     public ChoirContext Context { get; } = module.Context;
     public LayeModule Module { get; } = module;
     public LLVMContextRef LlvmContext { get; } = llvmModule.Context;

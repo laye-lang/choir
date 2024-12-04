@@ -16,19 +16,6 @@ public partial class Parser(SourceFile sourceFile)
         Pattern,
     }
 
-    public static void ParseSyntax(OldModule module)
-    {
-        module.Context.Assert(module.TranslationUnit is not null, "Module must be in a translation unit to parse a source file into it");
-
-        if (module.TopLevelSyntax.Any())
-            throw new InvalidOperationException("Can't repeatedly parse syntax into a module which already had syntax read into it.");
-        
-        var parser = new Parser(module.SourceFile);
-                
-        while (parser.ParseTopLevelSyntax() is {} topLevelNode)
-            module.AddTopLevelSyntax(topLevelNode);
-    }
-
     public static SyntaxDeclModuleUnitHeader ParseModuleUnitHeader(SourceFile sourceFile)
     {
         var parser = new Parser(sourceFile);

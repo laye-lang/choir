@@ -27,34 +27,6 @@ public class SyntaxPrinter : BaseTreePrinter<SyntaxNode>
         Print(unitSyntax);
     }
 
-    public void PrintModuleHeader(OldModule module)
-    {
-        Console.WriteLine($"{C[ColorMisc]}// Laye Module '{module.SourceFile.FilePath}'");
-
-        if (_printScopes)
-        {
-            if (module.FileScope.Count > 0)
-                _scopePrinter.PrintScope(module.FileScope, "File Scope");
-
-            if (module.ExportScope.Count > 0)
-                _scopePrinter.PrintScope(module.ExportScope, "Exports");
-        }
-    }
-
-    public void PrintModuleTokens(OldModule module)
-    {
-        PrintModuleHeader(module);
-        foreach (var token in module.Tokens)
-            Print(token);
-    }
-    
-    public void PrintModuleSyntax(OldModule module)
-    {
-        PrintModuleHeader(module);
-        foreach (var node in module.TopLevelSyntax)
-            Print(node);
-    }
-
     protected virtual void PrintSyntaxNodeHeader(SyntaxNode node)
     {
         if (node is SyntaxToken token)

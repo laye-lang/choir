@@ -659,6 +659,8 @@ public sealed class ModuleDeserializer : IDisposable
 
             decl.Deserialize(this, declReader);
             Context.Assert(currentDeclDataPosition + declDataSize == declReader.BaseStream.Position, $"Expected to read {declDataSize} bytes during decl serialization, but read {declReader.BaseStream.Position - currentDeclDataPosition}.");
+
+            decl.Linkage = Linkage.Imported;
         }
     }
 }

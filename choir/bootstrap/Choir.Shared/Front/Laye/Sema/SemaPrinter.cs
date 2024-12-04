@@ -31,31 +31,10 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
         }
     }
 
-    public void PrintModuleHeader(OldModule module)
-    {
-        Console.WriteLine($"{C[ColorMisc]}// Laye Module '{module.SourceFile.FilePath}'");
-
-        if (_printScopes)
-        {
-            if (module.FileScope.Count > 0)
-                _scopePrinter.PrintScope(module.FileScope, "File Scope");
-
-            if (module.ExportScope.Count > 0)
-                _scopePrinter.PrintScope(module.ExportScope, "Exports");
-        }
-    }
-
     public void PrintModule(LayeModule module)
     {
         PrintModuleHeader(module);
         foreach (var node in module.Declarations)
-            Print(node);
-    }
-
-    public void PrintModule(OldModule module)
-    {
-        PrintModuleHeader(module);
-        foreach (var node in module.SemaDecls)
             Print(node);
     }
 

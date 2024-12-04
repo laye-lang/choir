@@ -81,47 +81,6 @@ public partial class Sema
         }
     }
 
-    public static void Analyse(TranslationUnit tu)
-    {
-        // copy out all modules, since we're going to be modifying the translation unit
-        var modules = tu.Modules.ToArray();
-        foreach (var module in modules)
-            Analyse(module);
-    }
-
-    public static void Analyse(OldModule module)
-    {
-        module.Context.Assert(false, "Old module analysis is no longer supported.");
-#if false
-        module.Context.Assert(module.TranslationUnit is not null, "module is not part of a translation unit");
-        if (module.HasSemaDecls) return;
-
-        var sema = new Sema(module);
-        sema.ResolveModuleImports();
-
-        foreach (var topLevelNode in module.TopLevelSyntax)
-            sema.ForwardDeclareIfAllowedOutOfOrder(topLevelNode);
-
-        if (module.Context.HasIssuedError) return;
-
-        foreach (var topLevelNode in module.TopLevelSyntax)
-        {
-            var decl = sema.AnalyseTopLevelDecl(topLevelNode);
-
-            if (decl is SemaDeclFunction declFunction && declFunction.Name == "main")
-            {
-                if (declFunction.Linkage is not Linkage.Internal and not Linkage.Exported)
-                    module.Context.Diag.Error("The 'main' function must either be defined with no linkage or as 'export'.");
-
-                declFunction.ForeignSymbolName = "main";
-                declFunction.Linkage = Linkage.Exported;
-            }
-
-            module.AddDecl(decl);
-        }
-#endif
-    }
-
     public LayeModule Module { get; }
     public ChoirContext Context { get; }
     public Colors Colors { get; }

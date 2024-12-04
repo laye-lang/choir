@@ -6,21 +6,6 @@ namespace Choir.Front.Laye.Syntax;
 
 public sealed class Lexer(SourceFile sourceFile)
 {
-    public static void ReadTokens(OldModule module)
-    {
-        if (module.Tokens.Any())
-            throw new InvalidOperationException("Can't repeatedly read tokens into a module which already had tokens read into it.");
-        
-        var lexer = new Lexer(module.SourceFile);
-
-        SyntaxToken token;
-        do
-        {
-            token = lexer.ReadToken();
-            module.AddToken(token);
-        } while (token.Kind != TokenKind.EndOfFile);
-    }
-
     private static readonly Dictionary<string, TokenKind> _keywordTokensKinds = new()
     {
         {"global", TokenKind.Global},
