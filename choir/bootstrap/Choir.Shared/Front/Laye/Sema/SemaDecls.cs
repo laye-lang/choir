@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 
 namespace Choir.Front.Laye.Sema;
@@ -84,10 +85,134 @@ public sealed class SemaDeclFunction(Location location, string name)
         }
     }
 
-    public SemaTypeFunction FunctionType(ChoirContext context) => new SemaTypeFunction(context, ReturnType, ParameterDecls.Select(p => p.ParamType).ToArray())
+    public SemaTypeFunction FunctionType(ChoirContext context) => new(context, ReturnType, ParameterDecls.Select(p => p.ParamType).ToArray())
     {
         CallingConvention = CallingConvention,
     };
+
+    public override SerializedDeclKind SerializedDeclKind { get; } = SerializedDeclKind.Function;
+    public override void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        #region Flags
+
+        ushort flags = 0;
+        switch (CallingConvention)
+        {
+            default:
+            {
+                serializer.Context.Unreachable($"Unhandled calling convention in serializer: {CallingConvention}.");
+                throw new UnreachableException();
+            }
+
+            case CallingConvention.CDecl: flags |= SerializerConstants.Attrib1CallingConventionCDecl; break;
+            case CallingConvention.Laye: flags |= SerializerConstants.Attrib1CallingConventionLaye; break;
+            case CallingConvention.StdCall: flags |= SerializerConstants.Attrib1CallingConventionStdCall; break;
+            case CallingConvention.FastCall: flags |= SerializerConstants.Attrib1CallingConventionFastCall; break;
+        }
+
+        if (IsForeign) flags |= SerializerConstants.Attrib1ForeignFlag;
+        if (IsInline) flags |= SerializerConstants.Attrib1InlineFlag;
+        if (IsDiscardable) flags |= SerializerConstants.Attrib1DiscardableFlag;
+
+        writer.Write(flags);
+
+        #endregion
+
+        #region Flags Data
+
+        if (IsForeign)
+            serializer.WriteAtom(writer, ForeignSymbolName);
+
+        #endregion
+
+        #region Template Parameters
+
+        if (TemplateParameters is { } templateParams)
+        {
+            serializer.Context.Todo("Serialize function template parameters");
+            throw new UnreachableException();
+        }
+        // assume we want to write the number of template parameters as a 7-bit encoded int, so start with 0
+        else writer.Write((byte)0);
+
+        #endregion
+
+        #region Return Type
+
+        serializer.WriteTypeQual(writer, ReturnType);
+
+        #endregion
+
+        #region Parameters
+
+        writer.Write((ushort)ParameterDecls.Count);
+        for (int i = 0; i < ParameterDecls.Count; i++)
+        {
+            var param = ParameterDecls[i];
+            serializer.WriteAtom(writer, param.Name);
+            serializer.WriteLocation(writer, param.Location);
+            serializer.WriteTypeQual(writer, param.ParamType);
+        }
+
+        #endregion
+    }
+
+    public override void Deserialize(ModuleDeserializer deserializer, BinaryReader reader)
+    {
+        #region Flags
+
+        ushort flags = reader.ReadUInt16();
+        CallingConvention = (flags & SerializerConstants.Attrib1CallingConventionMask) switch
+        {
+            SerializerConstants.Attrib1CallingConventionCDecl => CallingConvention.CDecl,
+            SerializerConstants.Attrib1CallingConventionLaye => CallingConvention.Laye,
+            SerializerConstants.Attrib1CallingConventionStdCall => CallingConvention.StdCall,
+            SerializerConstants.Attrib1CallingConventionFastCall => CallingConvention.FastCall,
+            _ => throw new UnreachableException(),
+        };
+
+        IsForeign = 0 != (flags & SerializerConstants.Attrib1ForeignFlag);
+        IsInline = 0 != (flags & SerializerConstants.Attrib1InlineFlag);
+        IsDiscardable = 0 != (flags & SerializerConstants.Attrib1DiscardableFlag);
+
+        #endregion
+
+        #region Flags Data
+
+        if (IsForeign)
+            ForeignSymbolName = deserializer.ReadAtom(reader);
+
+        #endregion
+
+        #region Template Parameters
+
+        int templateParamCount = reader.Read7BitEncodedInt();
+        deserializer.Context.Assert(templateParamCount == 0, "Template parameters are not currently supported in the serializer");
+
+        #endregion
+
+        #region Return Type
+
+        ReturnType = deserializer.ReadTypeQual(reader);
+
+        #endregion
+
+        #region Parameters
+
+        int paramCount = reader.ReadUInt16();
+        var paramDecls = new SemaDeclParam[paramCount];
+        for (int i = 0; i < paramCount; i++)
+        {
+            string paramName = deserializer.ReadAtom(reader)!;
+            var location = deserializer.ReadLocation(reader);
+            var paramType = deserializer.ReadTypeQual(reader);
+            paramDecls[i] = new SemaDeclParam(location, paramName, paramType);
+        }
+
+        ParameterDecls = paramDecls;
+
+        #endregion
+    }
 }
 
 public sealed class SemaDeclDelegate(Location location, string name)

@@ -94,6 +94,7 @@ Options:
         Context = new(diag, ChoirTarget.X86_64, options.OutputColoring)
         {
             EmitVerboseLogs = options.ShowVerboseOutput,
+            OmitSourceTextInModuleBinary = options.OmitSourceTextInModuleBinary,
         };
     }
 
@@ -120,18 +121,18 @@ Options:
             .ToDictionary(pair => pair.Second.ModuleName!, pair => pair.First);
 
         HashSet<string> allModuleNames = [];
-        foreach ((string? moduleName, string[] dependencyNames) in moduleHeaders)
+        foreach (var desc in moduleHeaders)
         {
-            allModuleNames.Add(moduleName!);
-            foreach (string dependencyName in dependencyNames)
+            allModuleNames.Add(desc.ModuleName);
+            foreach (string dependencyName in desc.DependencyNames)
                 allModuleNames.Add(dependencyName);
         }
 
         List<(string From, string To)> dependencyEdges = [];
-        foreach ((string? moduleName, string[] dependencyNames) in moduleHeaders)
+        foreach (var desc in moduleHeaders)
         {
-            foreach (string dependencyName in dependencyNames)
-                dependencyEdges.Add((moduleName!, dependencyName));
+            foreach (string dependencyName in desc.DependencyNames)
+                dependencyEdges.Add((desc.ModuleName, dependencyName));
         }
 
         var sortResult = TopologicalSort.Sort(allModuleNames, dependencyEdges);
@@ -152,7 +153,7 @@ Options:
                 return false;
             }
 
-            if (!moduleNamesToDependencies.TryGetValue(moduleName, out string[]? moduleDependencyNames))
+            if (!moduleNamesToDependencies.TryGetValue(moduleName, out var moduleDependencyNames))
             {
                 Context.Diag.ICE($"A dependency (module '{moduleName}') did not have an associated dependencies.");
                 return false;
@@ -162,7 +163,7 @@ Options:
                 .Where(d => moduleDependencyNames.Contains(d.ModuleName!))
                 .ToArray();
 
-            Context.Assert(moduleDependencies.Length == moduleDependencyNames.Length, $"Failed to map a list of dependency names ({(string.Join(", ", moduleDependencyNames.Select(n => $"'{n}'")))}) to their loaded modules.");
+            Context.Assert(moduleDependencies.Length == moduleDependencyNames.Count, $"Failed to map a list of dependency names ({(string.Join(", ", moduleDependencyNames.Select(n => $"'{n}'")))}) to their loaded modules.");
             dependencies[i] = LayeModule.DeserializeFromObject(Context, moduleDependencies, moduleFile);
         }
 
@@ -276,7 +277,7 @@ Options:
                     if (i > 0 && Options.PrintTokens) Console.Error.WriteLine();
 
                     var sourceFile = module.SourceFiles[i];
-                    Console.Error.WriteLine($"{sourceFile.FileInfo.FullName}");
+                    Console.Error.WriteLine($"{sourceFile.FilePath}");
 
                     foreach (var token in tokens[sourceFile])
                         syntaxPrinter.PrintToken(token);
@@ -294,7 +295,7 @@ Options:
                 {
                     if (i > 0) Console.Error.WriteLine();
 
-                    Console.Error.WriteLine($"{unitDecls[i].SourceFile.FileInfo.FullName}");
+                    Console.Error.WriteLine($"{unitDecls[i].SourceFile.FilePath}");
                     syntaxPrinter.PrintSyntax(unitDecls[i]);
                 }
             }
@@ -459,6 +460,18 @@ public sealed record class LayecDriverOptions
     public AssemblerFormat AssemblerFormat { get; set; } = AssemblerFormat.Assembler;
 
     /// <summary>
+    /// The `--omit-source-text` flag.
+    /// Disables the inclusion of source text in binary module files.
+    /// </summary>
+    public bool OmitSourceTextInModuleBinary { get; set; } = false;
+
+    /// <summary>
+    /// The `--distribution` flag.
+    /// Enables "distribution" builds, where file paths are simplified since the end user won't have source files for the module on their system.
+    /// </summary>
+    public bool IsDistribution { get; set; } = false;
+
+    /// <summary>
     /// The `--no-corelib` flag.
     /// Disables linking to the Laye core library, requiring the programmer to provide their own implementation.
     /// `layec` does not handle linking itself, but it does ensure the default libraries are referenced by default and they are expected to be available when linking occurs.
@@ -595,6 +608,9 @@ public sealed record class LayecDriverOptions
                 } break;
 
                 case "--emit-llvm": options.AssemblerFormat = AssemblerFormat.LLVM; break;
+
+                case "--omit-source-text": options.OmitSourceTextInModuleBinary = true; break;
+                case "--distribution": options.IsDistribution = true; break;
 
                 case "--no-corelib": options.NoCoreLibrary = true; break;
                 case "--no-stdlib": options.NoStandardLibrary = true; break;

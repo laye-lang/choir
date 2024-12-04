@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -226,6 +227,7 @@ public sealed class ChoirContext
     }
 
     public bool EmitVerboseLogs { get; set; } = false;
+    public bool OmitSourceTextInModuleBinary { get; set; } = false;
 
     public int ErrorLimit { get; set; } = 10;
     public bool HasIssuedError { get; private set; } = false;
@@ -309,10 +311,27 @@ public sealed class ChoirContext
                 throw new UnreachableException();
             }
 
-            sourceFile = new SourceFile(this, fileInfo, fileId, sourceText);
+            sourceFile = new SourceFile(this, canonicalPath, fileId, sourceText, false);
 
             _sourceFiles.Add(sourceFile);
             _sourceFilesByCanonicalPath[canonicalPath] = sourceFile;
+        }
+
+        return sourceFile;
+    }
+
+    public SourceFile GetSourceFileRef(string filePath, string? sourceText = null)
+    {
+        if (!_sourceFilesByCanonicalPath.TryGetValue(filePath, out var sourceFile))
+        {
+            short fileId = (short)(_sourceFiles.Count + 1);
+
+            if (sourceText is null)
+                sourceFile = new SourceFile(this, filePath, fileId, "", true);
+            else sourceFile = new SourceFile(this, filePath, fileId, sourceText, false);
+
+            _sourceFiles.Add(sourceFile);
+            _sourceFilesByCanonicalPath[filePath] = sourceFile;
         }
 
         return sourceFile;

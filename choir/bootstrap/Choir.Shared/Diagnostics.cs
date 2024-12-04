@@ -169,16 +169,29 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
             if (!diag.IncludeStackTrace) return;
         }
 
-        if (Context is null || diag.Location is not {} diagLocation || diagLocation.Seek(Context) is not {} seekLocation)
+        string FormatMessageOnly()
         {
-            if (Context is not null && diag.Location is not null && Context.GetSourceFileById(diag.Location.Value.FileId) is {} file)
-                builder.AppendLine($"{Colors.White}{file.FileInfo.FullName}:");
-            
+            if (Context is not null && diag.Location is not null && Context.GetSourceFileById(diag.Location.Value.FileId) is { } file)
+                builder.AppendLine($"{Colors.White}{file.FilePath}:");
+
             builder.AppendLine($"{Colors.ForDiagnostic(diag.Kind)}{diag.Kind.ToDiagnosticNameString()}: {Colors.Reset}{Colors.Default}{Colors.Bold}{diag.Message}{Colors.Reset}");
             PrintExtraData();
             PrintStackTrace();
             return builder.ToString();
         }
+
+        if (Context is null)
+            return FormatMessageOnly();
+
+        if (diag.Location is not { } diagLocation)
+            return FormatMessageOnly();
+
+        if (diagLocation.Seek(Context) is not { } seekLocation)
+            return FormatMessageOnly();
+
+        var sourceFile = Context.GetSourceFileById(diagLocation.FileId);
+        if (sourceFile is null || sourceFile.IsTextless)
+            return FormatMessageOnly();
 
         int lineNumber = seekLocation.Line;
         int column = seekLocation.Column;
@@ -202,7 +215,7 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
         var locFile = Context.GetSourceFileById(diag.Location.Value.FileId)!;
         builder.Append(Colors.White);
         if (previousLocation is null || previousLocation.Value.FileId != diagLocation.FileId)
-            builder.Append($"{locFile.FileInfo.FullName}:");
+            builder.Append($"{locFile.FilePath}:");
         
         builder.AppendLine($"{lineNumber}:{column}:");
         builder.Append($"{Colors.ForDiagnostic(diag.Kind)}{diag.Kind.ToDiagnosticNameString()}: ");

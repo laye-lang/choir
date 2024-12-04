@@ -15,6 +15,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\Choir.Shared\Choir.Shared.csproj" />
 		<ProjectReference Include="..\QbeSharp\QbeSharp.csproj" />
 		<ProjectReference Include="..\System.Extensions\System.Extensions.csproj" />
 	</ItemGroup>

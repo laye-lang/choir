@@ -14,12 +14,19 @@ public readonly struct Align : IEquatable<Align>, IComparable<Align>
         return (align - (value % align)) % align;
     }
 
+    public static long AlignPadding(long value, long align)
+    {
+        Debug.Assert(align > 0);
+        return (align - (value % align)) % align;
+    }
+
     public static ulong AlignPadding(ulong value, ulong align)
     {
         return (align - (value % align)) % align;
     }
 
     public static int AlignTo(int value, int align) => value + AlignPadding(value, align);
+    public static long AlignTo(long value, long align) => value + AlignPadding(value, align);
     public static ulong AlignTo(ulong value, ulong align) => value + AlignPadding(value, align);
 
     public static Align ForBits(int bits) => ForBytes(AlignTo(bits, 8) / 8);

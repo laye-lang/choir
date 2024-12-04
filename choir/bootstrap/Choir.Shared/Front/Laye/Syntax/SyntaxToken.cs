@@ -12,7 +12,7 @@ public class SyntaxToken(TokenKind kind, Location location) : SyntaxNode(locatio
     {
         var sourceFile = context.GetSourceFileById(Location.FileId);
         if (sourceFile is not null)
-            writer.Write(sourceFile.FileInfo.FullName);
+            writer.Write(sourceFile.FilePath);
         else writer.Write("<no-source>");
 
         if (Location.SeekLineColumn(context) is { } locationInfo)

@@ -175,6 +175,51 @@ public sealed class SemaTypeBuiltIn(ChoirContext context, BuiltinTypeKind kind, 
         $"{colors.LayeKeyword()}{Kind.ToLanguageKeywordString(BitWidth)}{colors.Default}";
 
     public override bool TypeEquals(SemaTypeBuiltIn other, TypeComparison comp) => other.Kind == Kind && (!IsExplicitlySized || other.BitWidth == BitWidth);
+
+    public override SerializedTypeKind SerializedTypeKind => kind switch
+    {
+        BuiltinTypeKind.Void => SerializedTypeKind.Void,
+        BuiltinTypeKind.NoReturn => SerializedTypeKind.NoReturn,
+        BuiltinTypeKind.Bool => SerializedTypeKind.Bool,
+        BuiltinTypeKind.BoolSized => SerializedTypeKind.BoolSized,
+        BuiltinTypeKind.Int => SerializedTypeKind.Int,
+        BuiltinTypeKind.IntSized => SerializedTypeKind.IntSized,
+        BuiltinTypeKind.FloatSized => Size.Bits switch
+        {
+            32 => SerializedTypeKind.Float32,
+            64 => SerializedTypeKind.Float64,
+            _ => throw new UnreachableException(),
+        },
+        BuiltinTypeKind.FFIBool => SerializedTypeKind.FFI,
+        BuiltinTypeKind.FFIChar => SerializedTypeKind.FFI,
+        BuiltinTypeKind.FFIShort => SerializedTypeKind.FFI,
+        BuiltinTypeKind.FFIInt => SerializedTypeKind.FFI,
+        BuiltinTypeKind.FFILong => SerializedTypeKind.FFI,
+        BuiltinTypeKind.FFILongLong => SerializedTypeKind.FFI,
+        BuiltinTypeKind.FFIFloat => SerializedTypeKind.FFI,
+        BuiltinTypeKind.FFIDouble => SerializedTypeKind.FFI,
+        BuiltinTypeKind.FFILongDouble => SerializedTypeKind.FFI,
+        _ => throw new UnreachableException(),
+    };
+
+    public override void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        switch (Kind)
+        {
+            default: break;
+            case BuiltinTypeKind.BoolSized: writer.Write((ushort)Size.Bits); break;
+            case BuiltinTypeKind.IntSized: writer.Write((ushort)Size.Bits); break;
+            case BuiltinTypeKind.FFIBool: writer.Write(SerializerConstants.FFIBoolTypeSigil); break;
+            case BuiltinTypeKind.FFIChar: writer.Write(SerializerConstants.FFICharTypeSigil); break;
+            case BuiltinTypeKind.FFIShort: writer.Write(SerializerConstants.FFIShortTypeSigil); break;
+            case BuiltinTypeKind.FFIInt: writer.Write(SerializerConstants.FFIIntTypeSigil); break;
+            case BuiltinTypeKind.FFILong: writer.Write(SerializerConstants.FFILongTypeSigil); break;
+            case BuiltinTypeKind.FFILongLong: writer.Write(SerializerConstants.FFILongLongTypeSigil); break;
+            case BuiltinTypeKind.FFIFloat: writer.Write(SerializerConstants.FFIFloatTypeSigil); break;
+            case BuiltinTypeKind.FFIDouble: writer.Write(SerializerConstants.FFIDoubleTypeSigil); break;
+            case BuiltinTypeKind.FFILongDouble: writer.Write(SerializerConstants.FFILongDoubleTypeSigil); break;
+        }
+    }
 }
 
 public sealed class SemaTypeOverloadSet
@@ -284,6 +329,19 @@ public sealed class SemaTypeBuffer(ChoirContext context, SemaTypeQual elementTyp
 
         context.Assert(Terminator is null && other.Terminator is null, "Currently can't compare equality of two buffer types when at least one has a terminator specified.");
         return true;
+    }
+
+    public override SerializedTypeKind SerializedTypeKind => SerializedTypeKind.Buffer;
+    public override void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        serializer.Context.Assert(Terminator is null, "Dunno how to handle terminators, if we keep them.");
+        serializer.WriteTypeQual(writer, ElementType);
+    }
+
+    public static SemaTypeBuffer Deserialize(ModuleDeserializer deserializer, BinaryReader reader)
+    {
+        var elementType = deserializer.ReadTypeQual(reader);
+        return new SemaTypeBuffer(deserializer.Context, elementType);
     }
 }
 

@@ -22,17 +22,16 @@ public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sou
 
     public IEnumerable<BaseSemaNode> Declarations => _declarations;
     public IEnumerable<SemaDeclNamed> ExportedDeclarations => ExportScope.SelectMany(s => s.Symbols).Select(s => s);
-    //public IEnumerable<SemaDeclNamed> ExportedDeclarations => _declarations.Where(decl => decl is SemaDeclNamed { Linkage: Linkage.Exported }).Cast<SemaDeclNamed>();
 
     public void AddDecl(SemaDecl decl)
     {
         _declarations.Add(decl);
     }
 
-    public byte[] Serialize() => DeclarationSerializer.SerializeToBytes(Context, this);
-    public void SerializeToStream(Stream stream) => DeclarationSerializer.SerializeToStream(Context, this, stream);
+    public byte[] Serialize() => ModuleSerializer.SerializeToBytes(Context, this);
+    public void SerializeToStream(Stream stream) => ModuleSerializer.SerializeToStream(Context, this, stream);
 
-    private static Stream GetModuleDataStreamFromObjectFile(ChoirContext context, FileInfo objectFileInfo)
+    private static UnmanagedMemoryStream GetModuleDataStreamFromObjectFile(ChoirContext context, FileInfo objectFileInfo)
     {
         unsafe
         {
@@ -65,7 +64,7 @@ public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sou
 
                 string? expectedModuleName = null;
                 if (sectionName != LayeConstants.ModuleSectionNamePrefix)
-                    expectedModuleName = sectionName.Substring(LayeConstants.ModuleSectionNamePrefix.Length + 1);
+                    expectedModuleName = sectionName[(LayeConstants.ModuleSectionNamePrefix.Length + 1)..];
 
                 sbyte* sectionContentsPtr = LLVM.GetSectionContents(sectionIterator);
                 ulong sectionContentsLength = LLVM.GetSectionSize(sectionIterator);
@@ -78,15 +77,15 @@ public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sou
         throw new UnreachableException();
     }
 
-    public static (string ModuleName, string[] DependencyNames) DeserializeHeaderFromObject(ChoirContext context, FileInfo objectFileInfo)
+    public static SerializedModuleHeader DeserializeHeaderFromObject(ChoirContext context, FileInfo objectFileInfo)
     {
         using var stream = GetModuleDataStreamFromObjectFile(context, objectFileInfo);
-        return DeclarationDeserializer.DeserializeHeaderFromStream(context, stream);
+        return ModuleDeserializer.DeserializeHeaderFromStream(context, stream);
     }
 
     public static LayeModule DeserializeFromObject(ChoirContext context, LayeModule[] dependencies, FileInfo objectFileInfo)
     {
         using var stream = GetModuleDataStreamFromObjectFile(context, objectFileInfo);
-        return DeclarationDeserializer.DeserializeFromStream(context, dependencies, stream);
+        return ModuleDeserializer.DeserializeFromStream(context, dependencies, stream);
     }
 }

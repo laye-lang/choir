@@ -4,6 +4,7 @@ using Choir.Driver;
 
 namespace Choir;
 
+#if false
 public static class Program
 {
     public static int Main(string[] args)
@@ -15,3 +16,4 @@ public static class Program
         return ChoirDriver.RunWithArgs(diag, args);
     }
 }
+#endif

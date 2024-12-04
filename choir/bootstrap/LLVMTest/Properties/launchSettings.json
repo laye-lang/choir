@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "LLVMTest": {
+      "commandName": "Project",
+      "workingDirectory": "C:\\Users\\Nashiora\\dev\\choir"
+    }
+  }
+}

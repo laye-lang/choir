@@ -33,7 +33,7 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
 
     public void PrintModuleHeader(OldModule module)
     {
-        Console.WriteLine($"{C[ColorMisc]}// Laye Module '{module.SourceFile.FileInfo.FullName}'");
+        Console.WriteLine($"{C[ColorMisc]}// Laye Module '{module.SourceFile.FilePath}'");
 
         if (_printScopes)
         {

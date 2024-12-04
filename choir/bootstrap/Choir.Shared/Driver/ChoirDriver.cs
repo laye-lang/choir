@@ -11,6 +11,7 @@ using LLVMSharp.Interop;
 
 namespace Choir.Driver;
 
+#if false
 public readonly struct InputFileInfo(InputFileLanguage language, FileInfo fileInfo)
 {
     public readonly InputFileLanguage Language = language;
@@ -294,13 +295,6 @@ public abstract class ChoirJob(ChoirDriver driver)
             return Context.Diag.HasIssuedErrors ? 1 : 0;
         }
     }
-}
-
-public enum OutputColoring
-{
-    Auto,
-    Always,
-    Never,
 }
 
 public sealed class ChoirDriver
@@ -685,3 +679,4 @@ public sealed class ChoirDriverOptions
         return options;
     }
 }
+#endif

@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-
 namespace Choir;
 
 public struct Location(int offset, int length, int fileId)
@@ -14,15 +12,14 @@ public struct Location(int offset, int length, int fileId)
     {
         if (FileId <= 0) return false;
         var file = context.GetSourceFileById(FileId);
-        if (file is null) return false;
+        if (file is null || file.IsTextless) return false;
         return Offset >= 0 && Offset + Length <= file.Text.Length;
     }
 
     public readonly LocationInfo? Seek(ChoirContext context)
     {
         if (!Seekable(context)) return null;
-        var file = context.GetSourceFileById(FileId);
-        if (file is null) return null;
+        var file = context.GetSourceFileById(FileId)!;
 
         int lineStart = Offset;
         int lineEnd = Offset;
@@ -83,7 +80,7 @@ public struct Location(int offset, int length, int fileId)
     public readonly ReadOnlySpan<char> Span(ChoirContext context)
     {
         var file = context.GetSourceFileById(FileId);
-        if (file is not null) return file.GetSpan(this);
+        if (file is not null && !file.IsTextless) return file.GetSpan(this);
         return "";
     }
 }

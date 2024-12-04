@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using Choir.CommandLine;
 
 namespace Choir.Front.Laye.Sema;
@@ -153,6 +155,58 @@ public abstract class SemaType : BaseSemaNode
 
     public override bool Equals(BaseSemaNode? other) => other is SemaType otherType && TypeEquals(otherType, TypeComparison.WithQualifiers);
     public abstract bool TypeEquals(SemaType other, TypeComparison comp = TypeComparison.WithQualifiers);
+
+    public virtual SerializedTypeKind SerializedTypeKind { get; } = SerializedTypeKind.Invalid;
+    public virtual void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        serializer.Context.Diag.ICE($"Attempt to serialize type of type {GetType().Name}, which is currently not supported.");
+        throw new UnreachableException();
+    }
+
+    public static SemaType Deserialize(ModuleDeserializer deserializer, SerializedTypeKind kind, BinaryReader reader)
+    {
+        switch (kind)
+        {
+            default:
+            {
+                deserializer.Context.Diag.ICE($"Attempt to deserialize type of kind {kind}, which is currently not supported.");
+                throw new UnreachableException();
+            }
+
+            case SerializedTypeKind.Buffer: return SemaTypeBuffer.Deserialize(deserializer, reader);
+
+            case SerializedTypeKind.Void: return deserializer.Context.Types.LayeTypeVoid;
+            case SerializedTypeKind.NoReturn: return deserializer.Context.Types.LayeTypeNoReturn;
+            case SerializedTypeKind.Bool: return deserializer.Context.Types.LayeTypeBool;
+            case SerializedTypeKind.BoolSized: return deserializer.Context.Types.LayeTypeBoolSized(reader.ReadUInt16());
+            case SerializedTypeKind.Int: return deserializer.Context.Types.LayeTypeInt;
+            case SerializedTypeKind.IntSized: return deserializer.Context.Types.LayeTypeIntSized(reader.ReadUInt16());
+            case SerializedTypeKind.Float32: return deserializer.Context.Types.LayeTypeFloatSized(32);
+            case SerializedTypeKind.Float64: return deserializer.Context.Types.LayeTypeFloatSized(64);
+            case SerializedTypeKind.FFI:
+            {
+                char ffiKind = (char)reader.ReadByte();
+                switch (ffiKind)
+                {
+                    default:
+                    {
+                        deserializer.Context.Diag.ICE($"Attempt to deserialize FFI type of kind {ffiKind}, which is currently not supported.");
+                        throw new UnreachableException();
+                    }
+
+                    case SerializerConstants.FFIBoolTypeSigil: return deserializer.Context.Types.LayeTypeFFIBool;
+                    case SerializerConstants.FFICharTypeSigil: return deserializer.Context.Types.LayeTypeFFIChar;
+                    case SerializerConstants.FFIShortTypeSigil: return deserializer.Context.Types.LayeTypeFFIShort;
+                    case SerializerConstants.FFIIntTypeSigil: return deserializer.Context.Types.LayeTypeFFIInt;
+                    case SerializerConstants.FFILongTypeSigil: return deserializer.Context.Types.LayeTypeFFILong;
+                    case SerializerConstants.FFILongLongTypeSigil: return deserializer.Context.Types.LayeTypeFFILongLong;
+                    case SerializerConstants.FFIFloatTypeSigil: return deserializer.Context.Types.LayeTypeFFIFloat;
+                    case SerializerConstants.FFIDoubleTypeSigil: return deserializer.Context.Types.LayeTypeFFIDouble;
+                    case SerializerConstants.FFILongDoubleTypeSigil: return deserializer.Context.Types.LayeTypeFFILongDouble;
+                }
+            }
+        }
+    }
 }
 
 public enum TypeComparison
@@ -260,6 +314,19 @@ public abstract class SemaDeclNamed(Location location, string name)
     public bool IsForeign { get; set; } = false;
     public string? ForeignSymbolName { get; set; }
     public Linkage Linkage { get; set; } = Linkage.Internal;
+
+    public virtual SerializedDeclKind SerializedDeclKind { get; } = SerializedDeclKind.Invalid;
+    public virtual void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        serializer.Context.Diag.ICE(Location, $"Attempt to serialize named declaration of type {GetType().Name}, which is currently not supported.");
+        throw new UnreachableException();
+    }
+
+    public virtual void Deserialize(ModuleDeserializer deserializer, BinaryReader reader)
+    {
+        deserializer.Context.Diag.ICE(Location, $"Attempt to deserialize named declaration of type {GetType().Name}, which is currently not supported.");
+        throw new UnreachableException();
+    }
 }
 
 public abstract class SemaExpr(Location location, SemaTypeQual type) : BaseSemaNode
