@@ -1,8 +1,5 @@
 // R %choir %s --codegen --ir
 
-import core;
-
 int main() {
-    core::exit(7);
     return 0;
 }

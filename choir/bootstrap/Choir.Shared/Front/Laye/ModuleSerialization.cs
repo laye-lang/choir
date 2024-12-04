@@ -16,7 +16,6 @@ internal static class SerializerConstants
     public const string FileChunkName = "File";
     public const string TypeChunkName = "Type";
     public const string DeclChunkName = "Decl";
-    public const string TextChunkName = "Text";
 
     public const char FunctionSigil = 'F';
     public const char StructSigil = 'S';
@@ -46,9 +45,11 @@ internal static class SerializerConstants
     public const char FFILongDoubleTypeSigil = 'D';
 
     public const char PointerTypeSigil = '*';
-    public const char BufferTypeSigil = ']';
-    public const char SliceTypeSigil = ':';
+    public const char BufferTypeSigil = '^';
+    public const char ReferenceTypeSigil = '&';
+    public const char SliceTypeSigil = ']';
     public const char ArrayTypeSigil = '[';
+    public const char NilableTypeSigil = '?';
 
     public const byte MutableFlag = 1 << 0;
 
@@ -67,6 +68,9 @@ public enum SerializedDeclKind : byte
 {
     Invalid = 0,
     Function = (byte)SerializerConstants.FunctionSigil,
+    Struct = (byte)SerializerConstants.StructSigil,
+    Enum = (byte)SerializerConstants.EnumSigil,
+    Alias = (byte)SerializerConstants.AliasSigil,
 }
 
 public enum SerializedTypeKind : byte
@@ -84,8 +88,10 @@ public enum SerializedTypeKind : byte
     FFI = (byte)SerializerConstants.FFIPrefixTypeSigil,
     Pointer = (byte)SerializerConstants.PointerTypeSigil,
     Buffer = (byte)SerializerConstants.BufferTypeSigil,
+    Reference = (byte)SerializerConstants.ReferenceTypeSigil,
     Slice = (byte)SerializerConstants.SliceTypeSigil,
     Array = (byte)SerializerConstants.ArrayTypeSigil,
+    Nilable = (byte)SerializerConstants.NilableTypeSigil,
 }
 
 public readonly record struct SerializedModuleHeader(
@@ -432,7 +438,7 @@ public sealed class ModuleDeserializer : IDisposable
                 throw new UnreachableException();
             }
 
-            case SerializerConstants.DeclNameSimpleSigil: return ReadAtom(reader);
+            case SerializerConstants.DeclNameSimpleSigil: return ReadAtom(reader)!;
         }
     }
 

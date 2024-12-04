@@ -176,7 +176,7 @@ public sealed class SemaTypeBuiltIn(ChoirContext context, BuiltinTypeKind kind, 
 
     public override bool TypeEquals(SemaTypeBuiltIn other, TypeComparison comp) => other.Kind == Kind && (!IsExplicitlySized || other.BitWidth == BitWidth);
 
-    public override SerializedTypeKind SerializedTypeKind => kind switch
+    public override SerializedTypeKind SerializedTypeKind => Kind switch
     {
         BuiltinTypeKind.Void => SerializedTypeKind.Void,
         BuiltinTypeKind.NoReturn => SerializedTypeKind.NoReturn,
@@ -299,6 +299,18 @@ public sealed class SemaTypePointer(ChoirContext context, SemaTypeQual elementTy
 
     public override string ToDebugString(Colors colors) =>
         $"{ElementType.ToDebugString(colors)}{colors.Default}*";
+
+    public override SerializedTypeKind SerializedTypeKind => SerializedTypeKind.Pointer;
+    public override void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        serializer.WriteTypeQual(writer, ElementType);
+    }
+
+    public static SemaTypePointer Deserialize(ModuleDeserializer deserializer, BinaryReader reader)
+    {
+        var elementType = deserializer.ReadTypeQual(reader);
+        return new SemaTypePointer(deserializer.Context, elementType);
+    }
 }
 
 public sealed class SemaTypeBuffer(ChoirContext context, SemaTypeQual elementType, SemaExpr? terminator = null)
@@ -353,6 +365,18 @@ public sealed class SemaTypeReference(ChoirContext context, SemaTypeQual element
 
     public override string ToDebugString(Colors colors) =>
         $"{ElementType.ToDebugString(colors)}{colors.Default}&";
+
+    public override SerializedTypeKind SerializedTypeKind => SerializedTypeKind.Reference;
+    public override void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        serializer.WriteTypeQual(writer, ElementType);
+    }
+
+    public static SemaTypeReference Deserialize(ModuleDeserializer deserializer, BinaryReader reader)
+    {
+        var elementType = deserializer.ReadTypeQual(reader);
+        return new SemaTypeReference(deserializer.Context, elementType);
+    }
 }
 
 public sealed class SemaTypeNilable(SemaTypeQual elementType)
@@ -363,6 +387,18 @@ public sealed class SemaTypeNilable(SemaTypeQual elementType)
 
     public override string ToDebugString(Colors colors) =>
         $"{ElementType.ToDebugString(colors)}{colors.Default}?";
+
+    public override SerializedTypeKind SerializedTypeKind => SerializedTypeKind.Nilable;
+    public override void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        serializer.WriteTypeQual(writer, ElementType);
+    }
+
+    public static SemaTypeNilable Deserialize(ModuleDeserializer deserializer, BinaryReader reader)
+    {
+        var elementType = deserializer.ReadTypeQual(reader);
+        return new SemaTypeNilable(elementType);
+    }
 }
 
 public sealed class SemaTypeSlice(ChoirContext context, SemaTypeQual elementType)
@@ -373,6 +409,18 @@ public sealed class SemaTypeSlice(ChoirContext context, SemaTypeQual elementType
 
     public override string ToDebugString(Colors colors) =>
         $"{ElementType.ToDebugString(colors)}{colors.Default}[]";
+
+    public override SerializedTypeKind SerializedTypeKind => SerializedTypeKind.Slice;
+    public override void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        serializer.WriteTypeQual(writer, ElementType);
+    }
+
+    public static SemaTypeSlice Deserialize(ModuleDeserializer deserializer, BinaryReader reader)
+    {
+        var elementType = deserializer.ReadTypeQual(reader);
+        return new SemaTypeSlice(deserializer.Context, elementType);
+    }
 }
 
 public sealed class SemaTypeArray(ChoirContext context, SemaTypeQual elementType, SemaExpr[] lengthExprs)

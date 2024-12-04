@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -30,7 +29,7 @@ public abstract record class TestInstance(FileInfo SourceFile)
 
 public class TestRunnerInternalCompilerError : Exception { }
 
-public sealed record class ExecTestInstance(FileInfo SourceFile) : TestInstance(SourceFile)
+public sealed record class ExecTestInstance(DirectoryInfo LibDir, FileInfo SourceFile) : TestInstance(SourceFile)
 {
     public override string TestName => $"Execute {SourceFile.Name}";
 
@@ -44,24 +43,45 @@ public sealed record class ExecTestInstance(FileInfo SourceFile) : TestInstance(
         var outputDir = new DirectoryInfo(Path.GetTempPath()).ChildDirectory("laye-test-suite");
         if (!outputDir.Exists) outputDir.Create();
 
-        var outputFile = outputDir.ChildFile($"{SourceFile.Name}{(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : ".out")}");
-        //var outputFile = outputDir.ChildFile($"{SourceFile.Name}.o");
+        var coreLibFile = LibDir.ChildFile("core.mod");
+        Debug.Assert(coreLibFile.Exists);
+
+        var outputFile = outputDir.ChildFile($"{Path.GetFileNameWithoutExtension(SourceFile.Name)}.mod");
+        var executableFile = outputDir.ChildFile($"{Path.GetFileNameWithoutExtension(SourceFile.Name)}{(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : ".out")}");
 
         try
         {
+            int exitCode;
 
-            //int exitCode = LayecDriver.RunWithArgs(diag, [SourceFile.FullName, "-o", outputFile.FullName]);
-            int exitCode = LayecDriver.RunWithArgs(diag, [SourceFile.FullName]);
+            exitCode = LayecDriver.RunWithArgs(diag, [
+                SourceFile.FullName,
+                coreLibFile.FullName,
+                "-o", outputFile.FullName,
+            ]);
+
             if (exitCode != 0)
             {
                 Status = TestStatus.Failed;
                 return;
             }
 
-            //var process = Process.Start(outputFile.FullName);
-            //process.WaitForExit();
+            var linkProcess = Process.Start("clang", [
+                "-o", executableFile.FullName,
+                outputFile.FullName,
+                coreLibFile.FullName,
+            ]);
+            linkProcess.WaitForExit();
+            exitCode = linkProcess.ExitCode;
 
-            //Status = process.ExitCode == 0 ? TestStatus.Passed : TestStatus.Failed;
+            if (exitCode != 0)
+            {
+                Status = TestStatus.Failed;
+                return;
+            }
+
+            var process = Process.Start(executableFile.FullName);
+            process.WaitForExit();
+            Status = process.ExitCode == 0 ? TestStatus.Passed : TestStatus.Failed;
         }
         catch (TestRunnerInternalCompilerError)
         {
@@ -70,18 +90,68 @@ public sealed record class ExecTestInstance(FileInfo SourceFile) : TestInstance(
         finally
         {
             if (outputFile.Exists) outputFile.Delete();
+            if (executableFile.Exists) executableFile.Delete();
         }
     }
 }
 
 internal static class Program
 {
+    const string LAYE_LIB_DIR_PATH = "lib/laye";
     const string LAYE_TEST_DIR_PATH = "test/laye";
+
+    static int BuildCoreLibrary(DirectoryInfo libDir)
+    {
+        var diag = new StreamingDiagnosticWriter(writer: Console.Error, useColor: !Console.IsErrorRedirected)
+        {
+            OnICE = () => throw new TestRunnerInternalCompilerError(),
+        };
+
+        try
+        {
+            return LayecDriver.RunWithArgs(diag, [
+                "--no-corelib",
+                "-o", libDir.ChildFile("core.mod").FullName,
+                libDir.ChildDirectory("core").ChildFile("entry.laye").FullName
+            ]);
+        }
+        catch (TestRunnerInternalCompilerError)
+        {
+            return 1;
+        }
+    }
 
     public static int Main(string[] args)
     {
         Console.InputEncoding = Encoding.UTF8;
         Console.OutputEncoding = Encoding.UTF8;
+
+        TestLog.Info("Searching for Laye lib directory...");
+
+        DirectoryInfo? layeLibDir = new DirectoryInfo(Environment.CurrentDirectory);
+        while (layeLibDir.Exists && !layeLibDir.ChildDirectory(LAYE_TEST_DIR_PATH).Exists)
+        {
+            Debug.Assert(layeLibDir.Parent is not null, $"We've gone too far looking for the lib directory '{LAYE_LIB_DIR_PATH}'");
+            layeLibDir = layeLibDir.Parent;
+        }
+
+        if (layeLibDir is null)
+        {
+            TestLog.Error($"Could not find a Laye lib directory ('{LAYE_LIB_DIR_PATH}') relative to '{Environment.CurrentDirectory}' or any of its ancestors.");
+            return 1;
+        }
+
+        layeLibDir = layeLibDir.ChildDirectory(LAYE_LIB_DIR_PATH);
+        Debug.Assert(layeLibDir.Exists);
+
+        TestLog.Info("Building core library...");
+
+        int buildCoreExitCode = BuildCoreLibrary(layeLibDir);
+        if (buildCoreExitCode != 0)
+        {
+            TestLog.Error($"Could not build the Laye core library.");
+            return 1;
+        }
 
         TestLog.Info("Searching for Laye test directory...");
 
@@ -108,7 +178,7 @@ internal static class Program
 
         foreach (var testFile in layeTestsDir.GetFiles())
         {
-            testInstances.Add(new ExecTestInstance(testFile));
+            testInstances.Add(new ExecTestInstance(layeLibDir, testFile));
         }
 
         TestLog.Info($"Running {testInstances.Count} Laye tests...");

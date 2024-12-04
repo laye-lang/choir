@@ -1,9 +1,8 @@
-int foo()
-{
+int foo() {
     return 0;
 }
 
-i32 main()
-{
-    return cast(i32) foo();
+int main() {
+    i32 exit_code = cast(i32) foo();
+    return exit_code;
 }

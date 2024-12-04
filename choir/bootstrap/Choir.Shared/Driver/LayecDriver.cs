@@ -472,7 +472,7 @@ public sealed record class LayecDriverOptions
     public bool IsDistribution { get; set; } = false;
 
     /// <summary>
-    /// The `--no-corelib` flag.
+    /// The `--no-corelib` flag. This implies `--no-stdlib`.
     /// Disables linking to the Laye core library, requiring the programmer to provide their own implementation.
     /// `layec` does not handle linking itself, but it does ensure the default libraries are referenced by default and they are expected to be available when linking occurs.
     /// </summary>
