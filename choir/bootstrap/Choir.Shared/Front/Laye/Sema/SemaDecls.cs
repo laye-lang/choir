@@ -73,7 +73,9 @@ public sealed class SemaDeclFunction(Location location, string name)
     {
         #region Flags
 
-        ushort flags = 0;
+        ushort flags1 = 0;
+        ushort flags2 = 0;
+
         switch (CallingConvention)
         {
             default:
@@ -82,17 +84,24 @@ public sealed class SemaDeclFunction(Location location, string name)
                 throw new UnreachableException();
             }
 
-            case CallingConvention.CDecl: flags |= SerializerConstants.Attrib1CallingConventionCDecl; break;
-            case CallingConvention.Laye: flags |= SerializerConstants.Attrib1CallingConventionLaye; break;
-            case CallingConvention.StdCall: flags |= SerializerConstants.Attrib1CallingConventionStdCall; break;
-            case CallingConvention.FastCall: flags |= SerializerConstants.Attrib1CallingConventionFastCall; break;
+            case CallingConvention.CDecl: flags1 |= SerializerConstants.Attrib1CallingConventionCDecl; break;
+            case CallingConvention.Laye: flags1 |= SerializerConstants.Attrib1CallingConventionLaye; break;
+            case CallingConvention.StdCall: flags1 |= SerializerConstants.Attrib1CallingConventionStdCall; break;
+            case CallingConvention.FastCall: flags1 |= SerializerConstants.Attrib1CallingConventionFastCall; break;
         }
 
-        if (IsForeign) flags |= SerializerConstants.Attrib1ForeignFlag;
-        if (IsInline) flags |= SerializerConstants.Attrib1InlineFlag;
-        if (IsDiscardable) flags |= SerializerConstants.Attrib1DiscardableFlag;
+        if (IsForeign) flags1 |= SerializerConstants.Attrib1ForeignFlag;
+        if (IsInline) flags1 |= SerializerConstants.Attrib1InlineFlag;
+        if (IsDiscardable) flags1 |= SerializerConstants.Attrib1DiscardableFlag;
 
-        writer.Write(flags);
+        // TODO(local): variadic-ness in the next flag
+
+        if (flags2 != 0)
+            flags1 |= SerializerConstants.AttribExtensionFlag;
+
+        writer.Write(flags1);
+        if (flags2 != 0)
+            writer.Write(flags2);
 
         #endregion
 
@@ -139,8 +148,8 @@ public sealed class SemaDeclFunction(Location location, string name)
     {
         #region Flags
 
-        ushort flags = reader.ReadUInt16();
-        CallingConvention = (flags & SerializerConstants.Attrib1CallingConventionMask) switch
+        ushort flags1 = reader.ReadUInt16();
+        CallingConvention = (flags1 & SerializerConstants.Attrib1CallingConventionMask) switch
         {
             SerializerConstants.Attrib1CallingConventionCDecl => CallingConvention.CDecl,
             SerializerConstants.Attrib1CallingConventionLaye => CallingConvention.Laye,
@@ -149,9 +158,15 @@ public sealed class SemaDeclFunction(Location location, string name)
             _ => throw new UnreachableException(),
         };
 
-        IsForeign = 0 != (flags & SerializerConstants.Attrib1ForeignFlag);
-        IsInline = 0 != (flags & SerializerConstants.Attrib1InlineFlag);
-        IsDiscardable = 0 != (flags & SerializerConstants.Attrib1DiscardableFlag);
+        IsForeign = 0 != (flags1 & SerializerConstants.Attrib1ForeignFlag);
+        IsInline = 0 != (flags1 & SerializerConstants.Attrib1InlineFlag);
+        IsDiscardable = 0 != (flags1 & SerializerConstants.Attrib1DiscardableFlag);
+
+        if (0 != (flags1 & SerializerConstants.AttribExtensionFlag))
+        {
+            ushort flags2 = reader.ReadUInt16();
+            deserializer.Context.Unreachable("No flags2 deserialization");
+        }
 
         #endregion
 

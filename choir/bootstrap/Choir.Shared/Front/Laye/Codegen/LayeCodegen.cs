@@ -347,6 +347,18 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                             throw new UnreachableException();
                         }
 
+                        case CastKind.IntegralSignExtend:
+                        {
+                            var type = GenerateType(cast.Type);
+                            return builder.BuildSExt(BuildExpr(builder, cast.Operand), type, "intsext");
+                        }
+
+                        case CastKind.IntegralZeroExtend:
+                        {
+                            var type = GenerateType(cast.Type);
+                            return builder.BuildZExt(BuildExpr(builder, cast.Operand), type, "intzext");
+                        }
+
                         case CastKind.IntegralTruncate:
                         {
                             var type = GenerateType(cast.Type);

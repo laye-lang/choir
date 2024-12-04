@@ -1212,6 +1212,16 @@ public partial class Sema
             }
         }
 
+        if (from.IsInteger && to.IsInteger)
+        {
+            if (from.Size <= to.Size)
+            {
+                if (performConversion)
+                    expr = WrapWithCast(expr, toQual, CastKind.IntegralSignExtend);
+                return score;
+            }
+        }
+
         return ConvertScoreImpossible;
     }
 
@@ -1225,7 +1235,7 @@ public partial class Sema
     {
         if (expr.IsErrored) return expr;
         if (!Convert(ref expr, to))
-            Context.Diag.Error(expr.Location, $"Expression of type {expr.Type.ToDebugString(Colors)} is not convertible to {expr.Type.ToDebugString(Colors)}.");
+            Context.Diag.Error(expr.Location, $"Expression of type {expr.Type.ToDebugString(Colors)} is not convertible to {to.ToDebugString(Colors)}.");
 
         return expr;
     }

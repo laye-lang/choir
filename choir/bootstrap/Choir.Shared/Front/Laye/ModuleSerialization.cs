@@ -54,6 +54,7 @@ internal static class SerializerConstants
     public const byte MutableFlag = 1 << 0;
 
     public const byte AttribExtensionFlag = 1 << 7;
+
     public const byte Attrib1CallingConventionMask = 0x0F;
     public const byte Attrib1CallingConventionCDecl = 0x00;
     public const byte Attrib1CallingConventionLaye = 0x01;
@@ -62,6 +63,9 @@ internal static class SerializerConstants
     public const byte Attrib1ForeignFlag = 1 << 4;
     public const byte Attrib1InlineFlag = 1 << 5;
     public const byte Attrib1DiscardableFlag = 1 << 6;
+    public const byte Attrib1CStyleVariadicFlag = 1 << 7;
+
+    public const byte Attrib2LayeVariadicFlag = 1 << 0;
 }
 
 public enum SerializedDeclKind : byte
