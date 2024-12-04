@@ -1,9 +1,9 @@
 ﻿using System.Diagnostics;
 
-using LLVMSharp.Interop;
-
-using Choir.Front.Laye.Sema;
 using Choir.CommandLine;
+using Choir.Front.Laye.Sema;
+
+using LLVMSharp.Interop;
 
 namespace Choir.Front.Laye.Codegen;
 

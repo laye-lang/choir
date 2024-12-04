@@ -1,12 +1,9 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
-using System.Xml.Linq;
 
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
-
-using LLVMSharp;
 
 namespace Choir.Front.Laye.Sema;
 

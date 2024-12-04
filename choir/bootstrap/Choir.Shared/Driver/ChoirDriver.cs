@@ -1,14 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-
-using Choir.CommandLine;
-using Choir.Front.Laye;
-using Choir.Front.Laye.Codegen;
-using Choir.Front.Laye.Sema;
-using Choir.Front.Laye.Syntax;
-
-using LLVMSharp.Interop;
-
 namespace Choir.Driver;
 
 #if false
