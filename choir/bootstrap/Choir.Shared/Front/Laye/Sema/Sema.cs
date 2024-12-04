@@ -5,6 +5,8 @@ using System.Numerics;
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
 
+using Microsoft.VisualBasic.FileIO;
+
 namespace Choir.Front.Laye.Sema;
 
 #pragma warning disable CA1822 // Mark members as static
@@ -74,7 +76,8 @@ public partial class Sema
                     declFunction.Linkage = Linkage.Exported;
                 }
 
-                module.AddDecl(decl);
+                if (decl is SemaDeclNamed declNamed)
+                    module.AddDecl(declNamed);
             }
 
             sema._currentFileImports = [];
@@ -768,6 +771,7 @@ public partial class Sema
             case SyntaxExprBinary binary: return AnalyseBinary(binary, typeHint);
             case SyntaxExprCall call: return AnalyseCall(call, typeHint);
             case SyntaxExprCast cast: return AnalyseCast(cast, typeHint);
+            case SyntaxExprField field: return AnalyseField(field, typeHint);
 
             case SyntaxToken tokenInteger when tokenInteger.Kind == TokenKind.LiteralInteger:
             {
@@ -1146,6 +1150,48 @@ public partial class Sema
 
         Context.Diag.Error(cast.Location, $"Cannot convert from {expr.Type.ToDebugString(Colors)} to {castType.ToDebugString(Colors)}.");
         return new SemaExprCast(cast.Location, CastKind.Invalid, castType, expr);
+    }
+
+    private SemaExpr AnalyseField(SyntaxExprField field, SemaTypeQual? typeHint = null)
+    {
+        string fieldName = field.FieldNameText;
+        var operand = AnalyseExpr(field.Operand);
+
+        switch (operand.Type.CanonicalType.Type)
+        {
+            default:
+            {
+                Context.Diag.Error(field.Operand.Location, $"Cannot index a value of type {operand.Type.ToDebugString(Colors)}.");
+                return new SemaExprFieldBadIndex(field.Location, operand, fieldName)
+                {
+                    ValueCategory = ValueCategory.LValue,
+                };
+            }
+
+            case SemaTypeStruct typeStruct:
+            {
+                if (!operand.IsLValue)
+                {
+                    // TODO(local): figure out a better way to say this.
+                    Context.Diag.Error(field.Operand.Location, "Cannot index a non-lvalue.");
+                }
+
+                var structDecl = typeStruct.DeclStruct;
+                if (!structDecl.TryLookupField(fieldName, out var declField, out int fieldIndex))
+                {
+                    Context.Diag.Error(field.Operand.Location, $"No such field '{fieldName}' on type {typeStruct.ToDebugString(Colors)}.");
+                    return new SemaExprFieldBadIndex(field.Location, operand, fieldName)
+                    {
+                        ValueCategory = ValueCategory.LValue,
+                    };
+                }
+
+                return new SemaExprFieldStructIndex(field.Location, operand, declField, fieldIndex)
+                {
+                    ValueCategory = ValueCategory.LValue,
+                };
+            }
+        }
     }
 
     private bool TryEvaluate(SemaExpr expr, out EvaluatedConstant value)

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
 namespace Choir.Front.Laye.Sema;
@@ -284,6 +285,24 @@ public sealed class SemaDeclStruct(Location location, string name)
             if (TemplateParameters is not null)
                 yield return TemplateParameters;
         }
+    }
+
+    public bool TryLookupField(string fieldName, [NotNullWhen(true)] out SemaDeclField? declField, out int fieldIndex)
+    {
+
+        for (int i = 0; i < FieldDecls.Count; i++)
+        {
+            if (FieldDecls[i].Name == fieldName)
+            {
+                declField = FieldDecls[i];
+                fieldIndex = i;
+                return true;
+            }
+        }
+
+        declField = null;
+        fieldIndex = -1;
+        return false;
     }
 }
 

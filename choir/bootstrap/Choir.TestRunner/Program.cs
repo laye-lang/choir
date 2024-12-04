@@ -81,7 +81,14 @@ public sealed record class ExecTestInstance(DirectoryInfo LibDir, FileInfo Sourc
 
             var process = Process.Start(executableFile.FullName);
             process.WaitForExit();
-            Status = process.ExitCode == 0 ? TestStatus.Passed : TestStatus.Failed;
+
+            if (process.ExitCode == 0)
+                Status = TestStatus.Passed;
+            else
+            {
+                Status = TestStatus.Failed;
+                TestLog.Error($"Failed with exit code {process.ExitCode}.");
+            }
         }
         catch (TestRunnerInternalCompilerError)
         {

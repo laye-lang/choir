@@ -63,6 +63,10 @@ public sealed class LayeNameMangler(ChoirContext context, LayeModule module)
                             MangleTypeInto(builder, declParam.ParamType);
                     }
                 } break;
+
+                case SemaDeclStruct declStruct:
+                {
+                } break;
             }
 
             return builder.ToString();

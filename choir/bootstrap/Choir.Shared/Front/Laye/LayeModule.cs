@@ -9,7 +9,7 @@ namespace Choir.Front.Laye;
 
 public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sourceFiles, IEnumerable<LayeModule> dependencies)
 {
-    private readonly List<SemaDecl> _declarations = [];
+    private readonly List<SemaDeclNamed> _declarations = [];
 
     public ChoirContext Context { get; } = context;
     public IReadOnlyList<SourceFile> SourceFiles = [.. sourceFiles];
@@ -20,10 +20,10 @@ public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sou
     public Scope ModuleScope { get; } = new();
     public Scope ExportScope { get; } = new();
 
-    public IEnumerable<BaseSemaNode> Declarations => _declarations;
+    public IEnumerable<SemaDeclNamed> Declarations => _declarations;
     public IEnumerable<SemaDeclNamed> ExportedDeclarations => ExportScope.SelectMany(s => s.Symbols).Select(s => s);
 
-    public void AddDecl(SemaDecl decl)
+    public void AddDecl(SemaDeclNamed decl)
     {
         _declarations.Add(decl);
     }

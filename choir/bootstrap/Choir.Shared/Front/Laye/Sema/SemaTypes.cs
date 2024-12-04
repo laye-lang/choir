@@ -558,15 +558,55 @@ public sealed class SemaTypeStruct(SemaDeclStruct declStruct)
 {
     public SemaDeclStruct DeclStruct { get; } = declStruct;
 
-    public override Size Size => throw new NotImplementedException();
-    public override Align Align => throw new NotImplementedException();
+    private Size? _size = null;
+    private Align? _align = null;
+
+    private void CalculateSizeAndAlign()
+    {
+        if (_size.HasValue)
+        {
+            Debug.Assert(_align.HasValue);
+            return;
+        }
+
+        Size size = Size.FromBits(0);
+        Align align = Align.ByteAligned;
+
+        foreach (var field in DeclStruct.FieldDecls)
+        {
+            var fieldAlign = field.FieldType.Align;
+            size = size.AlignedTo(fieldAlign) + field.FieldType.Size;
+            align = Align.Max(align, fieldAlign);
+        }
+
+        _size = size.AlignedTo(align);
+        _align = align;
+    }
+
+    public override Size Size
+    {
+        get
+        {
+            CalculateSizeAndAlign();
+            return _size!.Value;
+        }
+    }
+
+    public override Align Align
+    {
+        get
+        {
+            CalculateSizeAndAlign();
+            return _align!.Value;
+        }
+    }
 
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclStruct.Name}{colors.Default}";
 
     public override bool TypeEquals(SemaTypeStruct other, TypeComparison comp = TypeComparison.WithQualifiers)
     {
-        throw new NotImplementedException();
+        return DeclStruct == other.DeclStruct;
     }
 }
 

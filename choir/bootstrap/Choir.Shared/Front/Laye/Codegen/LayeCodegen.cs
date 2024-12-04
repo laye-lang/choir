@@ -16,37 +16,44 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
         var cg = new LayeCodegen(module, llvmModule);
 
-        foreach (var dependency in module.Dependencies)
+        void GenerateDeclarations(IEnumerable<SemaDeclNamed> decls)
         {
-            foreach (var decl in dependency.ExportedDeclarations)
+            foreach (var decl in decls)
             {
-                LLVMValueRef declDef;
+                if (decl is SemaDeclStruct @struct)
+                    cg.GenerateStructDeclaration(@struct);
+            }
+
+            foreach (var decl in decls)
+            {
                 if (decl is SemaDeclFunction function)
-                    declDef = cg.GenerateDeclaration(function);
-                else throw new NotImplementedException($"for decl type {decl.GetType().FullName}");
+                    cg.GenerateFunctionDeclaration(function);
             }
         }
 
-        // generate declarations
-        foreach (var decl in module.Declarations)
+        void GenerateDefinitions(IEnumerable<SemaDeclNamed> decls)
         {
-            LLVMValueRef declDef;
-            if (decl is SemaDeclFunction function)
-                declDef = cg.GenerateDeclaration(function);
-            else throw new NotImplementedException($"for decl type {decl.GetType().FullName}");
-        }
-
-        // generate definitions
-        foreach (var decl in module.Declarations)
-        {
-            LLVMValueRef declDef;
-            if (decl is SemaDeclFunction function)
+            foreach (var decl in module.Declarations)
             {
-                if (function.Body is not null)
-                    declDef = cg.GenerateDefinition(function);
+                if (decl is SemaDeclStruct @struct)
+                    cg.GenerateStructDefinition(@struct);
             }
-            else throw new NotImplementedException($"for decl type {decl.GetType().FullName}");
+
+            foreach (var decl in module.Declarations)
+            {
+                if (decl is SemaDeclFunction function)
+                {
+                    if (function.Body is not null)
+                        cg.GenerateFunctionDefinition(function);
+                }
+            }
         }
+
+        foreach (var dependency in module.Dependencies)
+            GenerateDeclarations(dependency.ExportedDeclarations);
+
+        GenerateDeclarations(module.Declarations);
+        GenerateDefinitions(module.Declarations);
 
         byte[] moduleData = module.Serialize();
         string sectionName = LayeConstants.GetModuleDescriptionSectionName(module.ModuleName);
@@ -62,6 +69,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
     public LayeNameMangler Mangler { get; } = new(module.Context, module);
 
     private readonly Dictionary<SemaDeclNamed, LLVMValueRef> _declaredValues = [];
+    private readonly Dictionary<SemaDeclNamed, LLVMTypeRef> _declaredTypes = [];
 
     private SemaDeclFunction? CurrentFunction { get; set; }
     private LLVMValueRef CurrentFunctionValue => CurrentFunction is null ? default : _declaredValues[CurrentFunction];
@@ -97,20 +105,22 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 }
             }
 
+            case SemaTypeStruct typeStruct: return _declaredTypes[typeStruct.DeclStruct];
+
             case SemaTypeBuffer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
         }
     }
 
-    private LLVMValueRef GenerateDeclaration(SemaDeclFunction function)
+    private void GenerateFunctionDeclaration(SemaDeclFunction function)
     {
         string functionName = Mangler.GetMangledName(function);
         var paramTypes = function.ParameterDecls.Select(p => GenerateType(p.ParamType)).ToArray();
         var functionType = LLVMTypeRef.CreateFunction(GenerateType(function.ReturnType), paramTypes);
         var f = LlvmModule.AddFunction(functionName, functionType);
-        return _declaredValues[function] = f;
+        _declaredValues[function] = f;
     }
 
-    private LLVMValueRef GenerateDefinition(SemaDeclFunction function)
+    private void GenerateFunctionDefinition(SemaDeclFunction function)
     {
         Context.Assert(function.Body is not null, function.Location, "Attempt to generate code for a function definition when only a declaration is present.");
         Context.Assert(_declaredValues.ContainsKey(function), function.Location, "No LLVM function declaration was generated for this function.");
@@ -140,8 +150,19 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 builder.BuildRetVoid();
             else builder.BuildUnreachable();
         }
-        
-        return f;
+    }
+
+    private void GenerateStructDeclaration(SemaDeclStruct @struct)
+    {
+        var structType = LlvmContext.CreateNamedStruct(Mangler.GetMangledName(@struct));
+        _declaredTypes[@struct] = structType;
+    }
+
+    private void GenerateStructDefinition(SemaDeclStruct @struct)
+    {
+        var structType = _declaredTypes[@struct];
+        var fieldTypes = @struct.FieldDecls.Select(f => GenerateType(f.FieldType)).ToArray();
+        structType.StructSetBody(fieldTypes, false);
     }
 
     private LLVMBasicBlockRef EnterBlock(LLVMBuilderRef builder, LLVMBasicBlockRef bb)
@@ -183,6 +204,17 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     var init = BuildExpr(builder, binding.InitialValue);
                     var store = builder.BuildStore(init, storage);
                     store.SetAlignment((uint)binding.BindingType.Align.Bytes);
+                }
+                else
+                {
+                    unsafe
+                    {
+                        LLVM.BuildMemSet(builder, storage,
+                            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, 0),
+                            type.SizeOf,
+                            (uint)binding.BindingType.Align.Bytes
+                        );
+                    }
                 }
             } break;
 
@@ -317,6 +349,14 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                             }
                         }
                     }
+                }
+
+                case SemaExprFieldStructIndex structField:
+                {
+                    var lvalue = BuildExpr(builder, structField.Operand);
+                    Context.Assert(lvalue.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Struct field lookup requires an lvalue, which will be of type `ptr`.");
+                    var structType = GenerateType(structField.Operand.Type);
+                    return builder.BuildStructGEP2(structType, lvalue, (uint)structField.FieldIndex, "fieldidx");
                 }
 
                 case SemaExprBinaryBuiltIn binaryBuiltIn:

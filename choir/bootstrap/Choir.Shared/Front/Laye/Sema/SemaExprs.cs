@@ -49,6 +49,25 @@ public sealed class SemaExprOverloadSet(Location location, SemaDeclNamed[] overl
     public IReadOnlyList<SemaDeclNamed> Overloads { get; } = overloads;
 }
 
+public abstract class SemaExprField(Location location, SemaExpr operand, string fieldName, SemaTypeQual type)
+    : SemaExpr(location, type)
+{
+    public SemaExpr Operand { get; } = operand;
+    public string FieldText { get; } = fieldName;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
+}
+
+public sealed class SemaExprFieldBadIndex(Location location, SemaExpr operand, string fieldName)
+    : SemaExprField(location, operand, fieldName, SemaTypePoison.InstanceQualified)
+{
+}
+
+public sealed class SemaExprFieldStructIndex(Location location, SemaExpr structOperand, SemaDeclField field, int fieldIndex)
+    : SemaExprField(location, structOperand, field.Name, field.FieldType)
+{
+    public int FieldIndex { get; } = fieldIndex;
+}
+
 public abstract class SemaExprBinary(SyntaxToken operatorToken, SemaTypeQual type, SemaExpr left, SemaExpr right)
     : SemaExpr(operatorToken.Location, type)
 {
