@@ -487,6 +487,12 @@ public partial class Sema
                 return SemaTypePoison.InstanceQualified;
             }
 
+            case SyntaxTypePointer typePointer:
+                return new SemaTypePointer(Context, AnalyseType(typePointer.Inner)).Qualified(type.Location);
+
+            case SyntaxTypeReference typeReference:
+                return new SemaTypeReference(Context, AnalyseType(typeReference.Inner)).Qualified(type.Location);
+
             case SyntaxTypeBuffer typeBuffer:
             {
                 SemaExpr? terminator = null;
@@ -510,6 +516,12 @@ public partial class Sema
             return_the_buffer_type:;
                 return new SemaTypeBuffer(Context, AnalyseType(typeBuffer.Inner), terminator).Qualified(type.Location);
             }
+
+            case SyntaxTypeSlice typeSlice:
+                return new SemaTypeSlice(Context, AnalyseType(typeSlice.Inner)).Qualified(type.Location);
+
+            case SyntaxTypeNilable typeNilable:
+                return new SemaTypeNilable(AnalyseType(typeNilable.Inner)).Qualified(type.Location);
         }
     }
 
@@ -688,6 +700,20 @@ public partial class Sema
                 return new SemaStmtIf(conditions, elseBody);
             }
 
+            case SyntaxStmtAssign stmtAssign:
+            {
+                Context.Assert(stmtAssign.TokenAssignOp.Kind == TokenKind.Equal, stmtAssign.TokenAssignOp.Location, "Fancy assignments are not currently supported in sema.");
+
+                var target = AnalyseExpr(stmtAssign.Left);
+                if (!target.IsLValue)
+                    Context.Diag.Error(target.Location, $"Cannot assign to {target.ValueCategory.ToHumanString(includeArticle: true)}.");
+
+                var value = AnalyseExpr(stmtAssign.Right, target.Type);
+                if (target.IsLValue) value = ConvertOrError(value, target.Type);
+
+                return new SemaStmtAssign(target, value);
+            }
+
             case SyntaxStmtExpr stmtExpr:
             {
                 var expr = AnalyseExpr(stmtExpr.Expr);
@@ -768,6 +794,8 @@ public partial class Sema
             }
 
             case SyntaxNameref nameref: return AnalyseLookup(nameref, CurrentScope);
+            case SyntaxExprUnaryPrefix unaryPrefix: return AnalyseUnaryPrefix(unaryPrefix, typeHint);
+            case SyntaxExprUnaryPostfix unaryPostfix: return AnalyseUnaryPostfix(unaryPostfix, typeHint);
             case SyntaxExprBinary binary: return AnalyseBinary(binary, typeHint);
             case SyntaxExprCall call: return AnalyseCall(call, typeHint);
             case SyntaxExprCast cast: return AnalyseCast(cast, typeHint);
@@ -1017,6 +1045,65 @@ public partial class Sema
         }
     }
 
+    private SemaExpr AnalyseUnaryPrefix(SyntaxExprUnaryPrefix unary, SemaTypeQual? typeHint = null)
+    {
+        var operand = AnalyseExpr(unary.Operand);
+        operand = LValueToRValue(operand, true);
+
+        switch (unary.TokenOperator.Kind)
+        {
+            default: return UndefinedOperator();
+
+            case TokenKind.Ampersand:
+            {
+                if (!operand.IsLValue)
+                {
+                    Context.Diag.Error(unary.TokenOperator.Location, $"Cannot take the address of {operand.ValueCategory.ToHumanString(includeArticle: true)}.");
+                    return UndefinedOperator();
+                }
+
+                return new SemaExprCast(operand.Location, CastKind.LValueToReference,
+                    Context.Types.LayeTypeReference(operand.Type).Qualified(unary.Location),
+                    operand);
+            }
+
+            case TokenKind.Star:
+            {
+                if (operand.Type.Type is SemaTypePointer typePtr)
+                {
+                    return new SemaExprCast(unary.TokenOperator.Location, CastKind.PointerToLValue, typePtr.ElementType, operand)
+                    {
+                        ValueCategory = ValueCategory.LValue,
+                        IsCompilerGenerated = true
+                    };
+                }
+                else
+                {
+                    Context.Diag.Error(unary.TokenOperator.Location, $"Cannot dereference a value of type {operand.Type.ToDebugString(Colors)}.");
+                    return UndefinedOperator();
+                }
+            }
+        }
+
+        SemaExprUnary UndefinedOperator()
+        {
+            Context.Diag.Error(unary.Location, $"Unary operator '{unary.TokenOperator.Location.Span(Context)}' is not defined for operand {operand.Type.ToDebugString(Colors)}.");
+            return new SemaExprUnaryUndefined(unary.TokenOperator, operand);
+        }
+    }
+
+    private SemaExprUnary AnalyseUnaryPostfix(SyntaxExprUnaryPostfix unary, SemaTypeQual? typeHint = null)
+    {
+        var operand = AnalyseExpr(unary.Operand);
+        return UndefinedOperator();
+
+        SemaExprUnary UndefinedOperator()
+        {
+            Context.Diag.Error(unary.Location, $"Unary operator '{unary.TokenOperator.Location.Span(Context)}' is not defined for operand {operand.Type.ToDebugString(Colors)}.");
+            return new SemaExprUnaryUndefined(unary.TokenOperator, operand);
+        }
+    }
+
     private static readonly Dictionary<BinaryOperatorKind, (TokenKind TokenKind, BinaryOperatorKind OperatorKind)[]> _builtinBinaryOperators = new()
     {
         { BinaryOperatorKind.Integer, [
@@ -1215,16 +1302,51 @@ public partial class Sema
         if (from.IsErrored || to.IsErrored)
             return ConvertScoreContainsErrors;
 
-        if (performConversion)
+        int score = ConvertScoreNoOp;
+        if (expr.IsLValue)
         {
-            expr = LValueToRValue(expr, false);
-            from = expr.Type.CanonicalType.Type;
+            if (performConversion)
+                expr = LValueToRValue(expr, false);
+            score = 1;
         }
 
-        if (from == to) return ConvertScoreNoOp;
+        if (from == to) return score;
 
-        int score = 0;
-        if (expr.IsLValue) score = 1;
+        {
+            if (from is SemaTypeReference fromRef && to is SemaTypePointer toPtr)
+            {
+                if (fromRef.ElementType.TypeEquals(toPtr.ElementType, TypeComparison.WithQualifierConversions))
+                {
+                    if (performConversion)
+                        expr = ImplicitCast(expr, toQual);
+                    return score;
+                }
+            }
+        }
+
+        {
+            if (from is SemaTypePointer fromPtr && to is SemaTypePointer toPtr)
+            {
+                if (fromPtr.ElementType.TypeEquals(toPtr.ElementType, TypeComparison.WithQualifierConversions))
+                {
+                    if (performConversion)
+                        expr = ImplicitCast(expr, toQual);
+                    return score;
+                }
+            }
+        }
+
+        {
+            if (from is SemaTypeReference fromRef && to is SemaTypeReference toRef)
+            {
+                if (fromRef.ElementType.TypeEquals(toRef.ElementType, TypeComparison.WithQualifierConversions))
+                {
+                    if (performConversion)
+                        expr = ImplicitCast(expr, toQual);
+                    return score;
+                }
+            }
+        }
 
         // TODO(local): more conversion checks
 
@@ -1327,10 +1449,13 @@ public partial class Sema
             expr = WrapWithCast(expr, typeRef.ElementType, CastKind.ReferenceToLValue);
         }
 
-        while (expr.Type.Type is SemaTypePointer)
+        while (expr.Type.Type is SemaTypePointer typePtr)
         {
-            expr = SemaExprDereference.Create(Context, expr.Location, expr);
-            expr.IsCompilerGenerated = true;
+            expr = new SemaExprCast(expr.Location, CastKind.PointerToLValue, typePtr.ElementType, expr)
+            {
+                ValueCategory = ValueCategory.LValue,
+                IsCompilerGenerated = true
+            };
         }
 
         return expr.IsLValue;

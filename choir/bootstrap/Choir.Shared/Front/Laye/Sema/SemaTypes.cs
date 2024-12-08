@@ -235,7 +235,7 @@ public sealed class SemaTypeOverloadSet
     }
 
     public override string ToDebugString(Colors colors) => $"{colors.LayeKeyword()}overloads";
-    public override bool TypeEquals(SemaTypeOverloadSet other, TypeComparison comp = TypeComparison.WithQualifiers) => false;
+    public override bool TypeEquals(SemaTypeOverloadSet other, TypeComparison comp = TypeComparison.WithIdenticalQualifiers) => false;
 }
 
 public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedType)
@@ -604,7 +604,7 @@ public sealed class SemaTypeStruct(SemaDeclStruct declStruct)
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclStruct.Name}{colors.Default}";
 
-    public override bool TypeEquals(SemaTypeStruct other, TypeComparison comp = TypeComparison.WithQualifiers)
+    public override bool TypeEquals(SemaTypeStruct other, TypeComparison comp = TypeComparison.WithIdenticalQualifiers)
     {
         return DeclStruct == other.DeclStruct;
     }
@@ -621,7 +621,7 @@ public sealed class SemaTypeEnum(SemaDeclEnum declEnum)
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclEnum.Name}{colors.Default}";
 
-    public override bool TypeEquals(SemaTypeEnum other, TypeComparison comp = TypeComparison.WithQualifiers)
+    public override bool TypeEquals(SemaTypeEnum other, TypeComparison comp = TypeComparison.WithIdenticalQualifiers)
     {
         throw new NotImplementedException();
     }
@@ -638,7 +638,7 @@ public sealed class SemaTypeAlias(SemaDeclAlias declAlias)
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclAlias.Name}{colors.Default}";
 
-    public override bool TypeEquals(SemaTypeAlias other, TypeComparison comp = TypeComparison.WithQualifiers)
+    public override bool TypeEquals(SemaTypeAlias other, TypeComparison comp = TypeComparison.WithIdenticalQualifiers)
     {
         throw new NotImplementedException();
     }

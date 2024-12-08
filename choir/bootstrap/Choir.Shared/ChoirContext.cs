@@ -73,6 +73,21 @@ public sealed record class ChoirTarget
     public required Align AlignOfCLongDouble { get; init; }
 }
 
+public sealed record class ChoirAbi
+{
+    public static readonly ChoirAbi WindowxX64 = new()
+    {
+        PassMemoryValuesByAddress = true,
+    };
+
+    public static readonly ChoirAbi SysV = new()
+    {
+        PassMemoryValuesByAddress = false,
+    };
+
+    public required bool PassMemoryValuesByAddress { get; init; }
+}
+
 public sealed class TypeStorage
 {
     private readonly Dictionary<int, SemaTypeBuiltIn> _layeBoolTypes = [];
@@ -184,6 +199,16 @@ public sealed class TypeStorage
         return new SemaTypeArray(Context, elementType, [length]);
     }
 
+    public SemaTypePointer LayeTypePointer(SemaTypeQual elementType)
+    {
+        return new SemaTypePointer(Context, elementType);
+    }
+
+    public SemaTypeReference LayeTypeReference(SemaTypeQual elementType)
+    {
+        return new SemaTypeReference(Context, elementType);
+    }
+
     public SemaTypeBuffer LayeTypeBuffer(SemaTypeQual elementType, long? sentinelTerminator = null)
     {
         SemaExpr? st = null;
@@ -200,6 +225,11 @@ public sealed class TypeStorage
     {
         return new SemaTypeSlice(Context, elementType);
     }
+
+    public SemaTypeNilable LayeTypeNilable(SemaTypeQual elementType)
+    {
+        return new SemaTypeNilable(elementType);
+    }
 }
 
 public sealed class ChoirContext
@@ -210,6 +240,7 @@ public sealed class ChoirContext
     private readonly Dictionary<string, SourceFile> _sourceFilesByCanonicalPath = [];
 
     public ChoirTarget Target { get; }
+    public ChoirAbi Abi { get; }
     public bool UseColor { get; }
     public DiagnosticWriter Diag
     {
@@ -236,9 +267,10 @@ public sealed class ChoirContext
     public List<string> LibraryDirectories { get; set; } = [];
     public TypeStorage Types { get; }
 
-    public ChoirContext(DiagnosticWriter diag, ChoirTarget target, bool useColor)
+    public ChoirContext(DiagnosticWriter diag, ChoirTarget target, ChoirAbi abi, bool useColor)
     {
         Target = target;
+        Abi = abi;
         UseColor = useColor;
         Diag = diag;
         Types = new(this);

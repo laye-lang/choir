@@ -16,6 +16,7 @@ internal static class SerializerConstants
     public const string FileChunkName = "File";
     public const string TypeChunkName = "Type";
     public const string DeclChunkName = "Decl";
+    public const string CodeChunkName = "Code";
 
     public const char FunctionSigil = 'F';
     public const char StructSigil = 'S';

@@ -7,6 +7,14 @@ public sealed class SemaStmtExpr(SemaExpr expr) : SemaStmt(expr.Location)
     public override IEnumerable<BaseSemaNode> Children { get; } = [expr];
 }
 
+public sealed class SemaStmtAssign(SemaExpr target, SemaExpr value)
+    : SemaStmt(target.Location)
+{
+    public SemaExpr Target { get; } = target;
+    public SemaExpr Value { get; } = value;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [target, value];
+}
+
 public sealed class SemaStmtCompound(Location location, IReadOnlyList<SemaStmt> statements)
     : SemaStmt(location)
 {

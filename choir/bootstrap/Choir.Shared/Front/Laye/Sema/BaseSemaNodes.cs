@@ -25,6 +25,19 @@ public enum ValueCategory
     LValue,
 }
 
+public static class ValueCategoryExtensions
+{
+    public static string ToHumanString(this ValueCategory vc, bool includeArticle = false)
+    {
+        switch (vc)
+        {
+            default: throw new UnreachableException();
+            case ValueCategory.LValue: return includeArticle ? "an l-value" : "l-value";
+            case ValueCategory.RValue: return includeArticle ? "an r-value" : "r-value";
+        }
+    }
+}
+
 /// Bitmask that indicates whether a node is dependent.
 ///
 /// A node is *type-dependent* if its type depends on a template
@@ -153,8 +166,8 @@ public abstract class SemaType : BaseSemaNode
     public override string ToString() => ToDebugString(Colors.Off);
     public abstract string ToDebugString(Colors colors);
 
-    public override bool Equals(BaseSemaNode? other) => other is SemaType otherType && TypeEquals(otherType, TypeComparison.WithQualifiers);
-    public abstract bool TypeEquals(SemaType other, TypeComparison comp = TypeComparison.WithQualifiers);
+    public override bool Equals(BaseSemaNode? other) => other is SemaType otherType && TypeEquals(otherType, TypeComparison.WithIdenticalQualifiers);
+    public abstract bool TypeEquals(SemaType other, TypeComparison comp = TypeComparison.WithIdenticalQualifiers);
 
     public virtual SerializedTypeKind SerializedTypeKind { get; } = SerializedTypeKind.Invalid;
     public virtual void Serialize(ModuleSerializer serializer, BinaryWriter writer)
@@ -211,16 +224,17 @@ public abstract class SemaType : BaseSemaNode
 
 public enum TypeComparison
 {
-    WithQualifiers,
+    WithIdenticalQualifiers,
+    WithQualifierConversions,
     TypeOnly,
 }
 
 public abstract class SemaType<T> : SemaType
     where T : SemaType<T>
 {
-    public override bool Equals(BaseSemaNode? other) => other is T otherType && TypeEquals(otherType, TypeComparison.WithQualifiers);
+    public override bool Equals(BaseSemaNode? other) => other is T otherType && TypeEquals(otherType, TypeComparison.WithIdenticalQualifiers);
     public override bool TypeEquals(SemaType other, TypeComparison comp) => other is T otherType && TypeEquals(otherType, comp);
-    public abstract bool TypeEquals(T other, TypeComparison comp = TypeComparison.WithQualifiers);
+    public abstract bool TypeEquals(T other, TypeComparison comp = TypeComparison.WithIdenticalQualifiers);
 }
 
 public sealed class SemaTypeQual(SemaType type, Location location, TypeQualifiers qualifiers = TypeQualifiers.None)
@@ -247,6 +261,7 @@ public sealed class SemaTypeQual(SemaType type, Location location, TypeQualifier
     public bool IsFloat => Type.IsFloat;
 
     public bool IsQualified => Qualifiers != TypeQualifiers.None;
+    public bool IsMutable => Qualifiers.HasFlag(TypeQualifiers.Mutable);
     public SemaTypeQual Unqualified => new(Type, Location);
 
     public SemaTypeQual CanonicalType
@@ -282,8 +297,14 @@ public sealed class SemaTypeQual(SemaType type, Location location, TypeQualifier
 
     public bool TypeEquals(SemaTypeQual other, TypeComparison comp)
     {
-        if (comp == TypeComparison.WithQualifiers && Qualifiers != other.Qualifiers)
+        if (comp == TypeComparison.WithIdenticalQualifiers && Qualifiers != other.Qualifiers)
             return false;
+
+        if (comp == TypeComparison.WithQualifierConversions)
+        {
+            if (!IsMutable && other.IsMutable)
+                return false;
+        }
 
         return Type.TypeEquals(other.Type, comp);
     }

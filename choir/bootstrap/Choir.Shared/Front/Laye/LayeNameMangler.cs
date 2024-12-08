@@ -146,6 +146,13 @@ public sealed class LayeNameMangler(ChoirContext context, LayeModule module)
                     case BuiltinTypeKind.FFILongDouble: builder.Append("CD"); break;
                 }
             } break;
+
+            case SemaTypeStruct typeStruct:
+            {
+                string mangledStructName = GetMangledName(typeStruct.DeclStruct);
+                builder.Append('U');
+                builder.Append(mangledStructName.AsSpan(NamePrefix.Length));
+            } break;
         }
     }
 }

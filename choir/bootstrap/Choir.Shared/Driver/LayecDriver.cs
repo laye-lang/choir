@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 using Choir.CommandLine;
 using Choir.Front.Laye;
@@ -89,7 +90,9 @@ Options:
     {
         ProgramName = programName;
         Options = options;
-        Context = new(diag, ChoirTarget.X86_64, options.OutputColoring)
+
+        var abi = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ChoirAbi.WindowxX64 : ChoirAbi.SysV;
+        Context = new(diag, ChoirTarget.X86_64, abi, options.OutputColoring)
         {
             EmitVerboseLogs = options.ShowVerboseOutput,
             OmitSourceTextInModuleBinary = options.OmitSourceTextInModuleBinary,

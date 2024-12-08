@@ -7,8 +7,44 @@ using LLVMSharp.Interop;
 
 namespace Choir.Front.Laye.Codegen;
 
+internal enum ValueClass
+{
+    NoClass,
+    Integer,
+    Sse,
+    SseUp,
+    X87,
+    X87Up,
+    ComplexX87,
+    // NOTE(local): might need to add a separate memory class depending on how the code
+    // generator is able to handle Laye's const ref semantics
+    Memory,
+}
+
 public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 {
+    private record class ParameterInfo
+    {
+        public LLVMValueRef Value { get; set; }
+        public (ValueClass Lo, ValueClass Hi) Class { get; set; }
+        public bool IsLayeCCConstRef { get; set; }
+        public bool PassByAddress { get; set; }
+    }
+
+    private record class FunctionInfo
+    {
+        public LLVMValueRef? SretParameter { get; set; }
+        public (ValueClass Lo, ValueClass Hi) ReturnClass { get; set; }
+
+        public Dictionary<SemaDeclParam, ParameterInfo> ParameterInfos { get; } = [];
+
+        public bool IsSret => SretParameter.HasValue;
+
+        public FunctionInfo()
+        {
+        }
+    }
+
     public static LLVMModuleRef GenerateIR(LayeModule module)
     {
         var llvmContext = LLVMContextRef.Create();
@@ -70,12 +106,142 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
     private readonly Dictionary<SemaDeclNamed, LLVMValueRef> _declaredValues = [];
     private readonly Dictionary<SemaDeclNamed, LLVMTypeRef> _declaredTypes = [];
+    private readonly Dictionary<SemaDeclFunction, FunctionInfo> _functionInfos = [];
 
     private SemaDeclFunction? CurrentFunction { get; set; }
     private LLVMValueRef CurrentFunctionValue => CurrentFunction is null ? default : _declaredValues[CurrentFunction];
 
     private int _nameCounter = 0;
     private string NextName(string name = "") => $"{name}{_nameCounter++}";
+
+    private ValueClass Merge(ValueClass accum, ValueClass field)
+    {
+        if (accum == field || field == ValueClass.NoClass)
+            return accum;
+        else if (field == ValueClass.Memory)
+            return ValueClass.Memory;
+        else if (accum == ValueClass.NoClass)
+            return field;
+        else if (accum == ValueClass.Integer || field == ValueClass.Integer)
+            return ValueClass.Integer;
+        // NOTE(local): not handling X87 et al
+        else return ValueClass.Sse;
+    }
+
+    private void PostMerge(int bitWidth, ref ValueClass lo, ref ValueClass hi)
+    {
+        Context.Assert(bitWidth >= 0, "bit width cannot be less than 0");
+        
+        if (hi == ValueClass.Memory)
+            lo = ValueClass.Memory;
+
+        if (hi == ValueClass.X87Up && lo != ValueClass.X87)
+            lo = ValueClass.Memory;
+
+        if (bitWidth > 128 && (lo != ValueClass.Sse && hi != ValueClass.SseUp))
+            lo = ValueClass.Memory;
+
+        if (hi == ValueClass.SseUp && lo != ValueClass.Sse)
+            lo = ValueClass.Sse;
+    }
+
+    private (ValueClass Lo, ValueClass Hi) Classify(SemaTypeQual typeQual, int offsetBase = 0) => Classify(typeQual.Type, offsetBase);
+    private (ValueClass Lo, ValueClass Hi) Classify(SemaType type, int offsetBase = 0)
+    {
+        ValueClass lo = ValueClass.NoClass, hi = ValueClass.NoClass;
+        Classify(type, offsetBase, ref lo, ref hi);
+        return (lo, hi);
+    }
+
+    private void Classify(SemaTypeQual typeQual, int offsetBase, ref ValueClass lo, ref ValueClass hi) => Classify(typeQual.Type, offsetBase, ref lo, ref hi);
+    private void Classify(SemaType type, int offsetBase, ref ValueClass lo, ref ValueClass hi)
+    {
+        type = type.CanonicalType;
+
+        int bitWidth = type.Size.Bits;
+        lo = ValueClass.NoClass;
+        hi = ValueClass.NoClass;
+
+        if (offsetBase < 64)
+            ClassifyInternal(ref lo, ref hi, ref lo);
+        else ClassifyInternal(ref lo, ref hi, ref hi);
+
+        void ClassifyInternal(ref ValueClass lo, ref ValueClass hi, ref ValueClass current)
+        {
+            if (type.IsVoid)
+                current = ValueClass.NoClass;
+            else if (type.IsInteger)
+            {
+                if (bitWidth <= 64)
+                    current = ValueClass.Integer;
+                else
+                {
+                    lo = ValueClass.Integer;
+                    hi = ValueClass.Integer;
+                }
+                // else pass in memory
+            }
+            else if (type.IsFloat)
+            {
+                if (bitWidth is 16 or 32 or 64)
+                    current = ValueClass.Sse;
+                else if (bitWidth == 128)
+                {
+                    lo = ValueClass.Sse;
+                    hi = ValueClass.SseUp;
+                }
+                else
+                {
+                    Context.Assert(bitWidth == 80, "unsupported float bit width");
+                    lo = ValueClass.X87;
+                    hi = ValueClass.X87Up;
+                }
+            }
+            else if (type is SemaTypePointer or SemaTypeBuffer)
+                current = ValueClass.Integer;
+            else if (type is SemaTypeStruct typeStruct)
+            {
+                // a struct that is more than eight eightbytes just goes in MEMORY
+                if (bitWidth >= 8 * 64)
+                    return;
+
+                // We need to break up structs into "eightbytes".
+                current = ValueClass.NoClass;
+
+                var fieldDecls = typeStruct.DeclStruct.FieldDecls;
+                for (int i = 0, currentOffset = offsetBase; i < fieldDecls.Count; i++)
+                {
+                    var field = fieldDecls[i];
+                    var fieldType = field.FieldType;
+
+                    int fieldOffset = Align.AlignTo(currentOffset, fieldType.Align.Bytes);
+                    currentOffset = fieldOffset + fieldType.Size.Bits;
+
+                    // TODO(local): any place here where bitfields can go? not sure, might need special C handling for stuff like that.
+                    if (0 != (fieldOffset % fieldType.Align.Bits))
+                    {
+                        lo = ValueClass.Memory;
+                        PostMerge(bitWidth, ref lo, ref hi);
+                        return;
+                    }
+
+                    var (fieldLo, fieldHi) = Classify(fieldType, fieldOffset);
+
+                    lo = Merge(lo, fieldLo);
+                    hi = Merge(hi, fieldHi);
+
+                    if (lo == ValueClass.Memory || hi == ValueClass.Memory)
+                        break;
+                }
+
+                PostMerge(bitWidth, ref lo, ref hi);
+            }
+            else
+            {
+                Context.Todo($"Classify {type.GetType().FullName}");
+            }
+        }
+    }
 
     private LLVMTypeRef GenerateType(SemaTypeQual typeQual)
     {
@@ -102,22 +268,97 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     case BuiltinTypeKind.Void: return LLVMTypeRef.Void;
                     case BuiltinTypeKind.Int: return LLVMTypeRef.CreateInt((uint)Context.Target.SizeOfSizeType.Bits);
                     case BuiltinTypeKind.IntSized: return LLVMTypeRef.CreateInt((uint)builtIn.Size.Bits);
+                    case BuiltinTypeKind.FloatSized:
+                    {
+                        switch (builtIn.Size.Bits)
+                        {
+                            default:
+                            {
+                                Context.Diag.ICE(typeQual.Location, $"Unimplemented Laye float size in Choir codegen: {builtIn.ToDebugString(Context.UseColor ? Colors.On : Colors.Off)}");
+                                throw new UnreachableException();
+                            }
+
+                            case 32: return LLVMTypeRef.Float;
+                            case 64: return LLVMTypeRef.Double;
+                            case 80: return LLVMTypeRef.X86FP80;
+                            case 128: return LLVMTypeRef.FP128;
+                        }
+                    }
                 }
             }
 
             case SemaTypeStruct typeStruct: return _declaredTypes[typeStruct.DeclStruct];
 
+            case SemaTypePointer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
             case SemaTypeBuffer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
         }
     }
 
     private void GenerateFunctionDeclaration(SemaDeclFunction function)
     {
+        var cc = function.CallingConvention;
+        Context.Assert(cc is CallingConvention.CDecl or CallingConvention.Laye, $"Unsupported calling convention {cc} in codegen.");
+
         string functionName = Mangler.GetMangledName(function);
-        var paramTypes = function.ParameterDecls.Select(p => GenerateType(p.ParamType)).ToArray();
-        var functionType = LLVMTypeRef.CreateFunction(GenerateType(function.ReturnType), paramTypes);
+
+        var functionInfo = _functionInfos[function] = new()
+        {
+            ReturnClass = Classify(function.ReturnType.Type),
+        };
+
+        bool isSret = false;
+
+        var parameterTypes = new List<LLVMTypeRef>(function.ParameterDecls.Count + 1);
+        if (functionInfo.ReturnClass.Lo == ValueClass.Memory)
+        {
+            var sretType = LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
+            parameterTypes.Add(sretType);
+            isSret = true;
+        }
+
+        for (int i = 0; i < function.ParameterDecls.Count; i++)
+        {
+            var paramDecl = function.ParameterDecls[i];
+
+            var paramInfo = functionInfo.ParameterInfos[function.ParameterDecls[i]] = new()
+            {
+                Class = Classify(paramDecl.ParamType),
+            };
+
+            if (paramInfo.Class.Lo == ValueClass.Memory)
+            {
+                paramInfo.IsLayeCCConstRef = cc == CallingConvention.Laye && !paramDecl.ParamType.IsMutable;
+                paramInfo.PassByAddress = paramInfo.IsLayeCCConstRef || Context.Abi.PassMemoryValuesByAddress;
+            }
+
+            LLVMTypeRef paramType;
+            if (paramInfo.PassByAddress)
+                paramType = LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
+            else paramType = GenerateType(paramDecl.ParamType);
+            parameterTypes.Add(paramType);
+        }
+
+        var returnType = isSret ? LLVMTypeRef.Void : GenerateType(function.ReturnType);
+        var functionType = LLVMTypeRef.CreateFunction(returnType, [.. parameterTypes]);
+
         var f = LlvmModule.AddFunction(functionName, functionType);
         _declaredValues[function] = f;
+
+        if (isSret)
+        {
+            var sretParam = f.GetParam(0);
+            functionInfo.SretParameter = sretParam;
+            sretParam.Name = "sret";
+        }
+
+        int paramStartIndex = isSret ? 1 : 0;
+        for (int i = 0; i < function.ParameterDecls.Count; i++)
+        {
+            var paramDecl = function.ParameterDecls[i];
+            var paramValue = f.GetParam((uint)(i + paramStartIndex));
+            functionInfo.ParameterInfos[paramDecl].Value = paramValue;
+            paramValue.Name = paramDecl.Name;
+        }
     }
 
     private void GenerateFunctionDefinition(SemaDeclFunction function)
@@ -300,6 +541,15 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     EnterBlock(builder, joinBlock);
             } break;
 
+            case SemaStmtAssign assign:
+            {
+                var target = BuildExpr(builder, assign.Target);
+                Context.Assert(target.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Can't assign to non-pointer target.");
+                var value = BuildExpr(builder, assign.Value);
+                var store = builder.BuildStore(value, target);
+                store.SetAlignment((uint)assign.Value.Type.Align.Bytes);
+            } break;
+
             case SemaStmtExpr expr:
             {
                 BuildExpr(builder, expr.Expr);
@@ -386,6 +636,12 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                             Context.Diag.ICE(expr.Location, $"Unimplemented Laye cast kind in Choir builder/codegen: {cast.CastKind}");
                             throw new UnreachableException();
                         }
+
+                        case CastKind.ReferenceToLValue: return BuildExpr(builder, cast.Operand);
+                        case CastKind.LValueToReference: return BuildExpr(builder, cast.Operand);
+                        case CastKind.PointerToLValue: return BuildExpr(builder, cast.Operand);
+                        case CastKind.ReferenceToPointer: return BuildExpr(builder, cast.Operand);
+                        case CastKind.Implicit: return BuildExpr(builder, cast.Operand);
 
                         case CastKind.IntegralSignExtend:
                         {

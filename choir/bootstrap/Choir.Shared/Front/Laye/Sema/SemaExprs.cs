@@ -18,6 +18,9 @@ public enum CastKind
     LValueToRValueBitCast,
     LValueToRValue,
     ReferenceToLValue,
+    LValueToReference,
+    PointerToLValue,
+    ReferenceToPointer,
     Implicit,
     NoOp,
 }
@@ -68,6 +71,19 @@ public sealed class SemaExprFieldStructIndex(Location location, SemaExpr structO
     public int FieldIndex { get; } = fieldIndex;
 }
 
+public abstract class SemaExprUnary(SyntaxToken operatorToken, SemaTypeQual type, SemaExpr operand)
+    : SemaExpr(operatorToken.Location, type)
+{
+    public SyntaxToken OperatorToken { get; } = operatorToken;
+    public SemaExpr Operand { get; } = operand;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
+}
+
+public sealed class SemaExprUnaryUndefined(SyntaxToken operatorToken, SemaExpr operand)
+    : SemaExprUnary(operatorToken, SemaTypePoison.InstanceQualified, operand)
+{
+}
+
 public abstract class SemaExprBinary(SyntaxToken operatorToken, SemaTypeQual type, SemaExpr left, SemaExpr right)
     : SemaExpr(operatorToken.Location, type)
 {
@@ -115,23 +131,6 @@ public sealed class SemaExprCast(Location location, CastKind castKind, SemaTypeQ
     public CastKind CastKind { get; } = castKind;
     public SemaExpr Operand { get; } = operand;
     public override IEnumerable<BaseSemaNode> Children { get; } = [type, operand];
-}
-
-public sealed class SemaExprDereference : SemaExpr
-{
-    public static SemaExprDereference Create(ChoirContext context, Location location, SemaExpr expr)
-    {
-        context.Assert(expr.Type.Type is SemaTypePointer, location, "creating a dereference node requires the expression's type to be a pointer");
-        return new(location, expr, ((SemaTypePointer)expr.Type.Type).ElementType);
-    }
-
-    public SemaExpr Expr { get; }
-
-    private SemaExprDereference(Location location, SemaExpr expr, SemaTypeQual elementType)
-        : base(location, elementType)
-    {
-        Expr = expr;
-    }
 }
 
 public sealed class SemaExprCall(Location location, SemaTypeQual type, SemaExpr callee, SemaExpr[] arguments)
