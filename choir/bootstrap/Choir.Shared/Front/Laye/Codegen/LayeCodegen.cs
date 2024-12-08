@@ -21,24 +21,29 @@ internal enum ValueClass
     Memory,
 }
 
+internal enum ParameterSemantics : byte
+{
+    Value,
+    Reference,
+    ConstReference,
+}
+
 public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 {
     private record class ParameterInfo
     {
         public LLVMValueRef Value { get; set; }
         public (ValueClass Lo, ValueClass Hi) Class { get; set; }
-        public bool IsLayeCCConstRef { get; set; }
-        public bool PassByAddress { get; set; }
+        public ParameterSemantics Semantics { get; set; }
     }
 
     private record class FunctionInfo
     {
-        public LLVMValueRef? SretParameter { get; set; }
-        public (ValueClass Lo, ValueClass Hi) ReturnClass { get; set; }
+        public ParameterInfo? SretParameter { get; set; }
+        public bool IsSret => SretParameter is not null;
 
-        public Dictionary<SemaDeclParam, ParameterInfo> ParameterInfos { get; } = [];
+        public ParameterInfo[] ParameterInfos { get; set; } = [];
 
-        public bool IsSret => SretParameter.HasValue;
 
         public FunctionInfo()
         {
@@ -197,8 +202,13 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     hi = ValueClass.X87Up;
                 }
             }
-            else if (type is SemaTypePointer or SemaTypeBuffer)
+            else if (type is SemaTypePointer or SemaTypeBuffer or SemaTypeReference)
                 current = ValueClass.Integer;
+            else if (type is SemaTypeSlice)
+            {
+                lo = ValueClass.Integer;
+                hi = ValueClass.Integer;
+            }
             else if (type is SemaTypeStruct typeStruct)
             {
                 // a struct that is more than eight eightbytes just goes in MEMORY
@@ -301,62 +311,65 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
         string functionName = Mangler.GetMangledName(function);
 
-        var functionInfo = _functionInfos[function] = new()
-        {
-            ReturnClass = Classify(function.ReturnType.Type),
-        };
-
-        bool isSret = false;
+        var returnClass = Classify(function.ReturnType.Type);
+        var functionInfo = _functionInfos[function] = new();
 
         var parameterTypes = new List<LLVMTypeRef>(function.ParameterDecls.Count + 1);
-        if (functionInfo.ReturnClass.Lo == ValueClass.Memory)
+        if (returnClass.Lo == ValueClass.Memory)
         {
+            functionInfo.SretParameter = new()
+            {
+                Class = returnClass,
+                Semantics = ParameterSemantics.Reference,
+            };
+
             var sretType = LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
             parameterTypes.Add(sretType);
-            isSret = true;
         }
 
+        functionInfo.ParameterInfos = new ParameterInfo[function.ParameterDecls.Count];
         for (int i = 0; i < function.ParameterDecls.Count; i++)
         {
             var paramDecl = function.ParameterDecls[i];
-
-            var paramInfo = functionInfo.ParameterInfos[function.ParameterDecls[i]] = new()
+            var paramInfo = functionInfo.ParameterInfos[i] = new()
             {
                 Class = Classify(paramDecl.ParamType),
             };
 
             if (paramInfo.Class.Lo == ValueClass.Memory)
             {
-                paramInfo.IsLayeCCConstRef = cc == CallingConvention.Laye && !paramDecl.ParamType.IsMutable;
-                paramInfo.PassByAddress = paramInfo.IsLayeCCConstRef || Context.Abi.PassMemoryValuesByAddress;
+                if (cc == CallingConvention.Laye && !paramDecl.ParamType.IsMutable)
+                    paramInfo.Semantics = ParameterSemantics.ConstReference;
+                else if (Context.Abi.PassMemoryValuesByAddress)
+                    paramInfo.Semantics = ParameterSemantics.Reference;
             }
 
             LLVMTypeRef paramType;
-            if (paramInfo.PassByAddress)
+            if (paramInfo.Semantics is ParameterSemantics.Reference or ParameterSemantics.ConstReference)
                 paramType = LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
             else paramType = GenerateType(paramDecl.ParamType);
             parameterTypes.Add(paramType);
         }
 
-        var returnType = isSret ? LLVMTypeRef.Void : GenerateType(function.ReturnType);
+        var returnType = functionInfo.IsSret ? LLVMTypeRef.Void : GenerateType(function.ReturnType);
         var functionType = LLVMTypeRef.CreateFunction(returnType, [.. parameterTypes]);
 
         var f = LlvmModule.AddFunction(functionName, functionType);
         _declaredValues[function] = f;
 
-        if (isSret)
+        if (functionInfo.IsSret)
         {
             var sretParam = f.GetParam(0);
-            functionInfo.SretParameter = sretParam;
+            functionInfo.SretParameter!.Value = sretParam;
             sretParam.Name = "sret";
         }
 
-        int paramStartIndex = isSret ? 1 : 0;
+        int paramStartIndex = functionInfo.IsSret ? 1 : 0;
         for (int i = 0; i < function.ParameterDecls.Count; i++)
         {
             var paramDecl = function.ParameterDecls[i];
             var paramValue = f.GetParam((uint)(i + paramStartIndex));
-            functionInfo.ParameterInfos[paramDecl].Value = paramValue;
+            functionInfo.ParameterInfos[i].Value = paramValue;
             paramValue.Name = paramDecl.Name;
         }
     }
@@ -674,12 +687,70 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 case SemaExprCall call:
                 {
                     Context.Assert(call.Callee.Type.CanonicalType.Type is SemaTypeFunction, "The call expression only works on functions");
-                    var callee = BuildExpr(builder, call.Callee);
-                    var arguments = call.Arguments.Select(e => BuildExpr(builder, e)).ToArray();
-                    var resultType = GenerateType(((SemaTypeFunction)call.Callee.Type.CanonicalType.Type).ReturnType);
 
-                    LLVMTypeRef calleeType = LLVM.GlobalGetValueType(callee);
-                    return builder.BuildCall2(calleeType, callee, arguments, "call");
+                    switch (call.Callee)
+                    {
+                        default:
+                        {
+                            Context.Todo($"Handle calling a callee of kind {call.Callee.GetType().FullName}");
+                            throw new UnreachableException();
+                        }
+
+                        case SemaExprLookup { ReferencedEntity: SemaDeclFunction staticFunction }:
+                        {
+                            var functionInfo = _functionInfos[staticFunction];
+
+                            // no need to BuildExpr when I can look it up manually right now
+                            var callee = _declaredValues[staticFunction];
+
+                            int argumentOffset = functionInfo.IsSret ? 1 : 0;
+                            var arguments = new LLVMValueRef[call.Arguments.Count + argumentOffset];
+
+                            for (int i = 0; i < call.Arguments.Count; i++)
+                            {
+                                var argumentValue = BuildExpr(builder, call.Arguments[i]);
+                                switch (functionInfo.ParameterInfos[i].Semantics)
+                                {
+                                    case ParameterSemantics.Value: break;
+
+                                    case ParameterSemantics.Reference:
+                                    case ParameterSemantics.ConstReference:
+                                    {
+                                        var argumentAlloca = builder.BuildAlloca(GenerateType(call.Arguments[i].Type), $"{staticFunction.ParameterDecls[i].Name}.argref.storage");
+                                        builder.BuildStore(argumentValue, argumentAlloca);
+                                        argumentValue = argumentAlloca;
+                                    } break;
+                                }
+
+                                arguments[argumentOffset + i] = argumentValue;
+                            }
+
+                            var functionReturnType = GenerateType(staticFunction.ReturnType);
+
+                            LLVMTypeRef resultType;
+                            LLVMValueRef sretAlloca = default;
+
+                            if (functionInfo.IsSret)
+                            {
+                                resultType = LLVMTypeRef.Void;
+                                sretAlloca = builder.BuildAlloca(functionReturnType, "sret.storage");
+                                arguments[0] = sretAlloca;
+                            }
+                            else resultType = functionReturnType;
+
+                            LLVMTypeRef calleeType = LLVM.GlobalGetValueType(callee);
+                            string callValueName = resultType.Kind == LLVMTypeKind.LLVMVoidTypeKind ? "" : "call";
+                            var callValue = builder.BuildCall2(calleeType, callee, arguments, callValueName);
+
+                            if (functionInfo.IsSret)
+                            {
+                                var sretLoad = builder.BuildLoad2(functionReturnType, sretAlloca);
+                                sretLoad.SetAlignment((uint)staticFunction.ReturnType.Align.Bytes);
+                                return sretLoad;
+                            }
+                            else return callValue;
+                        }
+                    }
                 }
 
                 case SemaExprOverloadSet:

@@ -1,11 +1,11 @@
 struct my_big_struct {
     i64 foo;
     i64 bar;
-    f32 baz;
-    f32 qux;
+    i64 baz;
+    i64 qux;
 }
 
-my_big_struct get_my_big_struct(i64 foo, i64 bar, f32 baz, f32 qux);
+my_big_struct get_my_big_struct(i64 foo, i64 bar, i64 baz, i64 qux);
 
 // The calling convention is "laye" by default
 // On Windows x64:
@@ -22,3 +22,8 @@ my_big_struct get_my_big_struct(i64 foo, i64 bar, f32 baz, f32 qux);
 //     my_big_struct mbs = get_my_big_struct(6, 9, 42, 45.0);
 //     return cast(int) (mbs.bar - mbs.foo) - cast(int) (mbs.qux - mbs.baz);
 // }
+
+int main() {
+    my_big_struct mbs = get_my_big_struct(6, 9, 42, 45);
+    return 0;
+}
