@@ -1,0 +1,7 @@
+data $str = { byte "Hello, hunter!", byte 0 }
+
+func $main() word
+:start
+    %status word = call $puts($str long)
+    ret 0
+end

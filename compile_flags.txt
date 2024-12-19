@@ -1,0 +1,11 @@
+-std=c99
+-pedantic
+-pedantic-errors
+-Werror=return-type
+-Isrc/ccly/include
+-Isrc/choir/include
+-Isrc/kos/include
+-Isrc/laye/include
+-Isrc/lyir/include
+-D__USE_POSIX
+-D_XOPEN_SOURCE=600

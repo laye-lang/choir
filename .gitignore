@@ -1,12 +1,24 @@
-bin/
-obj/
+# Dotfiles
 .vs/
 .vscode/
+
+# Build system binaries
+nob
+nob.old
+nob.exe
+nob.exe.old
+
+# Output folders and files
+bin/
+obj/
+out/
+lyirc
 *.exe
+*.pdb
 *.o
 *.obj
+*.mod
 *.lib
 *.so
 *.so.*
 *.a
-*.mod
