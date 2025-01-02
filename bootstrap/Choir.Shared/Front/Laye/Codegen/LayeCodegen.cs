@@ -276,6 +276,8 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
                     case BuiltinTypeKind.NoReturn:
                     case BuiltinTypeKind.Void: return LLVMTypeRef.Void;
+                    case BuiltinTypeKind.Bool: return LLVMTypeRef.Int8;
+                    case BuiltinTypeKind.BoolSized: return LLVMTypeRef.CreateInt((uint)builtIn.Size.Bits);
                     case BuiltinTypeKind.Int: return LLVMTypeRef.CreateInt((uint)Context.Target.SizeOfSizeType.Bits);
                     case BuiltinTypeKind.IntSized: return LLVMTypeRef.CreateInt((uint)builtIn.Size.Bits);
                     case BuiltinTypeKind.FloatSized:
@@ -526,6 +528,8 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     EnterBlock(builder, conditionBlock);
                     var condition = BuildExpr(builder, @if.Conditions[i].Condition);
 
+                    // ensure condition is *always* i1
+                    condition = builder.BuildTrunc(condition, LLVMTypeRef.Int1, "conv2i1");
                     builder.BuildCondBr(condition, passBlock, failBlock);
 
                     EnterBlock(builder, passBlock);
@@ -584,7 +588,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
                 case SemaExprLiteralBool literalBool:
                 {
-                    var type = LLVMTypeRef.Int1;
+                    var type = GenerateType(expr.Type);
                     return LLVMValueRef.CreateConstInt(type, literalBool.LiteralValue ? 1ul : 0ul, false);
                 }
 
