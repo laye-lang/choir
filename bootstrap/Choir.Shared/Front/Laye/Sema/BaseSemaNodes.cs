@@ -4,11 +4,19 @@ using Choir.CommandLine;
 
 namespace Choir.Front.Laye.Sema;
 
+public enum CallingConvention
+{
+    CDecl,
+    Laye,
+    StdCall,
+    FastCall,
+}
+
 public enum Linkage
 {
     Internal,
-    Exported,
     Imported,
+    Exported,
     ReExported,
 }
 
@@ -111,14 +119,6 @@ public enum ExprDependence
     // the node contains an error.
     Error = 1 << 7,
     ErrorDependent = Instantiation | Error,
-}
-
-public enum CallingConvention
-{
-    CDecl,
-    Laye,
-    StdCall,
-    FastCall,
 }
 
 public abstract class BaseSemaNode

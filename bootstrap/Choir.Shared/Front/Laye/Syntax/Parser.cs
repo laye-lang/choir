@@ -1409,10 +1409,10 @@ public partial class Parser(SourceFile sourceFile)
 
             // mut applies to any type any time
             case TokenKind.Mut when primary.CanBeType:
-            // `type**`, `type*&`, `type&&` and `type&*` are always pointer/reference types
-            case TokenKind.Star or TokenKind.Ampersand when PeekAt(1, TokenKind.Star, TokenKind.Ampersand) && primary.CanBeType:
-            // `type* mut` and `type& mut` are always pointer/reference types
-            case TokenKind.Star or TokenKind.Ampersand when PeekAt(1, TokenKind.Mut) && primary.CanBeType:
+            // `type**`is always a pointer type
+            case TokenKind.Star when PeekAt(1, TokenKind.Star) && primary.CanBeType:
+            // `type* mut` is always a pointer type
+            case TokenKind.Star when PeekAt(1, TokenKind.Mut) && primary.CanBeType:
             // `type[*]` ~~(and `type[*:`)~~ are always buffer types
             case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind is TokenKind.CloseBracket /* or TokenKind.Colon */ && primary.CanBeType:
                 return ParseTypeContinuation(primary);
@@ -1781,7 +1781,7 @@ public partial class Parser(SourceFile sourceFile)
 
             SyntaxNode? rhs = null;
             if ((parseContext == ExprParseContext.CheckForDeclarations || parseContext == ExprParseContext.ForLoopInitializer) &&
-                tokenOperator.Kind is TokenKind.Star or TokenKind.Ampersand &&
+                tokenOperator.Kind is TokenKind.Star &&
                 At(TokenKind.Identifier, TokenKind.Operator) &&
                 lhs.CanBeType)
             {

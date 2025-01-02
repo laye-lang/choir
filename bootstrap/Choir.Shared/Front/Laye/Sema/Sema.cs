@@ -5,8 +5,6 @@ using System.Numerics;
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
 
-using Microsoft.VisualBasic.FileIO;
-
 namespace Choir.Front.Laye.Sema;
 
 #pragma warning disable CA1822 // Mark members as static
@@ -1045,18 +1043,20 @@ public partial class Sema
     private SemaExpr AnalyseUnaryPrefix(SyntaxExprUnaryPrefix unary, SemaTypeQual? typeHint = null)
     {
         var operand = AnalyseExpr(unary.Operand);
-        operand = LValueToRValue(operand);
-
         switch (unary.TokenOperator.Kind)
         {
-            default: return UndefinedOperator();
+            default:
+            {
+                operand = LValueToRValue(operand);
+                return UndefinedOperator();
+            }
 
             case TokenKind.Ampersand:
             {
                 if (!operand.IsLValue)
                 {
                     Context.Diag.Error(unary.TokenOperator.Location, $"Cannot take the address of {operand.ValueCategory.ToHumanString(includeArticle: true)}.");
-                    return UndefinedOperator();
+                    return UndefinedOperator(false);
                 }
 
                 return new SemaExprCast(operand.Location, CastKind.LValueToReference,
@@ -1066,6 +1066,7 @@ public partial class Sema
 
             case TokenKind.Star:
             {
+                operand = LValueToRValue(operand);
                 if (operand.Type.Type is SemaTypePointer typePtr)
                 {
                     return new SemaExprCast(unary.TokenOperator.Location, CastKind.PointerToLValue, typePtr.ElementType, operand)
@@ -1077,14 +1078,15 @@ public partial class Sema
                 else
                 {
                     Context.Diag.Error(unary.TokenOperator.Location, $"Cannot dereference a value of type {operand.Type.ToDebugString(Colors)}.");
-                    return UndefinedOperator();
+                    return UndefinedOperator(false);
                 }
             }
         }
 
-        SemaExprUnary UndefinedOperator()
+        SemaExprUnary UndefinedOperator(bool reportError = true)
         {
-            Context.Diag.Error(unary.Location, $"Unary operator '{unary.TokenOperator.Location.Span(Context)}' is not defined for operand {operand.Type.ToDebugString(Colors)}.");
+            if (reportError)
+                Context.Diag.Error(unary.Location, $"Unary operator '{unary.TokenOperator.Location.Span(Context)}' is not defined for operand {operand.Type.ToDebugString(Colors)}.");
             return new SemaExprUnaryUndefined(unary.TokenOperator, operand);
         }
     }
