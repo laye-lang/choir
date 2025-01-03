@@ -287,21 +287,25 @@ public sealed class SemaDeclStruct(Location location, string name)
         }
     }
 
-    public bool TryLookupField(string fieldName, [NotNullWhen(true)] out SemaDeclField? declField, out int fieldIndex)
+    public bool TryLookupField(string fieldName, [NotNullWhen(true)] out SemaDeclField? declField, out Size fieldOffset)
     {
+        fieldOffset = Size.FromBytes(0);
+        var currentAlignment = Align.ByteAligned;
 
         for (int i = 0; i < FieldDecls.Count; i++)
         {
+            fieldOffset = fieldOffset.AlignedTo(currentAlignment);
             if (FieldDecls[i].Name == fieldName)
             {
                 declField = FieldDecls[i];
-                fieldIndex = i;
                 return true;
             }
+
+            currentAlignment = Align.Max(currentAlignment, FieldDecls[i].FieldType.Align);
         }
 
         declField = null;
-        fieldIndex = -1;
+        fieldOffset = Size.FromBytes(-1);
         return false;
     }
 }

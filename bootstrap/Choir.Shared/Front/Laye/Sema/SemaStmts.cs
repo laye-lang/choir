@@ -1,5 +1,7 @@
 namespace Choir.Front.Laye.Sema;
 
+public sealed class SemaStmtXyzzy(Location location) : SemaStmt(location);
+
 public sealed class SemaStmtExpr(SemaExpr expr) : SemaStmt(expr.Location)
 {
     public SemaExpr Expr { get; } = expr;

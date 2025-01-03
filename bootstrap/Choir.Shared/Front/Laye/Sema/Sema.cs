@@ -635,6 +635,8 @@ public partial class Sema
                 return semaNode;
             }
 
+            case SyntaxStmtXyzzy: return new SemaStmtXyzzy(stmt.Location);
+
             case SyntaxCompound stmtCompound:
             {
                 using var _ = EnterScope(!inheritCurrentScope);
@@ -1263,7 +1265,7 @@ public partial class Sema
                 }
 
                 var structDecl = typeStruct.DeclStruct;
-                if (!structDecl.TryLookupField(fieldName, out var declField, out int fieldIndex))
+                if (!structDecl.TryLookupField(fieldName, out var declField, out Size fieldOffset))
                 {
                     Context.Diag.Error(field.Operand.Location, $"No such field '{fieldName}' on type {typeStruct.ToDebugString(Colors)}.");
                     return new SemaExprFieldBadIndex(field.Location, operand, fieldName)
@@ -1272,7 +1274,7 @@ public partial class Sema
                     };
                 }
 
-                return new SemaExprFieldStructIndex(field.Location, operand, declField, fieldIndex)
+                return new SemaExprFieldStructIndex(field.Location, operand, declField, fieldOffset)
                 {
                     ValueCategory = ValueCategory.LValue,
                 };

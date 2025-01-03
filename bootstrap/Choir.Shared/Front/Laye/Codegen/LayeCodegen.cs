@@ -59,11 +59,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
         void GenerateDeclarations(IEnumerable<SemaDeclNamed> decls)
         {
-            foreach (var decl in decls)
-            {
-                if (decl is SemaDeclStruct @struct)
-                    cg.GenerateStructDeclaration(@struct);
-            }
+            //foreach (var decl in decls)
+            //{
+            //    if (decl is SemaDeclStruct @struct)
+            //        cg.GenerateStructDeclaration(@struct);
+            //}
 
             foreach (var decl in decls)
             {
@@ -74,11 +74,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
         void GenerateDefinitions(IEnumerable<SemaDeclNamed> decls)
         {
-            foreach (var decl in module.Declarations)
-            {
-                if (decl is SemaDeclStruct @struct)
-                    cg.GenerateStructDefinition(@struct);
-            }
+            //foreach (var decl in module.Declarations)
+            //{
+            //    if (decl is SemaDeclStruct @struct)
+            //        cg.GenerateStructDefinition(@struct);
+            //}
 
             foreach (var decl in module.Declarations)
             {
@@ -299,7 +299,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 }
             }
 
-            case SemaTypeStruct typeStruct: return _declaredTypes[typeStruct.DeclStruct];
+            case SemaTypeStruct typeStruct:
+            {
+                return LLVMTypeRef.CreateArray(LLVMTypeRef.Int8, (uint)type.Size.Bytes);
+                //return _declaredTypes[typeStruct.DeclStruct];
+            }
 
             case SemaTypePointer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
             case SemaTypeBuffer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
@@ -410,12 +414,14 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
     private void GenerateStructDeclaration(SemaDeclStruct @struct)
     {
+        return;
         var structType = LlvmContext.CreateNamedStruct(Mangler.GetMangledName(@struct));
         _declaredTypes[@struct] = structType;
     }
 
     private void GenerateStructDefinition(SemaDeclStruct @struct)
     {
+        return;
         var structType = _declaredTypes[@struct];
         var fieldTypes = @struct.FieldDecls.Select(f => GenerateType(f.FieldType)).ToArray();
         structType.StructSetBody(fieldTypes, false);
@@ -463,15 +469,13 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 }
                 else
                 {
-                    unsafe
-                    {
-                        LLVM.BuildMemSet(builder, storage,
-                            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, 0),
-                            type.SizeOf,
-                            (uint)binding.BindingType.Align.Bytes
-                        );
-                    }
+                    builder.BuildMemSet(storage, LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, 0), binding.BindingType.Size, binding.BindingType.Align);
                 }
+            } break;
+
+            case SemaStmtXyzzy:
+            {
+                // Nothing happens.
             } break;
 
             case SemaStmtCompound compound:
@@ -622,8 +626,10 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 {
                     var lvalue = BuildExpr(builder, structField.Operand);
                     Context.Assert(lvalue.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Struct field lookup requires an lvalue, which will be of type `ptr`.");
-                    var structType = GenerateType(structField.Operand.Type);
-                    return builder.BuildStructGEP2(structType, lvalue, (uint)structField.FieldIndex, "fieldidx");
+
+                    var ptradd = builder.BuildPtrAdd(lvalue, structField.FieldOffset, "field.ptradd");
+                    ptradd.Alignment = (uint)structField.Type.Align.Bytes;
+                    return ptradd;
                 }
 
                 case SemaExprBinaryBuiltIn binaryBuiltIn:

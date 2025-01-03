@@ -66,10 +66,11 @@ public sealed class SemaExprFieldBadIndex(Location location, SemaExpr operand, s
 {
 }
 
-public sealed class SemaExprFieldStructIndex(Location location, SemaExpr structOperand, SemaDeclField field, int fieldIndex)
+public sealed class SemaExprFieldStructIndex(Location location, SemaExpr structOperand, SemaDeclField field, Size fieldOffset)
     : SemaExprField(location, structOperand, field.Name, field.FieldType)
 {
-    public int FieldIndex { get; } = fieldIndex;
+    public Size FieldOffset { get; } = fieldOffset;
+    public Align FieldAlign { get; } = field.FieldType.Align;
 }
 
 public abstract class SemaExprUnary(SyntaxToken operatorToken, SemaTypeQual type, SemaExpr operand)
