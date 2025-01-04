@@ -145,22 +145,22 @@ public class SyntaxConstructorInit(Location location, SyntaxNode value)
     : SyntaxNode(location)
 {
     public SyntaxNode Value { get; } = value;
-    public override IEnumerable<SyntaxNode> Children
-    {
-        get
-        {
-            yield return Value;
-        }
-    }
+    public override IEnumerable<SyntaxNode> Children { get; } = [value];
 }
 
-public sealed class SyntaxExprConstructor(SyntaxToken tokenOpenBrace, IReadOnlyList<SyntaxConstructorInit> inits, SyntaxToken tokenCloseBrace)
-    : SyntaxNode(tokenOpenBrace.Location)
+public sealed class SyntaxConstructorInitDesignated(Location location, SyntaxNode designator, SyntaxNode value)
+    : SyntaxConstructorInit(location, value)
 {
-    public SyntaxToken TokenOpenBrace { get; } = tokenOpenBrace;
+    public SyntaxNode Designator { get; } = designator;
+    public override IEnumerable<SyntaxNode> Children { get; } = [designator, value];
+}
+
+public sealed class SyntaxExprConstructor(SyntaxNode type, IReadOnlyList<SyntaxConstructorInit> inits)
+    : SyntaxNode(type.Location)
+{
+    public SyntaxNode Type { get; } = type;
     public IReadOnlyList<SyntaxConstructorInit> Inits { get; } = inits;
-    public SyntaxToken TokenCloseBrace { get; } = tokenCloseBrace;
-    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOpenBrace, ..inits, tokenCloseBrace];
+    public override IEnumerable<SyntaxNode> Children { get; } = [type, ..inits];
 }
 
 public sealed class SyntaxExprNew(SyntaxToken tokenNew, IReadOnlyList<SyntaxNode> @params, SyntaxNode type, IReadOnlyList<SyntaxConstructorInit> inits)

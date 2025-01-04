@@ -67,3 +67,10 @@ public sealed class SemaStmtIf(IReadOnlyList<SemaStmtIfPrimary> conditions, Sema
         }
     }
 }
+
+public sealed class SemaStmtDiscard(Location location, SemaExpr expr)
+    : SemaStmt(location)
+{
+    public SemaExpr Expr { get; } = expr;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [expr];
+}

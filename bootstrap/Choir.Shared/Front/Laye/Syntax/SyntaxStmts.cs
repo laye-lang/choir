@@ -237,6 +237,14 @@ public sealed class SyntaxStmtDelete(SyntaxToken tokenDelete, SyntaxNode expr)
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenDelete, expr];
 }
 
+public sealed class SyntaxStmtDiscard(SyntaxToken tokenDiscard, SyntaxNode expr)
+    : SyntaxNode(tokenDiscard.Location)
+{
+    public SyntaxToken TokenDiscard { get; } = tokenDiscard;
+    public SyntaxNode Expr { get; } = expr;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenDiscard, expr];
+}
+
 public sealed class SyntaxStmtDoLoop(SyntaxToken tokenDo, SyntaxNode body, SyntaxToken tokenWhile, SyntaxNode condition)
     : SyntaxNode(tokenDo.Location)
 {

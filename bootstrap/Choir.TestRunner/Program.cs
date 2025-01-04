@@ -4,6 +4,8 @@ using System.Text;
 
 using Choir.Driver;
 
+using ZstdSharp.Unsafe;
+
 namespace Choir.TestRunner;
 
 public enum TestStatus
@@ -43,6 +45,9 @@ public sealed record class ExecTestInstance(DirectoryInfo LibDir, FileInfo Sourc
         var outputDir = new DirectoryInfo(Path.GetTempPath()).ChildDirectory("laye-test-suite");
         if (!outputDir.Exists) outputDir.Create();
 
+        var rt0LibFile = LibDir.ChildFile("rt0.mod");
+        Debug.Assert(rt0LibFile.Exists);
+
         var coreLibFile = LibDir.ChildFile("core.mod");
         Debug.Assert(coreLibFile.Exists);
 
@@ -55,6 +60,7 @@ public sealed record class ExecTestInstance(DirectoryInfo LibDir, FileInfo Sourc
 
             exitCode = LayecDriver.RunWithArgs(diag, [
                 SourceFile.FullName,
+                rt0LibFile.FullName,
                 coreLibFile.FullName,
                 "-o", outputFile.FullName,
             ]);
@@ -68,6 +74,7 @@ public sealed record class ExecTestInstance(DirectoryInfo LibDir, FileInfo Sourc
             var linkProcess = Process.Start("clang", [
                 "-o", executableFile.FullName,
                 outputFile.FullName,
+                rt0LibFile.FullName,
                 coreLibFile.FullName,
             ]);
             linkProcess.WaitForExit();
@@ -107,25 +114,39 @@ internal static class Program
     const string LAYE_LIB_DIR_PATH = "lib/laye";
     const string LAYE_TEST_DIR_PATH = "test/laye";
 
-    static int BuildCoreLibrary(DirectoryInfo libDir)
+    static int BuildCoreLibraries(DirectoryInfo libDir)
     {
-        var diag = new StreamingDiagnosticWriter(writer: Console.Error, useColor: !Console.IsErrorRedirected)
+        static StreamingDiagnosticWriter CreateDiag()
         {
-            OnICE = () => throw new TestRunnerInternalCompilerError(),
-        };
+            return new StreamingDiagnosticWriter(writer: Console.Error, useColor: !Console.IsErrorRedirected)
+            {
+                OnICE = () => throw new TestRunnerInternalCompilerError(),
+            };
+        }
 
+        int exitCode;
         try
         {
-            return LayecDriver.RunWithArgs(diag, [
+            exitCode = LayecDriver.RunWithArgs(CreateDiag(), [
+                "--no-corelib",
+                "-o", libDir.ChildFile("rt0.mod").FullName,
+                libDir.ChildDirectory("rt0").ChildFile("entry.laye").FullName
+            ]);
+            if (0 != exitCode) return exitCode;
+
+            exitCode = LayecDriver.RunWithArgs(CreateDiag(), [
                 "--no-corelib",
                 "-o", libDir.ChildFile("core.mod").FullName,
-                libDir.ChildDirectory("core").ChildFile("entry.laye").FullName
+                libDir.ChildDirectory("core").ChildFile("assert.laye").FullName
             ]);
+            if (0 != exitCode) return exitCode;
         }
         catch (TestRunnerInternalCompilerError)
         {
             return 1;
         }
+
+        return 0;
     }
 
     public static int Main(string[] args)
@@ -153,7 +174,7 @@ internal static class Program
 
         TestLog.Info("Building core library...");
 
-        int buildCoreExitCode = BuildCoreLibrary(layeLibDir);
+        int buildCoreExitCode = BuildCoreLibraries(layeLibDir);
         if (buildCoreExitCode != 0)
         {
             TestLog.Error($"Could not build the Laye core library.");

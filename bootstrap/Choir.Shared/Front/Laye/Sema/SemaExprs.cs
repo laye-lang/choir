@@ -2,6 +2,8 @@ using System.Numerics;
 
 using Choir.Front.Laye.Syntax;
 
+using LLVMSharp;
+
 namespace Choir.Front.Laye.Sema;
 
 public enum CastKind
@@ -141,4 +143,27 @@ public sealed class SemaExprCall(Location location, SemaTypeQual type, SemaExpr 
     public SemaExpr Callee { get; } = callee;
     public IReadOnlyList<SemaExpr> Arguments { get; } = arguments;
     public override IEnumerable<BaseSemaNode> Children { get; } = [callee, ..arguments];
+}
+
+public sealed class SemaConstructorInitializer(Location location, SemaExpr value, Size offset)
+    : SemaExpr(location, value.Type)
+{
+    public SemaExpr Value { get; } = value;
+    public Size Offset { get; } = offset;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [value];
+}
+
+public sealed class SemaExprConstructor(Location location, SemaTypeQual type, IReadOnlyList<SemaConstructorInitializer> inits)
+    : SemaExpr(location, type)
+{
+    public IReadOnlyList<SemaConstructorInitializer> Inits { get; } = inits;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [type, ..inits];
+}
+
+public sealed class SemaExprNew(Location location, SemaTypeQual type, IReadOnlyList<SemaExpr> @params, IReadOnlyList<SemaConstructorInitializer> inits)
+    : SemaExpr(location, type)
+{
+    public IReadOnlyList<SemaExpr> Params { get; } = @params;
+    public IReadOnlyList<SemaConstructorInitializer> Inits { get; } = inits;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [type, .. inits];
 }

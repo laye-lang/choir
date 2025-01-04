@@ -80,6 +80,8 @@ public readonly struct Size : IEquatable<Size>, IComparable<Size>
     public static Size FromBits(int bits) => new(bits);
     public static Size FromBytes(int bytes) => new(bytes * 8);
 
+    public static Size Max(Size lhs, Size rhs) => new(Math.Max(lhs._value, rhs._value));
+
     public static bool operator ==(Size a, Size b) => a.Equals(b);
     public static bool operator !=(Size a, Size b) => !a.Equals(b);
     public static bool operator <=(Size a, Size b) => a.CompareTo(b) <= 0;

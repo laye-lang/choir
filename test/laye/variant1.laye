@@ -1,0 +1,19 @@
+struct foo {
+  i8 a;
+
+  variant bar {
+    i16 b_0;
+    i16 b_1;
+    i16 b_2;
+    i16 b_3;
+  }
+
+  variant baz {
+    i32 c;
+  }
+}
+
+int main() {
+    foo f;
+    return 0;
+}

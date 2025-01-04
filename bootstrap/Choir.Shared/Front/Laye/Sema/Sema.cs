@@ -555,7 +555,8 @@ public partial class Sema
                 Context.Assert(semaNodeCheck is SemaDeclStruct, declStruct.Location, "struct declaration did not have sema node of struct type");
                 var semaNode = (SemaDeclStruct)semaNodeCheck;
 
-                return AnalyseStruct(declStruct, semaNode);
+                AnalyseStruct(declStruct, semaNode);
+                return semaNode;
             }
 
             case SyntaxDeclEnum declEnum:
@@ -711,10 +712,17 @@ public partial class Sema
                 return new SemaStmtAssign(target, value);
             }
 
+            case SyntaxStmtDiscard stmtDiscard:
+            {
+                var expr = AnalyseExpr(stmtDiscard.Expr);
+                return new SemaStmtDiscard(stmtDiscard.Location, expr);
+            }
+
             case SyntaxStmtExpr stmtExpr:
             {
                 var expr = AnalyseExpr(stmtExpr.Expr);
-                //Discard(expr);
+                if (!expr.Type.IsVoid && !expr.Type.IsNoReturn && !expr.Type.IsPoison)
+                    Context.Diag.Error(stmtExpr.Location, "The result of this expression is implicitly discarded. Use the `discard` keyword to mark this as intentional.");
                 return new SemaStmtExpr(expr);
             }
         }
@@ -733,39 +741,118 @@ public partial class Sema
         return semaNode;
     }
 
-    private SemaDeclStruct AnalyseStruct(SyntaxDeclStruct declStruct, SemaDeclStruct semaNode)
+    private void AnalyseStruct(SyntaxDeclStruct declStruct, SemaDeclStruct semaNode)
     {
+        const int NOT_A_LEAF = -1;
+
+        Size offset = Size.FromBytes(0);
+        Align structAlignment = Align.ByteAligned;
+
         var fieldDecls = new SemaDeclField[declStruct.Fields.Count];
         for (int i = 0; i < declStruct.Fields.Count; i++)
         {
             var syntaxDeclField = declStruct.Fields[i];
-
             var fieldType = AnalyseType(syntaxDeclField.FieldType);
-            var declField = new SemaDeclField(syntaxDeclField.Location, syntaxDeclField.TokenName.TextValue, fieldType);
+
+            offset = offset.AlignedTo(fieldType.Align);
+            structAlignment = Align.Max(structAlignment, fieldType.Align);
+
+            var declField = new SemaDeclField(syntaxDeclField.Location, syntaxDeclField.TokenName.TextValue, fieldType, offset);
+            offset += fieldType.Size;
 
             fieldDecls[i] = declField;
         }
 
+        Size largestSizeWithVariants = offset;
+
         var variantDecls = new SemaDeclStruct[declStruct.Variants.Count];
-        for (int i = 0; i < declStruct.Variants.Count; i++)
+        if (variantDecls.Length != 0)
         {
-            var syntaxDeclVariant = declStruct.Variants[i];
+            Size variantOffset = offset;
 
-            var variantScope = new Scope(semaNode.Scope);
-            var variantNode = new SemaDeclStruct(syntaxDeclVariant.Location, syntaxDeclVariant.TokenName.TextValue)
+            int nLeaves = 0;
+            for (int i = 0; i < declStruct.Variants.Count; i++)
             {
-                ParentStruct = semaNode,
-                Scope = variantScope,
-            };
+                var syntaxDeclVariant = declStruct.Variants[i];
 
-            variantNode = AnalyseStruct(syntaxDeclVariant, variantNode);
-            variantDecls[i] = variantNode;
+                var variantScope = new Scope(semaNode.Scope);
+                var variantNode = new SemaDeclStruct(syntaxDeclVariant.Location, syntaxDeclVariant.TokenName.TextValue)
+                {
+                    ParentStruct = semaNode,
+                    Scope = variantScope,
+                };
+
+                VariantImpl(syntaxDeclVariant, variantNode, variantOffset, ref largestSizeWithVariants, ref structAlignment, ref nLeaves);
+                variantDecls[i] = variantNode;
+            }
         }
 
         semaNode.FieldDecls = fieldDecls;
         semaNode.VariantDecls = variantDecls;
 
-        return semaNode;
+        semaNode.Size = (Size.Max(offset, largestSizeWithVariants)).AlignedTo(structAlignment);
+        semaNode.Align = structAlignment;
+
+        void VariantImpl(SyntaxDeclStruct declStruct, SemaDeclStruct semaNode, Size baseOffset, ref Size largestSizeWithVariants, ref Align structAlignment, ref int nLeaves)
+        {
+            Context.Assert(semaNode.IsVariant, "This should be a variant node.");
+
+            // if this is a leaf variant, mark it and increase the leaf count.
+            if (semaNode.IsLeaf)
+            {
+                // let's never let a tag be 0
+                semaNode.VariantTag = nLeaves + 1;
+                nLeaves += 1;
+            }
+            // in any other case, this is not a leaf variant.
+            else
+            {
+                semaNode.VariantTag = NOT_A_LEAF;
+            }
+
+            Size offset = baseOffset;
+
+            var fieldDecls = new SemaDeclField[declStruct.Fields.Count];
+            for (int i = 0; i < declStruct.Fields.Count; i++)
+            {
+                var syntaxDeclField = declStruct.Fields[i];
+                var fieldType = AnalyseType(syntaxDeclField.FieldType);
+
+                offset = offset.AlignedTo(fieldType.Align);
+                structAlignment = Align.Max(structAlignment, fieldType.Align);
+
+                var declField = new SemaDeclField(syntaxDeclField.Location, syntaxDeclField.TokenName.TextValue, fieldType, offset);
+                offset += fieldType.Size;
+
+                fieldDecls[i] = declField;
+            }
+
+            var variantDecls = new SemaDeclStruct[declStruct.Variants.Count];
+            if (variantDecls.Length != 0)
+            {
+                for (int i = 0; i < declStruct.Variants.Count; i++)
+                {
+                    var syntaxDeclVariant = declStruct.Variants[i];
+
+                    var variantScope = new Scope(semaNode.Scope);
+                    var variantNode = new SemaDeclStruct(syntaxDeclVariant.Location, syntaxDeclVariant.TokenName.TextValue)
+                    {
+                        ParentStruct = semaNode,
+                        Scope = variantScope,
+                    };
+
+                    VariantImpl(syntaxDeclVariant, variantNode, baseOffset, ref largestSizeWithVariants, ref structAlignment, ref nLeaves);
+                    variantDecls[i] = variantNode;
+
+                    structAlignment = Align.Max(structAlignment, variantNode.Align);
+                }
+            }
+
+            semaNode.FieldDecls = fieldDecls;
+            semaNode.VariantDecls = variantDecls;
+
+            largestSizeWithVariants = Size.Max(offset, largestSizeWithVariants);
+        }
     }
 
     private SemaDeclEnum AnalyseEnum(SyntaxDeclEnum declEnum, SemaDeclEnum semaNode)
@@ -1265,7 +1352,7 @@ public partial class Sema
                 }
 
                 var structDecl = typeStruct.DeclStruct;
-                if (!structDecl.TryLookupField(fieldName, out var declField, out Size fieldOffset))
+                if (!structDecl.TryLookupField(fieldName, out var declField))
                 {
                     Context.Diag.Error(field.Operand.Location, $"No such field '{fieldName}' on type {typeStruct.ToDebugString(Colors)}.");
                     return new SemaExprFieldBadIndex(field.Location, operand, fieldName)
@@ -1274,12 +1361,32 @@ public partial class Sema
                     };
                 }
 
-                return new SemaExprFieldStructIndex(field.Location, operand, declField, fieldOffset)
+                return new SemaExprFieldStructIndex(field.Location, operand, declField, declField.Offset)
                 {
                     ValueCategory = ValueCategory.LValue,
                 };
             }
         }
+    }
+
+    public SemaExpr AnalyseConstructor(SyntaxExprConstructor ctor, SemaTypeQual? typeHint = null)
+    {
+        var ctorType = AnalyseType(ctor.Type);
+        var inits = new List<SemaConstructorInitializer>();
+
+        if (ctorType.CanonicalType.Type is SemaTypeStruct ctorStruct)
+        {
+        }
+        else
+        {
+            Context.Diag.Error(ctorType.Location, $"Cannot construct a value of type {ctorType.ToDebugString(Colors)} in this way.");
+
+            // ensure we still report errors for initializers if there are any
+            foreach (var init in ctor.Inits)
+                AnalyseExpr(init.Value);
+        }
+
+        return new SemaExprConstructor(ctor.Location, ctorType, inits);
     }
 
     private bool TryEvaluate(SemaExpr expr, out EvaluatedConstant value)

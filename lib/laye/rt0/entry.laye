@@ -1,4 +1,4 @@
-module core;
+module rt0;
 
 // The system's exit syscall, just in case the program needs access to it.
 export foreign noreturn exit(i32 exit_code);

@@ -253,10 +253,11 @@ public sealed class SemaDeclBinding(Location location, string name)
     }
 }
 
-public sealed class SemaDeclField(Location location, string name, SemaTypeQual fieldType)
+public sealed class SemaDeclField(Location location, string name, SemaTypeQual fieldType, Size offset)
     : SemaDeclNamed(location, name)
 {
     public SemaTypeQual FieldType { get; } = fieldType;
+    public Size Offset { get; } = offset;
 
     public override IEnumerable<BaseSemaNode> Children { get; } = [fieldType];
 }
@@ -271,8 +272,12 @@ public sealed class SemaDeclStruct(Location location, string name)
     public required SemaDeclStruct? ParentStruct { get; init; }
     public required Scope Scope { get; init; }
 
+    public Size Size { get; set; } = Size.FromBytes(0);
+    public Align Align { get; set; } = Align.ByteAligned;
+
     public bool IsVariant => ParentStruct is not null;
     public bool IsLeaf => VariantDecls.Count == 0;
+    public int VariantTag { get; set; } = -1;
     
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -287,25 +292,18 @@ public sealed class SemaDeclStruct(Location location, string name)
         }
     }
 
-    public bool TryLookupField(string fieldName, [NotNullWhen(true)] out SemaDeclField? declField, out Size fieldOffset)
+    public bool TryLookupField(string fieldName, [NotNullWhen(true)] out SemaDeclField? declField)
     {
-        fieldOffset = Size.FromBytes(0);
-        var currentAlignment = Align.ByteAligned;
-
         for (int i = 0; i < FieldDecls.Count; i++)
         {
-            fieldOffset = fieldOffset.AlignedTo(currentAlignment);
             if (FieldDecls[i].Name == fieldName)
             {
                 declField = FieldDecls[i];
                 return true;
             }
-
-            currentAlignment = Align.Max(currentAlignment, FieldDecls[i].FieldType.Align);
         }
 
         declField = null;
-        fieldOffset = Size.FromBytes(-1);
         return false;
     }
 }

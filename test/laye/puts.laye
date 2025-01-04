@@ -3,6 +3,6 @@
 foreign i32 puts(i8[*] s);
 
 int main() {
-    puts("Hello, hunter!");
+    discard puts("Hello, hunter!");
     return 0;
 }

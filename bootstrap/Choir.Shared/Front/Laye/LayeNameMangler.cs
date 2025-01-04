@@ -89,6 +89,13 @@ public sealed class LayeNameMangler(ChoirContext context, LayeModule module)
 
     private void MangleTypeInto(StringBuilder builder, SemaTypeQual typeQual)
     {
+        if (typeQual.IsQualified)
+        {
+            builder.Append('Q');
+            if (typeQual.IsMutable) builder.Append('m');
+            builder.Append('_');
+        }
+
         MangleTypeInto(builder, typeQual.Type);
     }
 
@@ -145,6 +152,18 @@ public sealed class LayeNameMangler(ChoirContext context, LayeModule module)
                     case BuiltinTypeKind.FFIDouble: builder.Append("Cd"); break;
                     case BuiltinTypeKind.FFILongDouble: builder.Append("CD"); break;
                 }
+            } break;
+
+            case SemaTypePointer typePointer:
+            {
+                builder.Append("Xp");
+                MangleTypeInto(builder, typePointer.ElementType);
+            } break;
+
+            case SemaTypeBuffer typeBuffer:
+            {
+                builder.Append("Xb");
+                MangleTypeInto(builder, typeBuffer.ElementType);
             } break;
 
             case SemaTypeStruct typeStruct:

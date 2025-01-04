@@ -34,7 +34,7 @@ Options:
                              default: '<module-name>.mod'
     --emit-llvm              Emit LLVM IR instead of Assembler when compiling with `--compile`.
 
-    --no-corelib             Do not link against the the default Laye core library
+    --no-corelib             Do not link against the the default Laye core libraries
                              This also implies '--no-stdlib'
     --no-stdlib              Do not link against the default Laye standard library
 

@@ -571,6 +571,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 store.SetAlignment((uint)assign.Value.Type.Align.Bytes);
             } break;
 
+            case SemaStmtDiscard expr:
+            {
+                BuildExpr(builder, expr.Expr);
+            } break;
+
             case SemaStmtExpr expr:
             {
                 BuildExpr(builder, expr.Expr);

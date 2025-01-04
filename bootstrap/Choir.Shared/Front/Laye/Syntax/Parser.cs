@@ -831,6 +831,7 @@ public partial class Parser(SourceFile sourceFile)
             case TokenKind.Continue:
             case TokenKind.Defer:
             case TokenKind.Delete:
+            case TokenKind.Discard:
             case TokenKind.Do:
             case TokenKind.For:
             case TokenKind.Goto:
@@ -909,6 +910,14 @@ public partial class Parser(SourceFile sourceFile)
                 var expr = ParseExpr(ExprParseContext.Default);
                 ExpectSemiColon();
                 return new SyntaxStmtDelete(tokenDelete, expr);
+            }
+
+            case TokenKind.Discard:
+            {
+                var tokenDelete = Consume();
+                var expr = ParseExpr(ExprParseContext.Default);
+                ExpectSemiColon();
+                return new SyntaxStmtDiscard(tokenDelete, expr);
             }
 
             case TokenKind.Do:
@@ -1397,8 +1406,16 @@ public partial class Parser(SourceFile sourceFile)
 
     private SyntaxConstructorInit ParseConstructorInit()
     {
+        // TODO(local): array designators
         var exprValue = ParseExpr(ExprParseContext.Default);
-        return new(exprValue.Location, exprValue);
+        if (Consume(TokenKind.Equal))
+        {
+            var designator = exprValue;
+            exprValue = ParseExpr(ExprParseContext.Default);
+            return new SyntaxConstructorInitDesignated(designator.Location, designator, exprValue);
+        }
+
+        return new SyntaxConstructorInit(exprValue.Location, exprValue);
     }
 
     private SyntaxNode ParsePrimaryExprContinuation(ExprParseContext parseContext, SyntaxNode primary)
@@ -1610,6 +1627,14 @@ public partial class Parser(SourceFile sourceFile)
                 if (parseContext == ExprParseContext.Pattern && At(TokenKind.OpenBrace))
                     return ParseStructuredPatternElement(nameref);
 
+                if (Consume(TokenKind.OpenBrace))
+                {
+                    var inits = ParseDelimited(ParseConstructorInit, TokenKind.Comma, "an initializer", true, TokenKind.CloseBrace, TokenKind.SemiColon);
+                    Expect(TokenKind.CloseBrace, "'}'", out var tokenCloseBrace);
+                    var ctor = new SyntaxExprConstructor(nameref, inits);
+                    return ParsePrimaryExprContinuation(parseContext, ctor);
+                }
+
                 return ParsePrimaryExprContinuation(parseContext, nameref);
 
                 SyntaxNode ParseStructuredPatternElement(SyntaxNode? type)
@@ -1671,7 +1696,7 @@ public partial class Parser(SourceFile sourceFile)
                 var type = ParseType();
 
                 IReadOnlyList<SyntaxConstructorInit> inits = [];
-                if (TryAdvance(TokenKind.OpenBrace, out var tokenOpenBrace))
+                if (TryAdvance(TokenKind.OpenBrace))
                 {
                     inits = ParseDelimited(
                         ParseConstructorInit,
@@ -1680,8 +1705,7 @@ public partial class Parser(SourceFile sourceFile)
                         true,
                         TokenKind.CloseBrace, TokenKind.SemiColon
                     );
-                    Expect(TokenKind.CloseBrace, "'}'", out var tokenCloseBrace);
-                    return new SyntaxExprConstructor(tokenOpenBrace, inits, tokenCloseBrace);
+                    Expect(TokenKind.CloseBrace, "'}'");
                 }
 
                 return new SyntaxExprNew(tokenNew, @params, type, inits);
@@ -1749,14 +1773,6 @@ public partial class Parser(SourceFile sourceFile)
             {
                 Advance();
                 return ParseCompound();
-            }
-
-            case TokenKind.OpenBrace:
-            {
-                var tokenOpenBrace = Consume();
-                var inits = ParseDelimited(ParseConstructorInit, TokenKind.Comma, "an initializer", true, TokenKind.CloseBrace, TokenKind.SemiColon);
-                Expect(TokenKind.CloseBrace, "'}'", out var tokenCloseBrace);
-                return new SyntaxExprConstructor(tokenOpenBrace, inits, tokenCloseBrace);
             }
 
             default:
