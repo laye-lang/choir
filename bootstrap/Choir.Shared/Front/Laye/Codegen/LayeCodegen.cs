@@ -3,6 +3,7 @@
 using Choir.CommandLine;
 using Choir.Front.Laye.Sema;
 
+using LLVMSharp;
 using LLVMSharp.Interop;
 
 namespace Choir.Front.Laye.Codegen;
@@ -462,11 +463,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 _declaredValues[binding] = storage;
 
                 if (binding.InitialValue is not null)
-                {
-                    var init = BuildExpr(builder, binding.InitialValue);
-                    var store = builder.BuildStore(init, storage);
-                    store.SetAlignment((uint)binding.BindingType.Align.Bytes);
-                }
+                    BuildExprIntoMemory(builder, binding.InitialValue, storage);
                 else
                 {
                     builder.BuildMemSet(storage, LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, 0), binding.BindingType.Size, binding.BindingType.Align);
@@ -497,6 +494,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
             {
                 var value = BuildExpr(builder, @return.Value);
                 builder.BuildRet(value);
+                // TODO(local): sret transformations, build into memory if necessary
             } break;
 
             case SemaStmtIf @if:
@@ -566,9 +564,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
             {
                 var target = BuildExpr(builder, assign.Target);
                 Context.Assert(target.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Can't assign to non-pointer target.");
-                var value = BuildExpr(builder, assign.Value);
-                var store = builder.BuildStore(value, target);
-                store.SetAlignment((uint)assign.Value.Type.Align.Bytes);
+                BuildExprIntoMemory(builder, assign.Value, target);
             } break;
 
             case SemaStmtDiscard expr:
@@ -583,6 +579,28 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         }
     }
 
+    private void BuildExprIntoMemory(LLVMBuilderRef builder, SemaExpr expr, LLVMValueRef tempAddr)
+    {
+        switch (expr)
+        {
+            case SemaExprConstructor ctor:
+            {
+                foreach (var init in ctor.Inits)
+                {
+                    var storage = builder.BuildPtrAdd(tempAddr, init.Offset, "ctor.fieldinit");
+                    BuildExprIntoMemory(builder, init.Value, storage);
+                }
+            } break;
+
+            default:
+            {
+                LLVMValueRef exprValue = BuildExpr(builder, expr);
+                var store = builder.BuildStore(exprValue, tempAddr);
+                store.SetAlignment((uint)expr.Type.Align.Bytes);
+            } break;
+        }
+    }
+
     private LLVMValueRef BuildExpr(LLVMBuilderRef builder, SemaExpr expr)
     {
         unsafe
@@ -592,6 +610,12 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 default:
                 {
                     Context.Diag.ICE(expr.Location, $"Unimplemented Laye node in Choir builder/codegen: {expr.GetType().FullName}");
+                    throw new UnreachableException();
+                }
+
+                case SemaExprConstructor ctor:
+                {
+                    Context.Diag.ICE(ctor.Location, $"Should not encounter a constructor here; the code generator needs to instantiate a temporary and call {nameof(BuildExprIntoMemory)} instead.");
                     throw new UnreachableException();
                 }
 
@@ -652,6 +676,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                         }
 
                         case BinaryOperatorKind.Add | BinaryOperatorKind.Integer: return builder.BuildAdd(left, right, "iadd");
+                        case BinaryOperatorKind.Sub | BinaryOperatorKind.Integer: return builder.BuildSub(left, right, "isub");
                     }
                 }
 

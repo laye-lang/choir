@@ -745,31 +745,17 @@ public partial class Sema
     {
         const int NOT_A_LEAF = -1;
 
-        Size offset = Size.FromBytes(0);
-        Align structAlignment = Align.ByteAligned;
-
         var fieldDecls = new SemaDeclField[declStruct.Fields.Count];
         for (int i = 0; i < declStruct.Fields.Count; i++)
         {
             var syntaxDeclField = declStruct.Fields[i];
             var fieldType = AnalyseType(syntaxDeclField.FieldType);
-
-            offset = offset.AlignedTo(fieldType.Align);
-            structAlignment = Align.Max(structAlignment, fieldType.Align);
-
-            var declField = new SemaDeclField(syntaxDeclField.Location, syntaxDeclField.TokenName.TextValue, fieldType, offset);
-            offset += fieldType.Size;
-
-            fieldDecls[i] = declField;
+            fieldDecls[i] = new SemaDeclField(syntaxDeclField.Location, syntaxDeclField.TokenName.TextValue, semaNode, fieldType, i);
         }
-
-        Size largestSizeWithVariants = offset;
 
         var variantDecls = new SemaDeclStruct[declStruct.Variants.Count];
         if (variantDecls.Length != 0)
         {
-            Size variantOffset = offset;
-
             int nLeaves = 0;
             for (int i = 0; i < declStruct.Variants.Count; i++)
             {
@@ -782,7 +768,7 @@ public partial class Sema
                     Scope = variantScope,
                 };
 
-                VariantImpl(syntaxDeclVariant, variantNode, variantOffset, ref largestSizeWithVariants, ref structAlignment, ref nLeaves);
+                VariantImpl(syntaxDeclVariant, variantNode, ref nLeaves);
                 variantDecls[i] = variantNode;
             }
         }
@@ -790,10 +776,7 @@ public partial class Sema
         semaNode.FieldDecls = fieldDecls;
         semaNode.VariantDecls = variantDecls;
 
-        semaNode.Size = (Size.Max(offset, largestSizeWithVariants)).AlignedTo(structAlignment);
-        semaNode.Align = structAlignment;
-
-        void VariantImpl(SyntaxDeclStruct declStruct, SemaDeclStruct semaNode, Size baseOffset, ref Size largestSizeWithVariants, ref Align structAlignment, ref int nLeaves)
+        void VariantImpl(SyntaxDeclStruct declStruct, SemaDeclStruct semaNode, ref int nLeaves)
         {
             Context.Assert(semaNode.IsVariant, "This should be a variant node.");
 
@@ -810,21 +793,13 @@ public partial class Sema
                 semaNode.VariantTag = NOT_A_LEAF;
             }
 
-            Size offset = baseOffset;
-
             var fieldDecls = new SemaDeclField[declStruct.Fields.Count];
             for (int i = 0; i < declStruct.Fields.Count; i++)
             {
                 var syntaxDeclField = declStruct.Fields[i];
                 var fieldType = AnalyseType(syntaxDeclField.FieldType);
 
-                offset = offset.AlignedTo(fieldType.Align);
-                structAlignment = Align.Max(structAlignment, fieldType.Align);
-
-                var declField = new SemaDeclField(syntaxDeclField.Location, syntaxDeclField.TokenName.TextValue, fieldType, offset);
-                offset += fieldType.Size;
-
-                fieldDecls[i] = declField;
+                fieldDecls[i] = new SemaDeclField(syntaxDeclField.Location, syntaxDeclField.TokenName.TextValue, semaNode, fieldType, i);
             }
 
             var variantDecls = new SemaDeclStruct[declStruct.Variants.Count];
@@ -841,17 +816,13 @@ public partial class Sema
                         Scope = variantScope,
                     };
 
-                    VariantImpl(syntaxDeclVariant, variantNode, baseOffset, ref largestSizeWithVariants, ref structAlignment, ref nLeaves);
+                    VariantImpl(syntaxDeclVariant, variantNode, ref nLeaves);
                     variantDecls[i] = variantNode;
-
-                    structAlignment = Align.Max(structAlignment, variantNode.Align);
                 }
             }
 
             semaNode.FieldDecls = fieldDecls;
             semaNode.VariantDecls = variantDecls;
-
-            largestSizeWithVariants = Size.Max(offset, largestSizeWithVariants);
         }
     }
 
@@ -884,6 +855,7 @@ public partial class Sema
             case SyntaxExprCall call: return AnalyseCall(call, typeHint);
             case SyntaxExprCast cast: return AnalyseCast(cast, typeHint);
             case SyntaxExprField field: return AnalyseField(field, typeHint);
+            case SyntaxExprConstructor ctor: return AnalyseConstructor(ctor, typeHint);
 
             case SyntaxToken tokenInteger when tokenInteger.Kind == TokenKind.LiteralInteger:
             {
@@ -1352,7 +1324,7 @@ public partial class Sema
                 }
 
                 var structDecl = typeStruct.DeclStruct;
-                if (!structDecl.TryLookupField(fieldName, out var declField))
+                if (!structDecl.TryLookupField(fieldName, out var declField, out _))
                 {
                     Context.Diag.Error(field.Operand.Location, $"No such field '{fieldName}' on type {typeStruct.ToDebugString(Colors)}.");
                     return new SemaExprFieldBadIndex(field.Location, operand, fieldName)
@@ -1372,18 +1344,73 @@ public partial class Sema
     public SemaExpr AnalyseConstructor(SyntaxExprConstructor ctor, SemaTypeQual? typeHint = null)
     {
         var ctorType = AnalyseType(ctor.Type);
-        var inits = new List<SemaConstructorInitializer>();
+        SemaConstructorInitializer[] inits;
 
         if (ctorType.CanonicalType.Type is SemaTypeStruct ctorStruct)
         {
+            int fieldIndex = 0;
+            bool hasErroredOnExcessiveInitializer = false;
+
+            if (!ctorStruct.DeclStruct.IsLeaf)
+            {
+                Context.Diag.Error(ctorType.Location, $"Cannot construct a value of type {ctorType.ToDebugString(Colors)}: it has child variants. Specify a variant of this type to construct.");
+            }
+
+            inits = new SemaConstructorInitializer[ctor.Inits.Count];
+            for (int i = 0; i < inits.Length; i++)
+            {
+                var init = ctor.Inits[i];
+
+                if (init is SyntaxConstructorInitDesignated initDesignated)
+                {
+                    hasErroredOnExcessiveInitializer = false;
+                    Context.Todo(init.Location, "Designated initializers are currently not implemented.");
+                }
+                else
+                {
+                    Size initOffset = ctorStruct.Size;
+
+                    SemaExpr initExpr;
+                    if (fieldIndex < ctorStruct.DeclStruct.FieldDecls.Count)
+                    {
+                        var initField = ctorStruct.DeclStruct.FieldDecls[fieldIndex];
+                        initOffset = initField.Offset;
+
+                        initExpr = AnalyseExpr(init.Value, initField.FieldType);
+                        initExpr = ConvertOrError(initExpr, initField.FieldType);
+                    }
+                    else
+                    {
+                        if (!hasErroredOnExcessiveInitializer)
+                        {
+                            hasErroredOnExcessiveInitializer = true;
+                            Context.Diag.Error(init.Location, "Initializer is beyond the bounds of the struct.");
+                        }
+
+                        initExpr = AnalyseExpr(init.Value);
+                        initExpr = LValueToRValue(initExpr);
+                    }
+
+                    inits[i] = new SemaConstructorInitializer(init.Location, initExpr, initOffset);
+                    fieldIndex++;
+                }
+            }
         }
         else
         {
             Context.Diag.Error(ctorType.Location, $"Cannot construct a value of type {ctorType.ToDebugString(Colors)} in this way.");
 
             // ensure we still report errors for initializers if there are any
-            foreach (var init in ctor.Inits)
-                AnalyseExpr(init.Value);
+            inits = new SemaConstructorInitializer[ctor.Inits.Count];
+            for (int i = 0; i < inits.Length; i++)
+            {
+                var init = ctor.Inits[i];
+
+                var initExpr = AnalyseExpr(init.Value);
+                initExpr = LValueToRValue(initExpr);
+
+                inits[i] = new SemaConstructorInitializer(init.Location, initExpr, Size.FromBytes(0));
+            }
         }
 
         return new SemaExprConstructor(ctor.Location, ctorType, inits);

@@ -253,11 +253,31 @@ public sealed class SemaDeclBinding(Location location, string name)
     }
 }
 
-public sealed class SemaDeclField(Location location, string name, SemaTypeQual fieldType, Size offset)
+public sealed class SemaDeclField(Location location, string name, SemaDeclStruct declaringStruct, SemaTypeQual fieldType, int fieldIndex)
     : SemaDeclNamed(location, name)
 {
+    public SemaDeclStruct DeclaringStruct { get; } = declaringStruct;
     public SemaTypeQual FieldType { get; } = fieldType;
-    public Size Offset { get; } = offset;
+    public int FieldIndex { get; } = fieldIndex;
+
+    public Size Size => FieldType.Size;
+    public Align Align => FieldType.Align;
+
+    public Size Offset
+    {
+        get
+        {
+            Size offset = DeclaringStruct.BaseOffset;
+
+            for (int i = 0; i < FieldIndex; i++)
+            {
+                var declField = DeclaringStruct.FieldDecls[i];
+                offset = offset.AlignedTo(declField.Align) + declField.Size;
+            }
+
+            return offset.AlignedTo(Align);
+        }
+    }
 
     public override IEnumerable<BaseSemaNode> Children { get; } = [fieldType];
 }
@@ -272,8 +292,75 @@ public sealed class SemaDeclStruct(Location location, string name)
     public required SemaDeclStruct? ParentStruct { get; init; }
     public required Scope Scope { get; init; }
 
-    public Size Size { get; set; } = Size.FromBytes(0);
-    public Align Align { get; set; } = Align.ByteAligned;
+    public Size Size
+    {
+        get
+        {
+            Size size = Size.FromBytes(0);
+            Align align = Align.ByteAligned;
+
+            foreach (var field in FieldDecls)
+            {
+                size = size.AlignedTo(field.Align) + field.Size;
+                align = Align.Max(align, field.Align);
+            }
+
+            Size largestSizeWithVariants = size;
+            foreach (var variant in VariantDecls)
+                CalcVariantSize(variant, size, ref largestSizeWithVariants, ref align);
+
+            return largestSizeWithVariants.AlignedTo(align);
+
+            static void CalcVariantSize(SemaDeclStruct variant, Size baseOffset, ref Size largestSizeWithVariants, ref Align structAlign)
+            {
+                Size variantSize = baseOffset;
+                foreach (var field in variant.FieldDecls)
+                {
+                    variantSize = variantSize.AlignedTo(field.Align) + field.Size;
+                    structAlign = Align.Max(structAlign, field.Align);
+                }
+
+                foreach (var childVariant in variant.VariantDecls)
+                    CalcVariantSize(childVariant, variantSize, ref largestSizeWithVariants, ref structAlign);
+
+                largestSizeWithVariants = Size.Max(largestSizeWithVariants, variantSize);
+            }
+        }
+    }
+
+    public Align Align
+    {
+        get
+        {
+            Align align = Align.ByteAligned;
+
+            foreach (var field in FieldDecls)
+                align = Align.Max(align, field.Align);
+
+            foreach (var variant in VariantDecls)
+                align = Align.Max(align, variant.Align);
+
+            return align;
+        }
+    }
+
+    public Size BaseOffset
+    {
+        get
+        {
+            if (ParentStruct is null)
+                return Size.FromBytes(0);
+
+            Size offset = ParentStruct.BaseOffset;
+            for (int i = 0; i < ParentStruct.FieldDecls.Count; i++)
+            {
+                var field = ParentStruct.FieldDecls[i];
+                offset = offset.AlignedTo(field.Align) + field.Size;
+            }
+
+            return offset;
+        }
+    }
 
     public bool IsVariant => ParentStruct is not null;
     public bool IsLeaf => VariantDecls.Count == 0;
@@ -292,18 +379,20 @@ public sealed class SemaDeclStruct(Location location, string name)
         }
     }
 
-    public bool TryLookupField(string fieldName, [NotNullWhen(true)] out SemaDeclField? declField)
+    public bool TryLookupField(string fieldName, [NotNullWhen(true)] out SemaDeclField? declField, out int fieldIndex)
     {
         for (int i = 0; i < FieldDecls.Count; i++)
         {
             if (FieldDecls[i].Name == fieldName)
             {
                 declField = FieldDecls[i];
+                fieldIndex = i;
                 return true;
             }
         }
 
         declField = null;
+        fieldIndex = -1;
         return false;
     }
 }

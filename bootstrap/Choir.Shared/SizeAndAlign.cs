@@ -73,6 +73,8 @@ public readonly struct Align : IEquatable<Align>, IComparable<Align>
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is Align that && Equals(that);
     public bool Equals(Align that) => _shiftAmount == that._shiftAmount;
     public int CompareTo(Align that) => _shiftAmount.CompareTo(that._shiftAmount);
+
+    public override string ToString() => $"{Bytes} bytes";
 }
 
 public readonly struct Size : IEquatable<Size>, IComparable<Size>
@@ -111,4 +113,6 @@ public readonly struct Size : IEquatable<Size>, IComparable<Size>
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is Size that && Equals(that);
     public bool Equals(Size that) => _value == that._value;
     public int CompareTo(Size that) => _value.CompareTo(that._value);
+
+    public override string ToString() => $"{Bytes} bytes";
 }

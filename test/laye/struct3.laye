@@ -1,10 +1,12 @@
 // R %choir %s --codegen --ir
 
 struct foo {
-    int value;
+    int a;
+    int b;
+    int c;
 }
 
 int main() {
-    var f = foo { 0 };
-    return f.value;
+    var f = foo { 3, 4, 7 };
+    return f.a + f.b - f.c;
 }

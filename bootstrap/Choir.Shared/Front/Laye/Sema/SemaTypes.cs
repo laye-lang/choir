@@ -536,8 +536,8 @@ public sealed class SemaTypeStruct(SemaDeclStruct declStruct)
 {
     public SemaDeclStruct DeclStruct { get; } = declStruct;
 
-    public override Size Size { get; } = declStruct.Size;
-    public override Align Align { get; } = declStruct.Align;
+    public override Size Size => DeclStruct.Size;
+    public override Align Align => DeclStruct.Align;
 
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclStruct.Name}{colors.Default}";
@@ -570,8 +570,8 @@ public sealed class SemaTypeAlias(SemaDeclAlias declAlias)
 {
     public SemaDeclAlias DeclAlias { get; } = declAlias;
 
-    public override Size Size { get; } = declAlias.AliasedType.Type.Size;
-    public override Align Align { get; } = declAlias.AliasedType.Type.Align;
+    public override Size Size => DeclAlias.AliasedType.Type.Size;
+    public override Align Align => DeclAlias.AliasedType.Type.Align;
 
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclAlias.Name}{colors.Default}";
