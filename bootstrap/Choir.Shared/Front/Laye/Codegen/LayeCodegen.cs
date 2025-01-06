@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Text;
 
 using Choir.CommandLine;
 using Choir.Front.Laye.Sema;
@@ -367,6 +368,21 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         if (functionInfo.IsSret)
         {
             var sretParam = f.GetParam(0);
+
+            unsafe
+            {
+                uint sretKindId;
+                LLVMAttributeRef sretAttrib;
+
+                fixed (byte* stringData = Encoding.UTF8.GetBytes("sret"))
+                {
+                    sretKindId = LLVM.GetEnumAttributeKindForName((sbyte*)stringData, 4);
+                    sretAttrib = LLVM.CreateTypeAttribute(LlvmContext, sretKindId, GenerateType(function.ReturnType));
+                }
+
+                LLVM.AddAttributeAtIndex(f, (LLVMAttributeIndex)1, sretAttrib);
+            }
+
             functionInfo.SretParameter!.Value = sretParam;
             sretParam.Name = "sret";
         }
