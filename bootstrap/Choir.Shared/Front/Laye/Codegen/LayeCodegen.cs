@@ -389,16 +389,18 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         CurrentFunction = function;
 
         var f = _declaredValues[function];
+        var fInfo = _functionInfos[function];
         var startBlock = f.AppendBasicBlock("start");
 
         var builder = LlvmContext.CreateBuilder();
         EnterBlock(builder, startBlock);
 
+        uint paramOffset = fInfo.IsSret ? 1u : 0;
         for (int i = 0; i < function.ParameterDecls.Count; i++)
         {
             var paramType = f.Params[i].TypeOf;
             var paramLocal = builder.BuildAlloca(paramType, "param");
-            builder.BuildStore(f.GetParam((uint)i), paramLocal);
+            builder.BuildStore(f.GetParam((uint)i + paramOffset), paramLocal);
             _declaredValues[function.ParameterDecls[i]] = paramLocal;
         }
 
@@ -462,12 +464,9 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 storage.SetAlignment((uint)binding.BindingType.Align.Bytes);
                 _declaredValues[binding] = storage;
 
+                builder.BuildMemSet(storage, LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, 0), binding.BindingType.Size, binding.BindingType.Align);
                 if (binding.InitialValue is not null)
                     BuildExprIntoMemory(builder, binding.InitialValue, storage);
-                else
-                {
-                    builder.BuildMemSet(storage, LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, 0), binding.BindingType.Size, binding.BindingType.Align);
-                }
             } break;
 
             case SemaStmtXyzzy:
@@ -492,9 +491,19 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
             case SemaStmtReturnValue @return:
             {
-                var value = BuildExpr(builder, @return.Value);
-                builder.BuildRet(value);
-                // TODO(local): sret transformations, build into memory if necessary
+                var functionInfo = _functionInfos[CurrentFunction!];
+                if (functionInfo.IsSret)
+                {
+                    var sretStorage = CurrentFunctionValue.GetParam(0);
+                    Context.Assert(sretStorage.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "The first parameter of an SRet function must be a pointer, the address to store the return value in.");
+                    BuildExprIntoMemory(builder, @return.Value, sretStorage);
+                    builder.BuildRetVoid();
+                }
+                else
+                {
+                    var value = BuildExpr(builder, @return.Value);
+                    builder.BuildRet(value);
+                }
             } break;
 
             case SemaStmtIf @if:
@@ -581,23 +590,67 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
     private void BuildExprIntoMemory(LLVMBuilderRef builder, SemaExpr expr, LLVMValueRef tempAddr)
     {
-        switch (expr)
+        unsafe
         {
-            case SemaExprConstructor ctor:
+            switch (expr)
             {
-                foreach (var init in ctor.Inits)
-                {
-                    var storage = builder.BuildPtrAdd(tempAddr, init.Offset, "ctor.fieldinit");
-                    BuildExprIntoMemory(builder, init.Value, storage);
-                }
-            } break;
+                case SemaExprGrouped grouped: BuildExprIntoMemory(builder, grouped.Inner, tempAddr); break;
 
-            default:
-            {
-                LLVMValueRef exprValue = BuildExpr(builder, expr);
-                var store = builder.BuildStore(exprValue, tempAddr);
-                store.SetAlignment((uint)expr.Type.Align.Bytes);
-            } break;
+                case SemaExprConstructor ctor:
+                {
+                    foreach (var init in ctor.Inits)
+                    {
+                        var storage = builder.BuildPtrAdd(tempAddr, init.Offset, "ctor.fieldinit");
+                        BuildExprIntoMemory(builder, init.Value, storage);
+                    }
+                } break;
+
+                case SemaExprCall call:
+                {
+                    Context.Assert(call.Callee.Type.CanonicalType.Type is SemaTypeFunction, "The call expression only works on functions");
+
+                    switch (call.Callee)
+                    {
+                        default:
+                        {
+                            Context.Todo($"Handle calling (into memory) a callee of kind {call.Callee.GetType().FullName}");
+                            throw new UnreachableException();
+                        }
+
+                        case SemaExprLookup { ReferencedEntity: SemaDeclFunction staticFunction }:
+                        {
+                            var functionInfo = _functionInfos[staticFunction];
+                            if (!functionInfo.IsSret)
+                            {
+                                LLVMValueRef returnValue = BuildExpr(builder, expr);
+                                var store = builder.BuildStore(returnValue, tempAddr);
+                                store.SetAlignment((uint)staticFunction.ReturnType.Align.Bytes);
+                            }
+                            else
+                            {
+#pragma warning disable IDE0028 // Simplify collection initialization
+                                var arguments = new List<LLVMValueRef>(1 + (call.Arguments.Count * 2));
+                                arguments.Add(tempAddr); // the sret address;
+#pragma warning restore IDE0028 // Simplify collection initialization
+
+                                for (int i = 0; i < call.Arguments.Count; i++)
+                                    BuildArgumentForFunctionCall(builder, arguments, staticFunction.ParameterDecls[i], functionInfo.ParameterInfos[i], call.Arguments[i]);
+
+                                // no need to BuildExpr when I can look it up manually right now
+                                var callee = _declaredValues[staticFunction];
+                                builder.BuildCall2(LLVM.GlobalGetValueType(callee), callee, arguments.ToArray(), "");
+                            }
+                        } break;
+                    }
+                } break;
+
+                default:
+                {
+                    LLVMValueRef exprValue = BuildExpr(builder, expr);
+                    var store = builder.BuildStore(exprValue, tempAddr);
+                    store.SetAlignment((uint)expr.Type.Align.Bytes);
+                } break;
+            }
         }
     }
 
@@ -612,6 +665,8 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     Context.Diag.ICE(expr.Location, $"Unimplemented Laye node in Choir builder/codegen: {expr.GetType().FullName}");
                     throw new UnreachableException();
                 }
+
+                case SemaExprGrouped grouped: return BuildExpr(builder, grouped.Inner);
 
                 case SemaExprConstructor ctor:
                 {
@@ -738,42 +793,17 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                         case SemaExprLookup { ReferencedEntity: SemaDeclFunction staticFunction }:
                         {
                             var functionInfo = _functionInfos[staticFunction];
+                            Context.Assert(!functionInfo.IsSret, $"Calling of SRet functions cannot be compiled outside of {nameof(BuildExprIntoMemory)}; this case must be handled there.");
 
-                            // no need to BuildExpr when I can look it up manually right now
-                            var callee = _declaredValues[staticFunction];
-
-                            int argumentOffset = functionInfo.IsSret ? 1 : 0;
-                            var arguments = new List<LLVMValueRef>(call.Arguments.Count * 2 + argumentOffset);
-
+                            var arguments = new List<LLVMValueRef>(call.Arguments.Count * 2);
                             for (int i = 0; i < call.Arguments.Count; i++)
-                            {
                                 BuildArgumentForFunctionCall(builder, arguments, staticFunction.ParameterDecls[i], functionInfo.ParameterInfos[i], call.Arguments[i]);
-                            }
 
                             var functionReturnType = GenerateType(staticFunction.ReturnType);
-
-                            LLVMTypeRef resultType;
-                            LLVMValueRef sretAlloca = default;
-
-                            if (functionInfo.IsSret)
-                            {
-                                resultType = LLVMTypeRef.Void;
-                                sretAlloca = builder.BuildAlloca(functionReturnType, "sret.storage");
-                                arguments[0] = sretAlloca;
-                            }
-                            else resultType = functionReturnType;
-
-                            LLVMTypeRef calleeType = LLVM.GlobalGetValueType(callee);
-                            string callValueName = resultType.Kind == LLVMTypeKind.LLVMVoidTypeKind ? "" : "call";
-                            var callValue = builder.BuildCall2(calleeType, callee, arguments.ToArray(), callValueName);
-
-                            if (functionInfo.IsSret)
-                            {
-                                var sretLoad = builder.BuildLoad2(functionReturnType, sretAlloca);
-                                sretLoad.SetAlignment((uint)staticFunction.ReturnType.Align.Bytes);
-                                return sretLoad;
-                            }
-                            else return callValue;
+                            string callValueName = staticFunction.ReturnType.IsVoid ? "" : "call";
+                            // no need to BuildExpr when I can look it up manually right now
+                            var callee = _declaredValues[staticFunction];
+                            return builder.BuildCall2(LLVM.GlobalGetValueType(callee), callee, arguments.ToArray(), callValueName);
                         }
                     }
                 }

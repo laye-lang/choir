@@ -34,9 +34,9 @@ public partial class Parser(SourceFile sourceFile)
         return new(sourceFile, header, decls);
     }
 
-    private static bool IsDefinitelyTypeStart(TokenKind kind) => kind switch
+    private bool IsDefinitelyTypeStart(TokenKind kind) => kind switch
     {
-        TokenKind.Mut or TokenKind.Var or
+        TokenKind.Mut or // TokenKind.Var or
         TokenKind.Void or TokenKind.NoReturn or
         TokenKind.Bool or TokenKind.BoolSized or
         TokenKind.Int or TokenKind.IntSized or
@@ -45,10 +45,11 @@ public partial class Parser(SourceFile sourceFile)
         TokenKind.BuiltinFFIInt or TokenKind.BuiltinFFILong or
         TokenKind.BuiltinFFILongLong or TokenKind.BuiltinFFIFloat or
         TokenKind.BuiltinFFIDouble or TokenKind.BuiltinFFILongDouble => true,
+        TokenKind.Var when !PeekAt(1, TokenKind.OpenBrace) => true,
         _ => false,
     };
 
-    private static bool IsDefinitelyExprStart(TokenKind kind) => kind switch
+    private bool IsDefinitelyExprStart(TokenKind kind) => kind switch
     {
         TokenKind.LiteralFloat or TokenKind.LiteralInteger or
         TokenKind.LiteralRune or TokenKind.LiteralString => true,
@@ -1496,7 +1497,7 @@ public partial class Parser(SourceFile sourceFile)
         switch (CurrentToken.Kind)
         {
             case TokenKind.Mut:
-            case TokenKind.Var:
+            case TokenKind.Var when !PeekAt(1, TokenKind.OpenBrace):
             case TokenKind.Void:
             case TokenKind.NoReturn:
             case TokenKind.Bool:
@@ -1648,6 +1649,18 @@ public partial class Parser(SourceFile sourceFile)
                     else return ExpectIdentifier();
                 }
 #endif
+            }
+
+            case TokenKind.Var when PeekAt(1, TokenKind.OpenBrace):
+            {
+                var typeVar = Consume();
+                Context.Assert(At(TokenKind.OpenBrace), "you know");
+                Advance();
+
+                var inits = ParseDelimited(ParseConstructorInit, TokenKind.Comma, "an initializer", true, TokenKind.CloseBrace, TokenKind.SemiColon);
+                Expect(TokenKind.CloseBrace, "'}'", out var tokenCloseBrace);
+                var ctor = new SyntaxExprConstructor(typeVar, inits);
+                return ParsePrimaryExprContinuation(parseContext, ctor);
             }
 
             case TokenKind.Nil:

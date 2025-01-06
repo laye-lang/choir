@@ -856,6 +856,7 @@ public partial class Sema
             case SyntaxExprCast cast: return AnalyseCast(cast, typeHint);
             case SyntaxExprField field: return AnalyseField(field, typeHint);
             case SyntaxExprConstructor ctor: return AnalyseConstructor(ctor, typeHint);
+            case SyntaxGrouped grouped: return new SemaExprGrouped(grouped.Location, AnalyseExpr(grouped.Inner, typeHint));
 
             case SyntaxToken tokenInteger when tokenInteger.Kind == TokenKind.LiteralInteger:
             {
@@ -1343,8 +1344,19 @@ public partial class Sema
 
     public SemaExpr AnalyseConstructor(SyntaxExprConstructor ctor, SemaTypeQual? typeHint = null)
     {
-        var ctorType = AnalyseType(ctor.Type);
+        SemaTypeQual ctorType;
         SemaConstructorInitializer[] inits;
+
+        if (ctor.Type is SyntaxToken { Kind: TokenKind.Var })
+        {
+            if (typeHint is null)
+            {
+                Context.Diag.Error(ctor.Type.Location, "Unable to infer a type for this construct in this context.");
+                ctorType = SemaTypePoison.InstanceQualified;
+            }
+            else ctorType = typeHint;
+        }
+        else ctorType = AnalyseType(ctor.Type);
 
         if (ctorType.CanonicalType.Type is SemaTypeStruct ctorStruct)
         {
@@ -1398,7 +1410,8 @@ public partial class Sema
         }
         else
         {
-            Context.Diag.Error(ctorType.Location, $"Cannot construct a value of type {ctorType.ToDebugString(Colors)} in this way.");
+            if (!ctorType.IsPoison)
+                Context.Diag.Error(ctorType.Location, $"Cannot construct a value of type {ctorType.ToDebugString(Colors)} in this way.");
 
             // ensure we still report errors for initializers if there are any
             inits = new SemaConstructorInitializer[ctor.Inits.Count];

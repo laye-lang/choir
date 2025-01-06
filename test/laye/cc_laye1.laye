@@ -5,8 +5,6 @@ struct my_big_struct {
     i64 qux;
 }
 
-my_big_struct get_my_big_struct(i64 foo, i64 bar, i64 baz, i64 qux);
-
 // The calling convention is "laye" by default
 // On Windows x64:
 //   - caller allocates memory for the return and passes it through RCX
@@ -14,16 +12,11 @@ my_big_struct get_my_big_struct(i64 foo, i64 bar, i64 baz, i64 qux);
 //   - qux goes on the stack 
 // On SysV:
 //   - 
-// my_big_struct get_my_big_struct(i64 foo, i64 bar, f32 baz, f32 qux) {
-//     return my_big_struct { foo, bar, baz, qux };
-// }
-
-// int main() {
-//     my_big_struct mbs = get_my_big_struct(6, 9, 42, 45.0);
-//     return cast(int) (mbs.bar - mbs.foo) - cast(int) (mbs.qux - mbs.baz);
-// }
+my_big_struct get_my_big_struct(i64 foo, i64 bar, i64 baz, i64 qux) {
+    return var { foo, bar, baz, qux };
+}
 
 int main() {
     my_big_struct mbs = get_my_big_struct(6, 9, 42, 45);
-    return 0;
+    return cast(int) (mbs.bar - mbs.foo) - cast(int) (mbs.qux - mbs.baz);
 }

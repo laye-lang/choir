@@ -1,0 +1,16 @@
+// R %choir %s --codegen --ir
+
+struct foo {
+    int a;
+    bar bar;
+}
+
+struct bar {
+    int b;
+    int c;
+}
+
+int main() {
+    foo f = var { 3, var { 4, 7 } };
+    return f.a + f.bar.b - f.bar.c;
+}

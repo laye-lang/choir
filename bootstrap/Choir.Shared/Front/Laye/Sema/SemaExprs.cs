@@ -145,6 +145,13 @@ public sealed class SemaExprCall(Location location, SemaTypeQual type, SemaExpr 
     public override IEnumerable<BaseSemaNode> Children { get; } = [callee, ..arguments];
 }
 
+public sealed class SemaExprGrouped(Location location, SemaExpr inner)
+    : SemaExpr(location, inner.Type)
+{
+    public SemaExpr Inner { get; } = inner;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [inner];
+}
+
 public sealed class SemaConstructorInitializer(Location location, SemaExpr value, Size offset)
     : SemaExpr(location, value.Type)
 {
