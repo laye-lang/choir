@@ -47,6 +47,7 @@ public sealed class SemaDeclFunction(Location location, string name)
     public SemaStmt? Body { get; set; }
 
     public CallingConvention CallingConvention { get; set; } = CallingConvention.Laye;
+    public VarargsKind VarargsKind { get; set; } = VarargsKind.None;
     public bool IsInline { get; set; } = false;
     public bool IsDiscardable { get; set; } = false;
 
@@ -67,6 +68,7 @@ public sealed class SemaDeclFunction(Location location, string name)
     public SemaTypeFunction FunctionType(ChoirContext context) => new(context, ReturnType, ParameterDecls.Select(p => p.ParamType).ToArray())
     {
         CallingConvention = CallingConvention,
+        VarargsKind = VarargsKind,
     };
 
     public override SerializedDeclKind SerializedDeclKind { get; } = SerializedDeclKind.Function;
@@ -217,6 +219,7 @@ public sealed class SemaDeclDelegate(Location location, string name)
     public SemaDeclTemplateParameters? TemplateParameters { get; set; }
     
     public CallingConvention CallingConvention { get; set; } = CallingConvention.Laye;
+    public VarargsKind VarargsKind { get; set; } = VarargsKind.None;
 
     public override IEnumerable<BaseSemaNode> Children
     {
@@ -233,6 +236,7 @@ public sealed class SemaDeclDelegate(Location location, string name)
     public SemaTypeFunction FunctionType(ChoirContext context) => new SemaTypeFunction(context, ReturnType, ParameterDecls.Select(p => p.ParamType).ToArray())
     {
         CallingConvention = CallingConvention,
+        VarargsKind = VarargsKind,
     };
 }
 

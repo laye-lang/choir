@@ -2,9 +2,12 @@
 
 struct foo {
     int value;
+    int foo;
+    int[4] bar;
+    int baz;
 }
 
 int main() {
-    var f = foo { value = 0 };
+    var f = foo { .bar[2] = 12, 13, .value = 0 };
     return f.value;
 }

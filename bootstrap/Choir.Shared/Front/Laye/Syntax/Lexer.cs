@@ -67,6 +67,8 @@ public sealed class Lexer(SourceFile sourceFile)
         {"sizeof", TokenKind.Sizeof},
         {"alignof", TokenKind.Alignof},
         {"offsetof", TokenKind.Offsetof},
+        {"countof", TokenKind.Countof},
+        {"rankof", TokenKind.Rankof},
         {"typeof", TokenKind.Typeof},
         {"not", TokenKind.Not},
         {"and", TokenKind.And},

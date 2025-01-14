@@ -37,6 +37,9 @@ public enum BinaryOperatorKind : long
     Sub = 1 << 1,
     Mul = 1 << 2,
 
+    Eq = 1 << 3,
+    Neq = 1 << 4,
+
     Integer = 1 << 50,
 
     OperatorMask = (1 << 50) - 1,
@@ -73,6 +76,27 @@ public sealed class SemaExprFieldStructIndex(Location location, SemaExpr structO
 {
     public Size FieldOffset { get; } = fieldOffset;
     public Align FieldAlign { get; } = field.FieldType.Align;
+}
+
+public abstract class SemaExprIndex(Location location, SemaTypeQual type)
+    : SemaExpr(location, type)
+{
+}
+
+public sealed class SemaExprIndexArray(SemaTypeQual type, SemaExpr operand, IReadOnlyList<SemaExpr> indices)
+    : SemaExprIndex(operand.Location, type)
+{
+    public SemaExpr Operand { get; } = operand;
+    public IReadOnlyList<SemaExpr> Indices { get; } = indices;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand, ..indices];
+}
+
+public sealed class SemaExprIndexInvalid(SemaExpr operand, IReadOnlyList<SemaExpr> indices)
+    : SemaExprIndex(operand.Location, SemaTypePoison.InstanceQualified)
+{
+    public SemaExpr Operand { get; } = operand;
+    public IReadOnlyList<SemaExpr> Indices { get; } = indices;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand, ..indices];
 }
 
 public abstract class SemaExprUnary(SyntaxToken operatorToken, SemaTypeQual type, SemaExpr operand)

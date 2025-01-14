@@ -74,3 +74,11 @@ public sealed class SemaStmtDiscard(Location location, SemaExpr expr)
     public SemaExpr Expr { get; } = expr;
     public override IEnumerable<BaseSemaNode> Children { get; } = [expr];
 }
+
+public sealed class SemaStmtAssert(Location location, SemaExpr condition, string failureMessage)
+    : SemaStmt(location)
+{
+    public SemaExpr Condition { get; } = condition;
+    public string FailureMessage { get; } = failureMessage;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [condition];
+}

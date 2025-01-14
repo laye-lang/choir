@@ -1,0 +1,4 @@
+int main() {
+    var arr = int[3] { 34, 35, 69 };
+    return (arr[0] + arr[1]) - arr[2];
+}

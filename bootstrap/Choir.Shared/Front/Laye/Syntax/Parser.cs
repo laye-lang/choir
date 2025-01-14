@@ -738,7 +738,57 @@ public partial class Parser(SourceFile sourceFile)
     {
         var name = ParseIdentifierOrOperatorName();
         Expect(TokenKind.OpenParen, "'('");
-        var paramDecls = ParseDelimited(ParseFunctionParameter, TokenKind.Comma, "type", false, TokenKind.CloseParen, TokenKind.SemiColon);
+
+        var paramDecls = new List<SyntaxDeclParam>();
+
+        var varargsKind = VarargsKind.None;
+        Location? varargsLocation = default;
+
+        bool hasErroredOnExcessParametersAfterVarargs = false;
+
+        if (!At(TokenKind.CloseParen))
+        {
+            do
+            {
+                if (At(TokenKind.CloseParen, TokenKind.SemiColon, TokenKind.OpenBrace, TokenKind.CloseBrace))
+                {
+                    Context.Diag.Error(CurrentLocation, $"Expected a function parameter.");
+                    break;
+                }
+
+                if (Consume(TokenKind.Varargs, out var tokenVarargs))
+                {
+                    if (varargsKind != VarargsKind.None && !hasErroredOnExcessParametersAfterVarargs)
+                    {
+                        hasErroredOnExcessParametersAfterVarargs = true;
+                        Context.Diag.Error(tokenVarargs.Location, "No further function parameters may be provided after a varargs parameter.");
+                        Context.Diag.Note(varargsLocation!.Value, "The first varargs parameter is here.");
+                    }
+
+                    varargsKind = VarargsKind.C;
+                    varargsLocation ??= tokenVarargs.Location;
+
+                    if (!At(TokenKind.CloseParen, TokenKind.SemiColon, TokenKind.OpenBrace, TokenKind.CloseBrace))
+                    {
+                        var varargsParamDecl = ParseFunctionParameter();
+                        paramDecls.Add(varargsParamDecl);
+                    }
+                }
+                else
+                {
+                    var paramDecl = ParseFunctionParameter();
+                    if (varargsKind != VarargsKind.None && !hasErroredOnExcessParametersAfterVarargs)
+                    {
+                        hasErroredOnExcessParametersAfterVarargs = true;
+                        Context.Diag.Error(paramDecl.Location, "No further function parameters may be provided after a varargs parameter.");
+                        Context.Diag.Note(varargsLocation!.Value, "The varargs parameter is here.");
+                    }
+                    
+                    paramDecls.Add(paramDecl);
+                }
+            } while (TryAdvance(TokenKind.Comma));
+        }
+
         Expect(TokenKind.CloseParen, "')'");
 
         if (At(TokenKind.OpenBrace))
@@ -758,6 +808,7 @@ public partial class Parser(SourceFile sourceFile)
             TemplateParams = templateParams,
             Attribs = attribs,
             TokenSemiColon = tokenSemiColon,
+            VarargsKind = varargsKind,
         };
     }
 
@@ -875,9 +926,31 @@ public partial class Parser(SourceFile sourceFile)
             case TokenKind.Assert:
             {
                 var tokenAssert = Consume();
+
+                bool startedWithParen = TryAdvance(TokenKind.OpenParen, out var tokenOpenParen);
+
                 var condition = ParseExpr(ExprParseContext.Default);
+                if (startedWithParen)
+                {
+                    if (Consume(TokenKind.CloseParen))
+                    {
+                        startedWithParen = false; // don't check for the trailing paren
+                        condition = new SyntaxGrouped(condition);
+                    }
+                    else if (At(TokenKind.Comma))
+                    {
+                        Context.Diag.Error(tokenOpenParen!.Location, $"Unexpected '(', improper {Colors.LayeKeyword()}assert{Colors.Reset} syntax.");
+                        Context.Diag.Note($"Allowed {Colors.LayeKeyword()}assert{Colors.Reset} syntax:\n- {Colors.LayeKeyword()}assert{Colors.Reset} condition;\n- {Colors.LayeKeyword()}assert{Colors.Reset} condition, message;");
+                        Context.Diag.Note($"The following is also accepted since '(condition)' is an expression:\n- {Colors.LayeKeyword()}assert{Colors.Reset}(condition);");
+                    }
+                }
+
                 SyntaxToken? message = null;
                 if (TryAdvance(TokenKind.Comma, out var tokenComma)) message = Expect(TokenKind.LiteralString, "a literal string");
+
+                // if we started with an erroneous paren (unchecked after parsing the condition), then also check for an erroneous trailing paren.
+                if (startedWithParen) Consume(TokenKind.CloseParen);
+
                 var tokenSemiColon = ExpectSemiColon();
                 return new SyntaxStmtAssert(null, tokenAssert, condition, tokenComma, message, tokenSemiColon);
             }
@@ -1407,13 +1480,55 @@ public partial class Parser(SourceFile sourceFile)
 
     private SyntaxConstructorInit ParseConstructorInit()
     {
-        // TODO(local): array designators
-        var exprValue = ParseExpr(ExprParseContext.Default);
-        if (Consume(TokenKind.Equal))
+        if (ParseDesignator() is { } designator)
         {
-            var designator = exprValue;
-            exprValue = ParseExpr(ExprParseContext.Default);
-            return new SyntaxConstructorInitDesignated(designator.Location, designator, exprValue);
+            var location = designator.Location;
+
+            var designators = new List<SyntaxDesignator>() { designator };
+            while ((designator = ParseDesignator()) is not null)
+                designators.Add(designator);
+
+            Expect(TokenKind.Equal, "'='");
+            
+            SyntaxNode initializer;
+            if (At(TokenKind.Comma, TokenKind.CloseBrace, TokenKind.SemiColon))
+                initializer = new SyntaxExprEmpty(new SyntaxToken(TokenKind.Missing, new Location(CurrentLocation.Offset, 0, SourceFile.FileId)));
+            else initializer = ParseExpr(ExprParseContext.Default);
+
+            return new SyntaxConstructorInitDesignated(location, designators, initializer);
+        }
+
+        SyntaxDesignator? ParseDesignator()
+        {
+            if (Consume(TokenKind.Dot))
+            {
+                ExpectIdentifier(out var fieldToken);
+                return new SyntaxDesignatorField(fieldToken);
+            }
+            else if (Consume(TokenKind.OpenBracket))
+            {
+                var indexExpr = ParseExpr(ExprParseContext.Default);
+                Expect(TokenKind.CloseBracket, "']'");
+                return new SyntaxDesignatorIndex(indexExpr);
+            }
+
+            return null;
+        }
+
+        var exprValue = ParseExpr(ExprParseContext.Default);
+        if (Consume(TokenKind.Equal, out var tokenEq))
+        {
+            Context.Diag.Error(tokenEq.Location, "Unexpected '='. Expected ',' or '}' to continue or end a constructor.");
+            Context.Diag.Note(exprValue.Location, "Did you mean for this to be a designator?");
+
+            designator = new SyntaxDesignatorInvalid(exprValue);
+            
+            SyntaxNode initializer;
+            if (At(TokenKind.Comma, TokenKind.CloseBrace, TokenKind.SemiColon))
+                initializer = new SyntaxExprEmpty(new SyntaxToken(TokenKind.Missing, new Location(CurrentLocation.Offset, 0, SourceFile.FileId)));
+            else initializer = ParseExpr(ExprParseContext.Default);
+
+            return new SyntaxConstructorInitDesignated(designator.Location, [designator], initializer);
         }
 
         return new SyntaxConstructorInit(exprValue.Location, exprValue);
@@ -1492,7 +1607,18 @@ public partial class Parser(SourceFile sourceFile)
     private SyntaxNode ParsePrimaryExpr(ExprParseContext parseContext)
     {
         if (IsDefinitelyTypeStart(CurrentToken.Kind))
-            return ParseType();
+        {
+            var type = ParseType();
+            if (Consume(TokenKind.OpenBrace))
+            {
+                var inits = ParseDelimited(ParseConstructorInit, TokenKind.Comma, "an initializer", true, TokenKind.CloseBrace, TokenKind.SemiColon);
+                Expect(TokenKind.CloseBrace, "'}'", out var tokenCloseBrace);
+                var ctor = new SyntaxExprConstructor(type, inits);
+                return ParsePrimaryExprContinuation(parseContext, ctor);
+            }
+
+            return type;
+        }
 
         switch (CurrentToken.Kind)
         {
@@ -1558,8 +1684,9 @@ public partial class Parser(SourceFile sourceFile)
             {
                 Advance();
 
-                var innerExpr = ParseExpr(ExprParseContext.ForLoopInitializer);
-                
+                //var innerExpr = ParseExpr(ExprParseContext.ForLoopInitializer);
+                var innerExpr = ParseExpr(parseContext);
+
                 if (innerExpr.IsDecl) {}
                 else if (innerExpr.CanBeType && At(TokenKind.Identifier))
                 {

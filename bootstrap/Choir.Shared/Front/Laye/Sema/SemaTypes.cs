@@ -405,19 +405,22 @@ public sealed class SemaTypeArray(ChoirContext context, SemaTypeQual elementType
     : SemaContainerType<SemaTypeArray>(elementType)
 {
     public IReadOnlyList<SemaExpr> LengthExprs { get; } = lengthExprs;
-    public IReadOnlyList<ulong> Lengths { get; } = lengthExprs.Select(e =>
+    public IReadOnlyList<long> Lengths { get; } = lengthExprs.Select(e =>
     {
         context.Assert(e is SemaExprEvaluatedConstant, "Expressions in an array type must be evaluated constants.");
         var eConst = (SemaExprEvaluatedConstant)e;
         context.Assert(eConst.Value.Kind == EvaluatedConstantKind.Integer, "Expressions in an array type must be evaluated integer constants.");
         context.Assert(eConst.Value.IntegerValue >= 0, "Expressions in an array type must be evaluated non-negative integer constants.");
         context.Assert(eConst.Value.IntegerValue.GetBitLength() <= 64, "Expressions in an array type must be evaluated non-negative integer constants that fith within 64 bits.");
-        return (ulong)eConst.Value.IntegerValue;
+        return (long)eConst.Value.IntegerValue;
     }).ToArray();
     public int Arity { get; } = lengthExprs.Length;
 
-    public override Size Size => throw new NotImplementedException();
-    public override Align Align => throw new NotImplementedException();
+    // TODO(local): don't cast to int here, use long for sizes
+    public override Size Size => ElementType.Size * (int)FlatLength;
+    public override Align Align => ElementType.Align;
+
+    public long FlatLength => Lengths.Aggregate(1L, (agg, l) => agg * l);
 
     public override string ToDebugString(Colors colors)
     {
@@ -455,6 +458,7 @@ public sealed class SemaTypeFunction(ChoirContext context, SemaTypeQual returnTy
     public IReadOnlyList<SemaTypeQual> ParamTypes { get; } = paramTypes;
 
     public CallingConvention CallingConvention { get; init; } = CallingConvention.Laye;
+    public VarargsKind VarargsKind { get; init; } = VarargsKind.None;
 
     public override string ToDebugString(Colors colors)
     {
@@ -481,7 +485,16 @@ public sealed class SemaTypeFunction(ChoirContext context, SemaTypeQual returnTy
         for (int i = 0; i < ParamTypes.Count; i++)
         {
             if (i > 0) builder.Append(colors.Default).Append(", ");
+            if (VarargsKind == VarargsKind.Laye && i == ParamTypes.Count - 1)
+                builder.Append(colors.LayeKeyword()).Append("varargs ");
             builder.Append(ParamTypes[i].ToDebugString(colors));
+        }
+
+        if (VarargsKind == VarargsKind.C)
+        {
+            if (ParamTypes.Count > 0)
+                builder.Append(colors.Default).Append(", ");
+            builder.Append(colors.LayeKeyword()).Append("varargs");
         }
 
         builder.Append(colors.Default).Append(')');
@@ -572,6 +585,8 @@ public sealed class SemaTypeAlias(SemaDeclAlias declAlias)
 
     public override Size Size => DeclAlias.AliasedType.Type.Size;
     public override Align Align => DeclAlias.AliasedType.Type.Align;
+
+    public override SemaType CanonicalType => DeclAlias.AliasedType.CanonicalType.Type;
 
     public override string ToDebugString(Colors colors) =>
         $"{colors.LayeTypeName()}{DeclAlias.Name}{colors.Default}";

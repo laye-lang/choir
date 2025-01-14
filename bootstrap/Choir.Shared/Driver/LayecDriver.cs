@@ -377,11 +377,11 @@ Options:
         void EmitLLVMModuleToFile(string outputFilePath, LLVMCodeGenFileType fileType = LLVMCodeGenFileType.LLVMObjectFile)
         {
             LLVM.LinkInMCJIT();
-            LLVM.InitializeAllTargetMCs();
-            LLVM.InitializeAllTargets();
-            LLVM.InitializeAllTargetInfos();
-            LLVM.InitializeAllAsmParsers();
-            LLVM.InitializeAllAsmPrinters();
+            LLVM.InitializeX86TargetMC();
+            LLVM.InitializeX86Target();
+            LLVM.InitializeX86TargetInfo();
+            LLVM.InitializeX86AsmParser();
+            LLVM.InitializeX86AsmPrinter();
 
             var target = LLVMTargetRef.GetTargetFromTriple(LLVMTargetRef.DefaultTriple);
             var machine = target.CreateTargetMachine(LLVMTargetRef.DefaultTriple, "generic", "", LLVMCodeGenOptLevel.LLVMCodeGenLevelNone, LLVMRelocMode.LLVMRelocDefault, LLVMCodeModel.LLVMCodeModelDefault);

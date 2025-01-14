@@ -5,6 +5,8 @@ using System.Numerics;
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
 
+using LLVMSharp;
+
 namespace Choir.Front.Laye.Sema;
 
 #pragma warning disable CA1822 // Mark members as static
@@ -413,7 +415,10 @@ public partial class Sema
                     functionName = tokenIdent.TextValue;
 
                 attribs = declFunction.Attribs;
-                forwardDecl = new SemaDeclFunction(declFunction.Location, functionName);
+                forwardDecl = new SemaDeclFunction(declFunction.Location, functionName)
+                {
+                    VarargsKind = declFunction.VarargsKind,
+                };
             } break;
         }
 
@@ -483,6 +488,43 @@ public partial class Sema
 
                 Context.Diag.Error(typeNamed.Location, "This is not a type name.");
                 return SemaTypePoison.InstanceQualified;
+            }
+
+            case SyntaxIndex typeArray:
+            {
+                var elementType = AnalyseType(typeArray.Operand);
+
+                var lengthExprs = new SemaExprEvaluatedConstant[typeArray.Indices.Count];
+                for (int i = 0; i < lengthExprs.Length; i++)
+                {
+                    var expr = AnalyseExpr(typeArray.Indices[i]);
+                    if (!TryEvaluate(expr, out var lengthConst))
+                    {
+                        Context.Diag.Error(expr.Location, "Could not evaluate this expression to a constant value.");
+                        lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
+                        continue;
+                    }
+
+                    if (lengthConst.Kind != EvaluatedConstantKind.Integer)
+                    {
+                        Context.Diag.Error(expr.Location, "The length of an array must evaluate to an integer value.");
+                        lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
+                        continue;
+                    }
+
+                    if (lengthConst.IntegerValue < 0 || lengthConst.IntegerValue > ulong.MaxValue)
+                    {
+                        Context.Diag.Error(expr.Location, $"The length of an array must evaluate to an integer value in the rage [0, {ulong.MaxValue}].");
+                        lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
+                        continue;
+                    }
+
+                    lengthExprs[i] = new SemaExprEvaluatedConstant(expr, lengthConst);
+                }
+
+                // TODO(local): check if dimensions are out of bounds for the underlying index type
+
+                return new SemaTypeArray(Context, elementType, lengthExprs).Qualified(type.Location);
             }
 
             case SyntaxTypePointer typePointer:
@@ -718,6 +760,12 @@ public partial class Sema
                 return new SemaStmtDiscard(stmtDiscard.Location, expr);
             }
 
+            case SyntaxStmtAssert stmtAssert:
+            {
+                var exprCondition = AnalyseExpr(stmtAssert.Condition, Context.Types.LayeTypeBool.Qualified(Location.Nowhere));
+                return new SemaStmtAssert(stmtAssert.Location, exprCondition, stmtAssert.TokenMessage?.TextValue ?? "Assertion failed.");
+            }
+
             case SyntaxStmtExpr stmtExpr:
             {
                 var expr = AnalyseExpr(stmtExpr.Expr);
@@ -737,7 +785,8 @@ public partial class Sema
 
     private SemaDeclAlias AnalyseAlias(SyntaxDeclAlias declAlias, SemaDeclAlias semaNode)
     {
-        Context.Unreachable("Alias declarations are not implemented in sema yet.");
+        var aliasedType = AnalyseType(declAlias.Type);
+        semaNode.AliasedType = aliasedType;
         return semaNode;
     }
 
@@ -855,6 +904,7 @@ public partial class Sema
             case SyntaxExprCall call: return AnalyseCall(call, typeHint);
             case SyntaxExprCast cast: return AnalyseCast(cast, typeHint);
             case SyntaxExprField field: return AnalyseField(field, typeHint);
+            case SyntaxIndex index: return AnalyseIndex(index, typeHint);
             case SyntaxExprConstructor ctor: return AnalyseConstructor(ctor, typeHint);
             case SyntaxGrouped grouped: return new SemaExprGrouped(grouped.Location, AnalyseExpr(grouped.Inner, typeHint));
 
@@ -1171,6 +1221,9 @@ public partial class Sema
             (TokenKind.Plus, BinaryOperatorKind.Add),
             (TokenKind.Minus, BinaryOperatorKind.Sub),
             (TokenKind.Star, BinaryOperatorKind.Mul),
+
+            (TokenKind.EqualEqual, BinaryOperatorKind.Eq),
+            (TokenKind.BangEqual, BinaryOperatorKind.Neq),
         ] },
     };
 
@@ -1235,16 +1288,63 @@ public partial class Sema
 
             case SemaTypeFunction typeFunction:
             {
-                SemaExpr[] arguments = new SemaExpr[call.Args.Count];
+                int paramCount = typeFunction.ParamTypes.Count;
+                if (typeFunction.VarargsKind == VarargsKind.Laye)
+                    paramCount--; // don't include the last parameter in regular arg/param checks
+
+                int argumentCount = call.Args.Count;
+
+                if (argumentCount < paramCount)
+                {
+                    Context.Diag.Error(call.Location, $"Not enough arguments to function call. Expected {paramCount}, got {argumentCount}.");
+                }
+
+                if (argumentCount > paramCount)
+                {
+                    if (typeFunction.VarargsKind == VarargsKind.None)
+                        Context.Diag.Error(call.Location, $"Too many arguments to function call. Expected {paramCount}, got {argumentCount}.");
+                }
+
+                SemaTypeQual? layeVarargsElementType = null;
+                if (typeFunction.VarargsKind == VarargsKind.Laye)
+                {
+                    Context.Assert(typeFunction.ParamTypes.Count >= 1, "Can't be a Laye varargs function without at least one argument.");
+
+                    var lastParamType = typeFunction.ParamTypes[typeFunction.ParamTypes.Count - 1];
+                    var lastParamTypeCanon = lastParamType.Type.CanonicalType;
+
+                    Context.Assert(lastParamTypeCanon is SemaTypeSlice, "Laye varargs function expected to end in a slice parameter.");
+                    layeVarargsElementType = ((SemaTypeSlice)lastParamTypeCanon).ElementType;
+                }
+
+                SemaExpr[] arguments = new SemaExpr[argumentCount];
                 for (int i = 0; i < arguments.Length; i++)
                 {
                     SemaTypeQual? argTypeHint = null;
                     if (i < typeFunction.ParamTypes.Count)
                         argTypeHint = typeFunction.ParamTypes[i];
+                    else
+                    {
+                        if (typeFunction.VarargsKind == VarargsKind.Laye)
+                        {
+                            Context.Assert(layeVarargsElementType is not null, "where did it go");
+                            argTypeHint = layeVarargsElementType;
+                        }
+                    }
 
                     var argument = AnalyseExpr(call.Args[i], argTypeHint);
                     if (argTypeHint is not null)
                         argument = ConvertOrError(argument, argTypeHint);
+                    else
+                    {
+                        // do no real conversion if the function call is already invalid
+                        if (typeFunction.VarargsKind == VarargsKind.None)
+                            argument = LValueToRValue(argument);
+                        // otherwise, convert to a valid C varargs type
+                        else if (typeFunction.VarargsKind == VarargsKind.C)
+                            argument = ConvertToCVarargsOrError(argument);
+                        else Context.Assert(false, "Unexpected varargs kind without type hint.");
+                    }
 
                     arguments[i] = argument;
                 }
@@ -1342,10 +1442,39 @@ public partial class Sema
         }
     }
 
+    private SemaExpr AnalyseIndex(SyntaxIndex index, SemaTypeQual? typeHint = null)
+    {
+        var operand = AnalyseExpr(index.Operand);
+        var indices = index.Indices.Select(expr => AnalyseExpr(expr)).ToArray();
+
+        if (operand.Type.CanonicalType.Type is SemaTypeArray typeArray)
+        {
+            for (int i = 0; i < indices.Length; i++)
+                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(Location.Nowhere));
+
+            if (indices.Length != typeArray.Arity)
+                Context.Diag.Error(index.Location, $"Expected {typeArray.Arity} indices, but got {indices.Length}.");
+
+            var elementType = typeArray.ElementType;
+            return new SemaExprIndexArray(elementType, operand, indices)
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+        else
+        {
+            Context.Diag.Error(index.Location, $"Cannot index value of type {operand.Type.ToDebugString(Colors)}.");
+            return new SemaExprIndexInvalid(operand, indices)
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+    }
+
     public SemaExpr AnalyseConstructor(SyntaxExprConstructor ctor, SemaTypeQual? typeHint = null)
     {
         SemaTypeQual ctorType;
-        SemaConstructorInitializer[] inits;
+        SemaConstructorInitializer[] inits = new SemaConstructorInitializer[ctor.Inits.Count];
 
         if (ctor.Type is SyntaxToken { Kind: TokenKind.Var })
         {
@@ -1358,38 +1487,51 @@ public partial class Sema
         }
         else ctorType = AnalyseType(ctor.Type);
 
+        bool hasEncounteredDesignator = false;
+
+        bool hasErroredOnExcessiveInitializer = false;
+        bool hasErroredOnNonDesignatedInitializer = false;
+
+        int initIndex = 0;
+
         if (ctorType.CanonicalType.Type is SemaTypeStruct ctorStruct)
         {
-            int fieldIndex = 0;
-            bool hasErroredOnExcessiveInitializer = false;
-
             if (!ctorStruct.DeclStruct.IsLeaf)
             {
                 Context.Diag.Error(ctorType.Location, $"Cannot construct a value of type {ctorType.ToDebugString(Colors)}: it has child variants. Specify a variant of this type to construct.");
             }
 
-            inits = new SemaConstructorInitializer[ctor.Inits.Count];
             for (int i = 0; i < inits.Length; i++)
             {
                 var init = ctor.Inits[i];
+                Size initOffset = ctorStruct.Size;
 
+                SemaExpr initExpr;
                 if (init is SyntaxConstructorInitDesignated initDesignated)
                 {
-                    hasErroredOnExcessiveInitializer = false;
+                    hasEncounteredDesignator = true;
                     Context.Todo(init.Location, "Designated initializers are currently not implemented.");
                 }
                 else
                 {
-                    Size initOffset = ctorStruct.Size;
-
-                    SemaExpr initExpr;
-                    if (fieldIndex < ctorStruct.DeclStruct.FieldDecls.Count)
+                    if (hasEncounteredDesignator)
                     {
-                        var initField = ctorStruct.DeclStruct.FieldDecls[fieldIndex];
+                        ReportInitializerAfterDesignated(init.Location);
+                        initExpr = AnalyseExpr(init.Value);
+                        initExpr = LValueToRValue(initExpr);
+                        inits[i] = new SemaConstructorInitializer(init.Location, initExpr, initOffset);
+                        continue;
+                    }
+
+                    if (initIndex < ctorStruct.DeclStruct.FieldDecls.Count)
+                    {
+                        var initField = ctorStruct.DeclStruct.FieldDecls[initIndex];
                         initOffset = initField.Offset;
 
                         initExpr = AnalyseExpr(init.Value, initField.FieldType);
                         initExpr = ConvertOrError(initExpr, initField.FieldType);
+
+                        initIndex++;
                     }
                     else
                     {
@@ -1404,7 +1546,52 @@ public partial class Sema
                     }
 
                     inits[i] = new SemaConstructorInitializer(init.Location, initExpr, initOffset);
-                    fieldIndex++;
+                }
+            }
+        }
+        else if (ctorType.CanonicalType.Type is SemaTypeArray ctorArray)
+        {
+            var elementType = ctorArray.ElementType;
+            for (int i = 0; i < inits.Length; i++)
+            {
+                var init = ctor.Inits[i];
+                Size initOffset = ctorArray.Size;
+
+                SemaExpr initExpr;
+                if (init is SyntaxConstructorInitDesignated initDesignated)
+                {
+                    hasEncounteredDesignator = true;
+                    Context.Todo(init.Location, "Designated initializers are currently not implemented.");
+                }
+                else
+                {
+                    if (hasEncounteredDesignator)
+                    {
+                        ReportInitializerAfterDesignated(init.Location);
+                        initExpr = AnalyseExpr(init.Value);
+                        initExpr = LValueToRValue(initExpr);
+                        inits[i] = new SemaConstructorInitializer(init.Location, initExpr, initOffset);
+                        continue;
+                    }
+
+                    initExpr = AnalyseExpr(init.Value, elementType);
+                    initExpr = ConvertOrError(initExpr, elementType);
+
+                    if (initIndex < ctorArray.FlatLength)
+                    {
+                        initOffset = elementType.Size * initIndex;
+                        initIndex++;
+                    }
+                    else
+                    {
+                        if (!hasErroredOnExcessiveInitializer)
+                        {
+                            hasErroredOnExcessiveInitializer = true;
+                            Context.Diag.Error(init.Location, "Initializer is beyond the bounds of the array.");
+                        }
+                    }
+
+                    inits[i] = new SemaConstructorInitializer(init.Location, initExpr, initOffset);
                 }
             }
         }
@@ -1427,6 +1614,18 @@ public partial class Sema
         }
 
         return new SemaExprConstructor(ctor.Location, ctorType, inits);
+
+        void ReportInitializerAfterDesignated(Location location)
+        {
+            if (!hasErroredOnNonDesignatedInitializer)
+            {
+                hasErroredOnNonDesignatedInitializer = true;
+                Context.Diag.Error(location, "Positional initializers must all occur before designated initializers.");
+
+                var firstDesignatedLocation = ctor.Inits.First(init => init is SyntaxConstructorInitDesignated).Location;
+                Context.Diag.Note(firstDesignatedLocation, "The first designated initializer occured here.");
+            }
+        }
     }
 
     private bool TryEvaluate(SemaExpr expr, out EvaluatedConstant value)
@@ -1532,10 +1731,14 @@ public partial class Sema
         return expr;
     }
 
-    private SemaExpr ConvertToCVarargsOrError(SemaExpr expr, SemaTypeQual to)
+    private SemaExpr ConvertToCVarargsOrError(SemaExpr expr)
     {
-        throw new NotImplementedException();
-        // return expr;
+        var exprType = expr.Type.Type.CanonicalType;
+        if (exprType.IsInteger && exprType.Size.Bits < Context.Types.LayeTypeFFIInt.Size.Bits)
+            return ConvertOrError(expr, Context.Types.LayeTypeFFIInt.Qualified(Location.Nowhere));
+
+        Context.Todo(expr.Location, $"ConvertToCVarargsOrError for expr of type {expr.Type.ToDebugString(Colors)}.");
+        throw new UnreachableException();
     }
 
     private int TryConvert(ref SemaExpr expr, SemaTypeQual to)

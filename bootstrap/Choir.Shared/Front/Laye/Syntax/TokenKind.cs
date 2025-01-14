@@ -163,6 +163,8 @@ public enum TokenKind : ushort
     Sizeof,
     Alignof,
     Offsetof,
+    Countof,
+    Rankof,
     Typeof,
 
     Not,

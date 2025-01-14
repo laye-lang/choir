@@ -110,10 +110,13 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
     public LLVMContextRef LlvmContext { get; } = llvmModule.Context;
     public LLVMModuleRef LlvmModule { get; } = llvmModule;
     public LayeNameMangler Mangler { get; } = new(module.Context, module);
+    public Colors Colors { get; } = new(module.Context.UseColor);
 
     private readonly Dictionary<SemaDeclNamed, LLVMValueRef> _declaredValues = [];
     private readonly Dictionary<SemaDeclNamed, LLVMTypeRef> _declaredTypes = [];
     private readonly Dictionary<SemaDeclFunction, FunctionInfo> _functionInfos = [];
+
+    private LLVMValueRef _assertHandlerFunction = default;
 
     private SemaDeclFunction? CurrentFunction { get; set; }
     private LLVMValueRef CurrentFunctionValue => CurrentFunction is null ? default : _declaredValues[CurrentFunction];
@@ -250,19 +253,20 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
             }
             else
             {
-                Context.Todo($"Classify {type.ToDebugString(Colors.Off)} ({type.GetType().FullName})");
+                Context.Todo($"Classify {type.ToDebugString(Colors)} ({type.GetType().FullName})");
             }
         }
     }
 
-    private LLVMTypeRef GenerateType(SemaTypeQual typeQual)
+    private LLVMTypeRef GenerateType(SemaTypeQual typeQual) => GenerateType(typeQual.Type);
+    private LLVMTypeRef GenerateType(SemaType type)
     {
-        var type = typeQual.Type;
+        type = type.CanonicalType;
         switch (type)
         {
             default:
             {
-                Context.Diag.ICE(typeQual.Location, $"Unimplemented Laye type in Choir codegen: {type.GetType().FullName}");
+                Context.Diag.ICE($"Unimplemented Laye type in Choir codegen: {type.GetType().FullName}");
                 throw new UnreachableException();
             }
 
@@ -272,7 +276,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 {
                     default:
                     {
-                        Context.Diag.ICE(typeQual.Location, $"Unimplemented Laye built in type kind in Choir codegen: {builtIn.Kind}");
+                        Context.Diag.ICE($"Unimplemented Laye built in type kind in Choir codegen: {builtIn.Kind}");
                         throw new UnreachableException();
                     }
 
@@ -288,7 +292,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                         {
                             default:
                             {
-                                Context.Diag.ICE(typeQual.Location, $"Unimplemented Laye float size in Choir codegen: {builtIn.ToDebugString(Context.UseColor ? Colors.On : Colors.Off)}");
+                                Context.Diag.ICE($"Unimplemented Laye float size in Choir codegen: {builtIn.ToDebugString(Colors)}");
                                 throw new UnreachableException();
                             }
 
@@ -301,10 +305,18 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 }
             }
 
+            //case SemaTypeAlias typeAlias: return GenerateType(typeAlias.CanonicalType);
             case SemaTypeStruct typeStruct:
             {
                 return LLVMTypeRef.CreateArray(LLVMTypeRef.Int8, (uint)type.Size.Bytes);
-                //return _declaredTypes[typeStruct.DeclStruct];
+            }
+
+            case SemaTypeArray typeArray:
+            {
+                var elementType = GenerateType(typeArray.ElementType);
+                long flatLength = typeArray.FlatLength;
+                Context.Assert(flatLength <= uint.MaxValue, $"The length of an array exceeded LLVM's max array length. ({flatLength} > {uint.MaxValue})");
+                return LLVMTypeRef.CreateArray(elementType, (uint)flatLength);
             }
 
             case SemaTypePointer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
@@ -367,22 +379,12 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
         if (functionInfo.IsSret)
         {
+            f.AddSRetAttributeAtIndex(LlvmContext, (LLVMAttributeIndex)1, GenerateType(function.ReturnType));
+            f.AddNoAliasAttributeAtIndex(LlvmContext, (LLVMAttributeIndex)1);
+            f.AddWritableAttributeAtIndex(LlvmContext, (LLVMAttributeIndex)1);
+            f.AddDeadOnUnwindAttributeAtIndex(LlvmContext, (LLVMAttributeIndex)1);
+
             var sretParam = f.GetParam(0);
-
-            unsafe
-            {
-                uint sretKindId;
-                LLVMAttributeRef sretAttrib;
-
-                fixed (byte* stringData = Encoding.UTF8.GetBytes("sret"))
-                {
-                    sretKindId = LLVM.GetEnumAttributeKindForName((sbyte*)stringData, 4);
-                    sretAttrib = LLVM.CreateTypeAttribute(LlvmContext, sretKindId, GenerateType(function.ReturnType));
-                }
-
-                LLVM.AddAttributeAtIndex(f, (LLVMAttributeIndex)1, sretAttrib);
-            }
-
             functionInfo.SretParameter!.Value = sretParam;
             sretParam.Name = "sret";
         }
@@ -431,21 +433,6 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         }
     }
 
-    private void GenerateStructDeclaration(SemaDeclStruct @struct)
-    {
-        return;
-        var structType = LlvmContext.CreateNamedStruct(Mangler.GetMangledName(@struct));
-        _declaredTypes[@struct] = structType;
-    }
-
-    private void GenerateStructDefinition(SemaDeclStruct @struct)
-    {
-        return;
-        var structType = _declaredTypes[@struct];
-        var fieldTypes = @struct.FieldDecls.Select(f => GenerateType(f.FieldType)).ToArray();
-        structType.StructSetBody(fieldTypes, false);
-    }
-
     private LLVMBasicBlockRef EnterBlock(LLVMBuilderRef builder, LLVMBasicBlockRef bb)
     {
         Context.Assert(CurrentFunction is not null, "Not currently within a function definition.");
@@ -454,13 +441,25 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         Context.Assert(bb.Parent != default, CurrentFunction!.Location, "Block is not inside a function.");
         Context.Assert(bb.Parent == CurrentFunctionValue, CurrentFunction!.Location, "Block is not inside this function.");
 
-        if (builder.InsertBlock != default && builder.InsertBlock.Terminator != default && bb != CurrentFunctionValue.EntryBasicBlock)
+        if (builder.InsertBlock.Handle != IntPtr.Zero && builder.InsertBlock.Terminator.Handle == IntPtr.Zero && bb != CurrentFunctionValue.EntryBasicBlock)
         {
             builder.BuildBr(bb);
         }
 
         builder.PositionAtEnd(bb);
         return bb;
+    }
+
+    private LLVMValueRef GetAssertHandlerFunction()
+    {
+        if (_assertHandlerFunction.Handle != IntPtr.Zero)
+            return _assertHandlerFunction;
+
+        var ptrType = LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
+        var assertHandlerType = LLVMTypeRef.CreateFunction(LLVMTypeRef.Void, [ptrType, ptrType, LLVMTypeRef.Int64], false);
+        _assertHandlerFunction = LlvmModule.AddFunction("__laye_assert_handler", assertHandlerType);
+
+        return _assertHandlerFunction;
     }
 
     private void BuildStmt(LLVMBuilderRef builder, SemaStmt stmt)
@@ -592,9 +591,40 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 BuildExprIntoMemory(builder, assign.Value, target);
             } break;
 
-            case SemaStmtDiscard expr:
+            case SemaStmtDiscard discard:
             {
-                BuildExpr(builder, expr.Expr);
+                BuildExpr(builder, discard.Expr);
+            } break;
+
+            case SemaStmtAssert assert:
+            {
+                var f = CurrentFunctionValue;
+
+                var failBlock = f.AppendBasicBlock("assert.fail");
+                var continueBlock = f.AppendBasicBlock("assert.continue");
+
+                var condition = BuildExpr(builder, assert.Condition);
+                condition = builder.BuildTrunc(condition, LLVMTypeRef.Int1, "conv2i1");
+                builder.BuildCondBr(condition, continueBlock, failBlock);
+
+                EnterBlock(builder, failBlock);
+
+                var source = Context.GetSourceFileById(assert.Location.FileId);
+                var locInfo = assert.Location.SeekLineColumn(Context);
+
+                var message = builder.BuildGlobalStringPtr(assert.FailureMessage, "assert.message");
+                var fileName = builder.BuildGlobalStringPtr(source?.FilePath ?? "<no-file>", "assert.file_name");
+                var lineNumber = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int64, (ulong)(locInfo?.Line ?? 0));
+                var assertHandler = GetAssertHandlerFunction();
+
+                unsafe
+                {
+                    builder.BuildCall2(LLVM.GlobalGetValueType(assertHandler), assertHandler, [message, fileName, lineNumber]);
+                }
+
+                builder.BuildUnreachable();
+
+                EnterBlock(builder, continueBlock);
             } break;
 
             case SemaStmtExpr expr:
@@ -635,6 +665,8 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
                         case SemaExprLookup { ReferencedEntity: SemaDeclFunction staticFunction }:
                         {
+                            Context.Assert(staticFunction.VarargsKind == VarargsKind.None, call.Location, "Generating code for varargs functions is not supported yet.");
+
                             var functionInfo = _functionInfos[staticFunction];
                             if (!functionInfo.IsSret)
                             {
@@ -714,8 +746,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                                 return builder.BuildGlobalStringPtr(constant.Value.StringValue, "str");
                             else
                             {
-                                var C = new Colors(Context.UseColor);
-                                Context.Assert(false, $"Unhandled type for string literal {expr.Type.ToDebugString(C)} in LLVM code generator.");
+                                Context.Assert(false, $"Unhandled type for string literal {expr.Type.ToDebugString(Colors)} in LLVM code generator.");
                                 throw new UnreachableException();
                             }
                         }
@@ -729,6 +760,61 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
                     var ptradd = builder.BuildPtrAdd(lvalue, structField.FieldOffset, "field.ptradd");
                     ptradd.Alignment = (uint)structField.Type.Align.Bytes;
+                    return ptradd;
+                }
+
+                case SemaExprIndexArray arrayIndex:
+                {
+                    var lvalue = BuildExpr(builder, arrayIndex.Operand);
+                    Context.Assert(lvalue.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Array index lookup requires an lvalue, which will be of type `ptr`.");
+
+                    /*
+
+                    int[2, 3, 4] foo;
+                    foo[1, 1, 1] = 69;
+
+                    can be either A:
+
+                    foo_flat[1 + (1 * 3) + (1 * 3 * 4)] = 69;
+
+                    or B:
+
+                    foo_flat[(1 * 2) + (1 * 3) + 1] = 69;
+
+                    I think...
+
+                    */
+
+                    var typeInt = GenerateType(Context.Types.LayeTypeInt);
+                    Context.Assert(arrayIndex.Operand.Type.CanonicalType.Type is SemaTypeArray, $"An array index expression should have an array type operator, but got {arrayIndex.Operand.Type.ToDebugString(Colors)}.");
+                    var typeArray = (SemaTypeArray)arrayIndex.Operand.Type.CanonicalType.Type;
+                    var strides = new LLVMValueRef[typeArray.Arity];
+
+                    for (int i = 0; i < strides.Length; i++)
+                    {
+                        if (i == 0)
+                            strides[i] = LLVMValueRef.CreateConstInt(typeInt, 1);
+                        else
+                        {
+                            long strideAgg = typeArray.Lengths.Take(i).Aggregate(1L, (agg, l) => agg * l);
+                            strides[i] = LLVMValueRef.CreateConstInt(typeInt, (ulong)strideAgg);
+                        }
+                    }
+
+                    var totalOffset = BuildExpr(builder, arrayIndex.Indices[0]);
+                    for (int i = 1; i < typeArray.Arity; i++)
+                    {
+                        var indexOffset = BuildExpr(builder, arrayIndex.Indices[i]);
+                        Context.Assert(indexOffset.TypeOf == typeInt, $"Index was built with an unexpected integer type ({indexOffset.TypeOf}).");
+                        var timesStride = builder.BuildMul(strides[i], indexOffset);
+                        totalOffset = builder.BuildAdd(totalOffset, timesStride);
+                    }
+
+                    var elementSize = typeArray.ElementType.Size;
+                    totalOffset = builder.BuildMul(LLVMValueRef.CreateConstInt(typeInt, (ulong)elementSize.Bytes), totalOffset);
+
+                    var ptradd = builder.BuildPtrAdd(lvalue, totalOffset, "arrayidx.ptradd");
+                    ptradd.Alignment = (uint)arrayIndex.Type.Align.Bytes;
                     return ptradd;
                 }
 
@@ -746,6 +832,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                             throw new UnreachableException();
                         }
 
+                        case BinaryOperatorKind.Eq | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "ieq");
                         case BinaryOperatorKind.Add | BinaryOperatorKind.Integer: return builder.BuildAdd(left, right, "iadd");
                         case BinaryOperatorKind.Sub | BinaryOperatorKind.Integer: return builder.BuildSub(left, right, "isub");
                     }
@@ -808,12 +895,16 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
                         case SemaExprLookup { ReferencedEntity: SemaDeclFunction staticFunction }:
                         {
+                            Context.Assert(staticFunction.VarargsKind == VarargsKind.None, call.Location, "Generating code for varargs functions is not supported yet.");
+
                             var functionInfo = _functionInfos[staticFunction];
                             Context.Assert(!functionInfo.IsSret, $"Calling of SRet functions cannot be compiled outside of {nameof(BuildExprIntoMemory)}; this case must be handled there.");
 
                             var arguments = new List<LLVMValueRef>(call.Arguments.Count * 2);
                             for (int i = 0; i < call.Arguments.Count; i++)
+                            {
                                 BuildArgumentForFunctionCall(builder, arguments, staticFunction.ParameterDecls[i], functionInfo.ParameterInfos[i], call.Arguments[i]);
+                            }
 
                             var functionReturnType = GenerateType(staticFunction.ReturnType);
                             string callValueName = staticFunction.ReturnType.IsVoid ? "" : "call";
@@ -885,7 +976,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 {
                     default:
                     {
-                        Context.Todo(arg.Location, $"Explicitly handle argument passing for value of type {arg.Type.ToDebugString(Colors.Off)} (canonical: {argumentType.ToDebugString(Colors.Off)})");
+                        Context.Todo(arg.Location, $"Explicitly handle argument passing for value of type {arg.Type.ToDebugString(Colors.Off)} (canonical: {argumentType.ToDebugString(Colors)})");
                         throw new UnreachableException();
                     }
 

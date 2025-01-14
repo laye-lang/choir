@@ -77,6 +77,7 @@ public readonly struct Align : IEquatable<Align>, IComparable<Align>
     public override string ToString() => $"{Bytes} bytes";
 }
 
+// TODO(local): maybe this should be `long` under the hood...
 public readonly struct Size : IEquatable<Size>, IComparable<Size>
 {
     public static Size FromBits(int bits) => new(bits);

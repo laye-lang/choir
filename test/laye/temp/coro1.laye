@@ -1,0 +1,17 @@
+int range(int n) {
+    for (int i = 0; i < n; i++) {
+        yield return n;
+    }
+}
+
+int main() {
+    int accum = 0;
+
+    var generator = range(5);
+
+    while ()
+    accum
+
+    // the sum of all values less than 5 is 10
+    return accum - 10;
+}

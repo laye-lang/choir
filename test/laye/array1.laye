@@ -1,0 +1,7 @@
+int main() {
+    int[3] arr;
+    arr[0] = 34;
+    arr[1] = 35;
+    arr[2] = 69;
+    return (arr[0] + arr[1]) - arr[2];
+}

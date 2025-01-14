@@ -1,0 +1,6 @@
+alias isize = int;
+
+isize main() {
+    int exit_code = 0;
+    return exit_code;
+}

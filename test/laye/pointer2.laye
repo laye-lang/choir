@@ -1,0 +1,9 @@
+int main() {
+    mut int exit_code = 7;
+
+    mut int* exit_code_ptr = &exit_code;
+    mut int** exit_code_ptr2 = &exit_code_ptr;
+    **exit_code_ptr2 = 0;
+
+    return exit_code;
+}

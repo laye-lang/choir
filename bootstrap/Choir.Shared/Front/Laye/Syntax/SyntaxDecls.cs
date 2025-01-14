@@ -253,6 +253,7 @@ public sealed class SyntaxDeclFunction(SyntaxNode returnType, SyntaxNode name, I
     public SyntaxNode ReturnType { get; } = returnType;
     public SyntaxNode Name { get; } = name;
     public IReadOnlyList<SyntaxDeclParam> Params { get; } = parameters;
+    public VarargsKind VarargsKind { get; set; } = VarargsKind.None;
 
     public SyntaxNode? Body { get; init; } = null;
     public SyntaxToken? TokenSemiColon { get; init; } = null;

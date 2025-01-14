@@ -141,6 +141,32 @@ public sealed class SyntaxExprCast(SyntaxToken tokenCast, SyntaxNode? targetType
     }
 }
 
+public abstract class SyntaxDesignator(Location location)
+    : SyntaxNode(location)
+{
+}
+
+public sealed class SyntaxDesignatorField(SyntaxToken fieldToken)
+    : SyntaxDesignator(fieldToken.Location)
+{
+    public string FieldName { get; } = fieldToken.TextValue;
+    public override IEnumerable<SyntaxNode> Children { get; } = [fieldToken];
+}
+
+public sealed class SyntaxDesignatorIndex(SyntaxNode indexExpr)
+    : SyntaxDesignator(indexExpr.Location)
+{
+    public SyntaxNode IndexExpr { get; } = indexExpr;
+    public override IEnumerable<SyntaxNode> Children { get; } = [indexExpr];
+}
+
+public sealed class SyntaxDesignatorInvalid(SyntaxNode node)
+    : SyntaxDesignator(node.Location)
+{
+    public SyntaxNode Node { get; } = node;
+    public override IEnumerable<SyntaxNode> Children { get; } = [node];
+}
+
 public class SyntaxConstructorInit(Location location, SyntaxNode value)
     : SyntaxNode(location)
 {
@@ -148,11 +174,11 @@ public class SyntaxConstructorInit(Location location, SyntaxNode value)
     public override IEnumerable<SyntaxNode> Children { get; } = [value];
 }
 
-public sealed class SyntaxConstructorInitDesignated(Location location, SyntaxNode designator, SyntaxNode value)
+public sealed class SyntaxConstructorInitDesignated(Location location, IReadOnlyList<SyntaxDesignator> designators, SyntaxNode value)
     : SyntaxConstructorInit(location, value)
 {
-    public SyntaxNode Designator { get; } = designator;
-    public override IEnumerable<SyntaxNode> Children { get; } = [designator, value];
+    public IReadOnlyList<SyntaxDesignator> Designators { get; } = designators;
+    public override IEnumerable<SyntaxNode> Children { get; } = [..designators, value];
 }
 
 public sealed class SyntaxExprConstructor(SyntaxNode type, IReadOnlyList<SyntaxConstructorInit> inits)
@@ -183,7 +209,7 @@ public sealed class SyntaxExprField(SyntaxNode operand, SyntaxToken tokenFieldNa
 }
 
 public sealed class SyntaxIndex(SyntaxNode operand, SyntaxToken tokenOpenBracket, IReadOnlyList<SyntaxNode> indices, SyntaxToken tokenCloseBracket)
-    : SyntaxNode(tokenOpenBracket.Location)
+    : SyntaxNode(operand.Location)
 {
     public SyntaxToken TokenOpenBracket { get; } = tokenOpenBracket;
     public SyntaxNode Operand { get; } = operand;
