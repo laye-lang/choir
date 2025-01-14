@@ -446,3 +446,17 @@ public sealed class SyntaxDeclAlias(SyntaxToken? tokenStrict, SyntaxToken tokenA
         }
     }
 }
+
+public sealed class SyntaxDeclRegister(SyntaxToken tokenRegister, SyntaxToken tokenRegisterName, SyntaxNode registerType, SyntaxToken tokenDeclName)
+    : SyntaxNode(tokenRegister.Location)
+{
+    public required IReadOnlyList<SyntaxAttrib> Attribs { get; init; }
+
+    public SyntaxToken TokenRegister { get; } = tokenRegister;
+    public SyntaxToken TokenRegisterName { get; } = tokenRegisterName;
+    public SyntaxNode RegisterType { get; } = registerType;
+    public SyntaxToken TokenDeclName { get; } = tokenDeclName;
+
+    public override bool IsDecl { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenRegister, tokenRegisterName, registerType, tokenDeclName];
+}

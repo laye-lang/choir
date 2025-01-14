@@ -52,6 +52,7 @@ public sealed class Lexer(SourceFile sourceFile)
         {"enum", TokenKind.Enum},
         {"alias", TokenKind.Alias},
         {"delegate", TokenKind.Delegate},
+        {"register", TokenKind.Register},
         {"template", TokenKind.Template},
         {"module", TokenKind.Module},
         {"test", TokenKind.Test},

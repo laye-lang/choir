@@ -1,0 +1,13 @@
+register "rsp" i64 rsp;
+
+foreign i32 printf(i8[*] format, varargs);
+
+int main() {
+    discard printf("rsp = %ld\n", rsp);
+
+    int foo = 10;
+    discard printf("foo = %ld\n", foo);
+    discard printf("rsp = %ld\n", rsp);
+
+    return 0;
+}

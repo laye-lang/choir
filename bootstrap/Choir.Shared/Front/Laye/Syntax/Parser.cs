@@ -406,6 +406,13 @@ public partial class Parser(SourceFile sourceFile)
 
             case TokenKind.Enum:
                 return ParseEnumDeclaration(templateParams, attribs, null);
+
+            case TokenKind.Register:
+            {
+                if (templateParams is not null)
+                    Context.Diag.Error(templateParams.Location, "Register declarations cannot be tempalted.");
+                return ParseRegisterDeclaration(attribs);
+            }
                 
             case TokenKind.Identifier when CurrentToken.TextValue == "static" && PeekAt(1, TokenKind.If):
                 return ParseStaticIf(true);
@@ -676,7 +683,7 @@ public partial class Parser(SourceFile sourceFile)
 
     private SyntaxDeclEnum ParseEnumDeclaration(SyntaxTemplateParams? templateParams, IReadOnlyList<SyntaxAttrib> attribs, SyntaxToken? tokenError)
     {
-        Context.Assert(At(TokenKind.Enum), CurrentLocation, $"{nameof(ParseStructDeclaration)} called when not at 'enum'.");
+        Context.Assert(At(TokenKind.Enum), CurrentLocation, $"{nameof(ParseEnumDeclaration)} called when not at 'enum'.");
 
         var tokenEnum = Consume();
         var tokenName = ExpectIdentifier();
@@ -697,6 +704,22 @@ public partial class Parser(SourceFile sourceFile)
         {
             TemplateParams = templateParams,
             Attribs = attribs,
+        };
+    }
+
+    private SyntaxDeclRegister ParseRegisterDeclaration(IReadOnlyList<SyntaxAttrib> attribs)
+    {
+        Context.Assert(At(TokenKind.Register), CurrentLocation, $"{nameof(ParseRegisterDeclaration)} called when not at 'register'.");
+
+        var tokenRegister = Consume();
+        var tokenRegisterName = Expect(TokenKind.LiteralString, "a literal string");
+        var registerType = ParseType();
+        var tokenDeclName = ExpectIdentifier();
+        ExpectSemiColon();
+
+        return new SyntaxDeclRegister(tokenRegister, tokenRegisterName, registerType, tokenDeclName)
+        {
+            Attribs = attribs
         };
     }
 

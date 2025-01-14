@@ -143,6 +143,7 @@ public enum TokenKind : ushort
     Module,
     Alias,
     Delegate,
+    Register,
     Test,
     Import,
     Export,
