@@ -2,8 +2,6 @@ using System.Numerics;
 
 using Choir.Front.Laye.Syntax;
 
-using LLVMSharp;
-
 namespace Choir.Front.Laye.Sema;
 
 public enum CastKind

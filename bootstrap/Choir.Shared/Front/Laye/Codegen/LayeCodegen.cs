@@ -302,6 +302,8 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                             case 128: return LLVMTypeRef.FP128;
                         }
                     }
+
+                    case BuiltinTypeKind.FFIInt: return LLVMTypeRef.CreateInt((uint)builtIn.Size.Bits);
                 }
             }
 
@@ -586,6 +588,14 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
             case SemaStmtAssign assign:
             {
+                if (assign.Target is SemaExprLookup { ValueCategory: ValueCategory.Register } register)
+                {
+                    Context.Assert(register.ReferencedEntity is SemaDeclRegister, register.Location, "Should refrence a register decl");
+                    var value = BuildExpr(builder, assign.Value);
+                    BuildStoreToRegister(builder, register.Location, (SemaDeclRegister)register.ReferencedEntity, value);
+                    break;
+                }
+
                 var target = BuildExpr(builder, assign.Target);
                 Context.Assert(target.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Can't assign to non-pointer target.");
                 BuildExprIntoMemory(builder, assign.Value, target);
@@ -665,7 +675,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
                         case SemaExprLookup { ReferencedEntity: SemaDeclFunction staticFunction }:
                         {
-                            Context.Assert(staticFunction.VarargsKind == VarargsKind.None, call.Location, "Generating code for varargs functions is not supported yet.");
+                            Context.Assert(staticFunction.VarargsKind != VarargsKind.Laye, call.Location, "Generating code for varargs Laye functions is not supported yet.");
 
                             var functionInfo = _functionInfos[staticFunction];
                             if (!functionInfo.IsSret)
@@ -681,8 +691,14 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                                 arguments.Add(tempAddr); // the sret address;
 #pragma warning restore IDE0028 // Simplify collection initialization
 
-                                for (int i = 0; i < call.Arguments.Count; i++)
+                                for (int i = 0; i < staticFunction.ParameterDecls.Count; i++)
                                     BuildArgumentForFunctionCall(builder, arguments, staticFunction.ParameterDecls[i], functionInfo.ParameterInfos[i], call.Arguments[i]);
+
+                                if (staticFunction.VarargsKind == VarargsKind.C)
+                                {
+                                    for (int i = staticFunction.ParameterDecls.Count; i < call.Arguments.Count; i++)
+                                        BuildArgumentForFunctionCallAsCVarargs(builder, arguments, call.Arguments[i]);
+                                }
 
                                 // no need to BuildExpr when I can look it up manually right now
                                 var callee = _declaredValues[staticFunction];
@@ -895,15 +911,21 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
                         case SemaExprLookup { ReferencedEntity: SemaDeclFunction staticFunction }:
                         {
-                            Context.Assert(staticFunction.VarargsKind == VarargsKind.None, call.Location, "Generating code for varargs functions is not supported yet.");
+                            Context.Assert(staticFunction.VarargsKind != VarargsKind.Laye, call.Location, "Generating code for Laye varargs functions is not supported yet.");
 
                             var functionInfo = _functionInfos[staticFunction];
                             Context.Assert(!functionInfo.IsSret, $"Calling of SRet functions cannot be compiled outside of {nameof(BuildExprIntoMemory)}; this case must be handled there.");
 
                             var arguments = new List<LLVMValueRef>(call.Arguments.Count * 2);
-                            for (int i = 0; i < call.Arguments.Count; i++)
+                            for (int i = 0; i < staticFunction.ParameterDecls.Count; i++)
                             {
                                 BuildArgumentForFunctionCall(builder, arguments, staticFunction.ParameterDecls[i], functionInfo.ParameterInfos[i], call.Arguments[i]);
+                            }
+
+                            if (staticFunction.VarargsKind == VarargsKind.C)
+                            {
+                                for (int i = staticFunction.ParameterDecls.Count; i < call.Arguments.Count; i++)
+                                    BuildArgumentForFunctionCallAsCVarargs(builder, arguments, call.Arguments[i]);
                             }
 
                             var functionReturnType = GenerateType(staticFunction.ReturnType);
@@ -924,11 +946,42 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 case SemaExprLookup lookup:
                 {
                     Context.Assert(lookup.ReferencedEntity is not null, lookup.Location, "Lookup was not resolved to an entity during sema, should not get to codegen.");
+
+                    if (lookup.IsRegister)
+                    {
+                        Context.Assert(lookup.ReferencedEntity is SemaDeclRegister, lookup.Location, "Lookup of register value category did not reference a register declaration.");
+                        return BuildLoadFromRegister(builder, lookup.Location, (SemaDeclRegister)lookup.ReferencedEntity);
+                    }
+
                     Context.Assert(_declaredValues.ContainsKey(lookup.ReferencedEntity), lookup.Location, "Entity to lookup was not declared in codegen yet. May have been generated incorrectly.");
                     return _declaredValues[lookup.ReferencedEntity];
                 }
             }
         }
+    }
+
+    private LLVMValueRef BuildLoadFromRegister(LLVMBuilderRef builder, Location location, SemaDeclRegister declRegister)
+    {
+        Context.Assert(declRegister.Type.IsInteger && declRegister.Type.Size.Bits is 32 or 64, location, "Register load can only be 32 or 64 bits for now.");
+
+        string mov = declRegister.Type.Size.Bits == 32 ? "movl" : "movq";
+
+        var functy = LLVMTypeRef.CreateFunction(declRegister.Type.Size.Bits == 32 ? LLVMTypeRef.Int32 : LLVMTypeRef.Int64, []);
+        var asmcall = LLVMValueRef.CreateConstInlineAsm(functy, $"{mov} %{declRegister.RegisterName}, $0;", "=r", true, true);
+
+        return builder.BuildCall2(functy, asmcall, new ReadOnlySpan<LLVMValueRef>(), $"load.{declRegister.RegisterName}");
+    }
+
+    private LLVMValueRef BuildStoreToRegister(LLVMBuilderRef builder, Location location, SemaDeclRegister declRegister, LLVMValueRef value)
+    {
+        Context.Assert(declRegister.Type.IsInteger && declRegister.Type.Size.Bits is 32 or 64, location, "Register load can only be 32 or 64 bits for now.");
+
+        string mov = declRegister.Type.Size.Bits == 32 ? "movl" : "movq";
+
+        var functy = LLVMTypeRef.CreateFunction(LLVMTypeRef.Void, [declRegister.Type.Size.Bits == 32 ? LLVMTypeRef.Int32 : LLVMTypeRef.Int64]);
+        var asmcall = LLVMValueRef.CreateConstInlineAsm(functy, $"{mov} $0, %{declRegister.RegisterName}", "r", true, true);
+
+        return builder.BuildCall2(functy, asmcall, new ReadOnlySpan<LLVMValueRef>(ref value), "");
     }
 
     private ParameterInfo BuildParameterForFunctionDecl(SemaDeclParam paramDecl, List<LLVMTypeRef> outParameterTypes, CallingConvention cc)
@@ -998,6 +1051,31 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 builder.BuildStore(argumentValue, argumentAlloca);
                 // and pass the address of the temporary as the argument
                 outArguments.Add(argumentAlloca);
+            } break;
+        }
+
+        Context.Assert(beginArgumentCount < outArguments.Count, "Building an argument to a function call did not properly generate any argument values.");
+    }
+
+    private void BuildArgumentForFunctionCallAsCVarargs(LLVMBuilderRef builder, List<LLVMValueRef> outArguments, SemaExpr arg)
+    {
+        int beginArgumentCount = outArguments.Count;
+
+        var argumentType = arg.Type.CanonicalType.Type;
+        var argumentValue = BuildExpr(builder, arg);
+
+        switch (argumentType)
+        {
+            default:
+            {
+                Context.Todo(arg.Location, $"Explicitly handle argument passing for value of type {arg.Type.ToDebugString(Colors.Off)} (canonical: {argumentType.ToDebugString(Colors)})");
+                throw new UnreachableException();
+            }
+
+            case SemaTypeBuiltIn typeBuiltIn when typeBuiltIn.IsNumeric && typeBuiltIn.Size.Bits <= 64:
+            case SemaTypePointer or SemaTypeBuffer:
+            {
+                outArguments.Add(argumentValue);
             } break;
         }
 

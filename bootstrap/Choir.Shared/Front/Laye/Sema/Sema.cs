@@ -427,7 +427,7 @@ public partial class Sema
                     return false;
 
                 attribs = declRegister.Attribs;
-                forwardDecl = new SemaDeclRegister(declRegister.Location, declRegister.TokenDeclName.TextValue);
+                forwardDecl = new SemaDeclRegister(declRegister.Location, declRegister.TokenRegisterName.TextValue, declRegister.TokenDeclName.TextValue);
             } break;
         }
 
@@ -766,11 +766,11 @@ public partial class Sema
                 Context.Assert(stmtAssign.TokenAssignOp.Kind == TokenKind.Equal, stmtAssign.TokenAssignOp.Location, "Fancy assignments are not currently supported in sema.");
 
                 var target = AnalyseExpr(stmtAssign.Left);
-                if (!target.IsLValue)
+                if (!target.IsLValue && !target.IsRegister)
                     Context.Diag.Error(target.Location, $"Cannot assign to {target.ValueCategory.ToHumanString(includeArticle: true)}.");
 
                 var value = AnalyseExpr(stmtAssign.Right, target.Type);
-                if (target.IsLValue) value = ConvertOrError(value, target.Type);
+                if (target.IsLValue || target.IsRegister) value = ConvertOrError(value, target.Type);
 
                 return new SemaStmtAssign(target, value);
             }
@@ -1176,7 +1176,11 @@ public partial class Sema
                         valueCategory = ValueCategory.RValue;
                     } break;
 
-                    case SemaDeclRegister declRegister: exprType = declRegister.Type; break;
+                    case SemaDeclRegister declRegister:
+                    {
+                        exprType = declRegister.Type;
+                        valueCategory = ValueCategory.Register;
+                    } break;
                 }
 
                 return new SemaExprLookup(nameref.Location, exprType, success.Decl)
