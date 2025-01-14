@@ -294,6 +294,8 @@ public abstract class SemaContainerType<T>(SemaTypeQual elementType)
 public sealed class SemaTypePointer(ChoirContext context, SemaTypeQual elementType)
     : SemaContainerType<SemaTypePointer>(elementType)
 {
+    public override bool IsPointer { get; } = true;
+
     public override Size Size { get; } = context.Target.SizeOfPointer;
     public override Align Align { get; } = context.Target.AlignOfPointer;
 
@@ -317,6 +319,8 @@ public sealed class SemaTypeBuffer(ChoirContext context, SemaTypeQual elementTyp
     : SemaContainerType<SemaTypeBuffer>(elementType)
 {
     public SemaExpr? Terminator { get; } = terminator;
+    
+    public override bool IsBuffer { get; } = true;
 
     public override Size Size { get; } = context.Target.SizeOfPointer;
     public override Align Align { get; } = context.Target.AlignOfPointer;

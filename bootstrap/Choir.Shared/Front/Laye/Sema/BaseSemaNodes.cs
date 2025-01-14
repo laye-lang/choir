@@ -155,6 +155,8 @@ public abstract class SemaType : BaseSemaNode
     public virtual bool IsBool { get; } = false;
     public virtual bool IsInteger { get; } = false;
     public virtual bool IsFloat { get; } = false;
+    public virtual bool IsPointer { get; } = false;
+    public virtual bool IsBuffer { get; } = false;
 
     public abstract Size Size { get; }
     public virtual Align Align => Align.ForBytes(Size.Bytes);

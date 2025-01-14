@@ -442,6 +442,13 @@ public sealed class SemaDeclAlias(Location location, string name, bool isStrict 
     }
 }
 
+public sealed class SemaDeclRegister(Location location, string name)
+    : SemaDeclNamed(location, name)
+{
+    public SemaTypeQual Type { get; set; } = SemaTypePoison.Instance.Qualified(Location.Nowhere);
+    public override IEnumerable<BaseSemaNode> Children => [Type];
+}
+
 public sealed class SemaDeclTest(Location location, string description, SemaStmt body)
     : SemaDecl(location)
 {

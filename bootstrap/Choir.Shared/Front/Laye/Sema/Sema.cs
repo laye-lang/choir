@@ -420,6 +420,15 @@ public partial class Sema
                     VarargsKind = declFunction.VarargsKind,
                 };
             } break;
+
+            case SyntaxDeclRegister declRegister:
+            {
+                if (!isAtModuleScope)
+                    return false;
+
+                attribs = declRegister.Attribs;
+                forwardDecl = new SemaDeclRegister(declRegister.Location, declRegister.TokenDeclName.TextValue);
+            } break;
         }
 
         Context.Assert(forwardDecl is not null, "Didn't generate the a forward declaration node.");
@@ -449,7 +458,7 @@ public partial class Sema
                 throw new UnreachableException();
             }
 
-            case SyntaxDeclAlias or SyntaxDeclStruct or SyntaxDeclEnum or SyntaxDeclBinding or SyntaxDeclFunction:
+            case SyntaxDeclAlias or SyntaxDeclStruct or SyntaxDeclEnum or SyntaxDeclRegister or SyntaxDeclBinding or SyntaxDeclFunction:
                 return (SemaDecl)AnalyseStmtOrDecl(decl);
         }
     }
@@ -678,6 +687,18 @@ public partial class Sema
                 return semaNode;
             }
 
+            case SyntaxDeclRegister declRegister:
+            {
+                if (!_forwardDeclNodes.TryGetValue(stmt, out var semaNodeCheck))
+                    Context.Unreachable("Register declarations should have been forward declared.");
+
+                Context.Assert(semaNodeCheck is SemaDeclRegister, declRegister.Location, "register declaration did not have sema node of enum type");
+                var semaNode = (SemaDeclRegister)semaNodeCheck;
+
+                AnalyseRegister(declRegister, semaNode);
+                return semaNode;
+            }
+
             case SyntaxStmtXyzzy: return new SemaStmtXyzzy(stmt.Location);
 
             case SyntaxCompound stmtCompound:
@@ -879,6 +900,18 @@ public partial class Sema
     {
         Context.Unreachable("Enum declarations are not implemented in sema yet.");
         return semaNode;
+    }
+
+    private void AnalyseRegister(SyntaxDeclRegister declRegister, SemaDeclRegister semaNode)
+    {
+        var registerType = AnalyseType(declRegister.RegisterType);
+        semaNode.Type = registerType;
+
+        if (!(registerType.IsInteger || registerType.IsFloat))
+        {
+            Context.Diag.Error(registerType.Location, "Register declarations must only be of integer or float types.");
+            return;
+        }
     }
 
     private SemaExpr AnalyseExpr(SyntaxNode expr, SemaTypeQual? typeHint = null)
@@ -1142,6 +1175,8 @@ public partial class Sema
                         exprType = declFunction.FunctionType(Context).Qualified(decl.Location);
                         valueCategory = ValueCategory.RValue;
                     } break;
+
+                    case SemaDeclRegister declRegister: exprType = declRegister.Type; break;
                 }
 
                 return new SemaExprLookup(nameref.Location, exprType, success.Decl)
@@ -1734,8 +1769,12 @@ public partial class Sema
     private SemaExpr ConvertToCVarargsOrError(SemaExpr expr)
     {
         var exprType = expr.Type.Type.CanonicalType;
-        if (exprType.IsInteger && exprType.Size.Bits < Context.Types.LayeTypeFFIInt.Size.Bits)
+        if (exprType.IsInteger && exprType.Size.Bits <= Context.Types.LayeTypeFFIInt.Size.Bits)
             return ConvertOrError(expr, Context.Types.LayeTypeFFIInt.Qualified(Location.Nowhere));
+        else if (exprType.IsFloat && exprType.Size.Bits <= Context.Types.LayeTypeFFIDouble.Size.Bits)
+            return ConvertOrError(expr, Context.Types.LayeTypeFFIDouble.Qualified(Location.Nowhere));
+        else if (exprType.IsNumeric || exprType.IsPointer || exprType.IsBuffer)
+            return LValueToRValue(expr);
 
         Context.Todo(expr.Location, $"ConvertToCVarargsOrError for expr of type {expr.Type.ToDebugString(Colors)}.");
         throw new UnreachableException();
