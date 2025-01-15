@@ -703,17 +703,27 @@ public partial class Sema
 
             case SyntaxCompound stmtCompound:
             {
+                var startDefer = CurrentScope.CurrentDefer;
+
                 using var _ = EnterScope(!inheritCurrentScope);
                 foreach (var node in stmtCompound.Body)
                     ForwardDeclareIfAllowedOutOfOrder(node, out var _);
                 // TODO(local): handle forward declarations in compound statements
                 // TODO(local): create scopes in compound statements.
                 var childStatements = stmtCompound.Body.Select(node => AnalyseStmtOrDecl(node)).ToArray();
-                return new SemaStmtCompound(stmtCompound.Location, childStatements);
+
+                var endDefer = CurrentScope.CurrentDefer;
+                return new SemaStmtCompound(stmtCompound.Location, childStatements)
+                {
+                    StartDefer = startDefer,
+                    EndDefer = endDefer,
+                };
             }
 
             case SyntaxStmtReturn stmtReturn:
             {
+                var currentDefer = CurrentScope.CurrentDefer;
+
                 bool hasErroredOnNoReturn = false;
                 if (CurrentFunction.ReturnType.IsNoReturn)
                 {
@@ -726,7 +736,10 @@ public partial class Sema
                     if (!hasErroredOnNoReturn && !CurrentFunction.ReturnType.IsVoid)
                         Context.Diag.Error("Must return a value from a non-void function.");
 
-                    return new SemaStmtReturnVoid(stmtReturn.Location);
+                    return new SemaStmtReturnVoid(stmtReturn.Location)
+                    {
+                        Defer = currentDefer,
+                    };
                 }
 
                 if (!hasErroredOnNoReturn && CurrentFunction.ReturnType.IsVoid)
@@ -736,7 +749,27 @@ public partial class Sema
                 if (!CurrentFunction.ReturnType.IsVoid)
                     returnValue = ConvertOrError(returnValue, CurrentFunction.ReturnType);
 
-                return new SemaStmtReturnValue(stmtReturn.Location, returnValue);
+                return new SemaStmtReturnValue(stmtReturn.Location, returnValue)
+                {
+                    Defer = currentDefer,
+                };
+            }
+
+            case SyntaxStmtDefer stmtDefer:
+            {
+                var deferred = AnalyseStmtOrDecl(stmtDefer.Stmt);
+                Context.Assert(deferred is not SemaDecl, deferred.Location, "Should not have parsed a declaration in defer context.");
+                var semaNode = new SemaStmtDefer(stmtDefer.Location, deferred);
+
+                var deferNode = new SemaDeferStackNode()
+                {
+                    Previous = CurrentScope.CurrentDefer,
+                    Defer = semaNode,
+                };
+
+                CurrentScope.CurrentDefer = deferNode;
+
+                return semaNode;
             }
 
             case SyntaxIf stmtIf:
@@ -1272,7 +1305,7 @@ public partial class Sema
         var right = LValueToRValue(AnalyseExpr(binary.Right));
 
         if (left.Type.IsPoison || right.Type.IsPoison)
-            return UndefinedOperator();
+            return new SemaExprBinaryBuiltIn(BinaryOperatorKind.Undefined, binary.TokenOperator, SemaTypePoison.InstanceQualified, left, right);
 
         var leftType = left.Type.CanonicalType;
         var rightType = right.Type.CanonicalType;
@@ -1859,6 +1892,7 @@ public partial class Sema
 
     private IDisposable EnterScope(Scope scope)
     {
+        scope.CurrentDefer = CurrentScope.CurrentDefer;
         return new ScopeDisposable(this, scope);
     }
 
@@ -1903,7 +1937,7 @@ public partial class Sema
         public ScopeDisposable(Sema sema, Scope? scope = null)
         {
             _sema = sema;
-            _scope = scope ?? new Scope(sema.CurrentScope);
+            _scope = scope ?? new Scope(sema.CurrentScope) { CurrentDefer = sema.CurrentScope.CurrentDefer };
             sema._scopeStack.Push(_scope);
         }
 

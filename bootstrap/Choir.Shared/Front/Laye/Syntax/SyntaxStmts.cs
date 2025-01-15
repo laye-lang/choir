@@ -190,6 +190,15 @@ public sealed class SyntaxStmtXyzzy(SyntaxToken tokenXyzzy, SyntaxToken tokenSem
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenXyzzy, tokenSemiColon];
 }
 
+public sealed class SyntaxStmtUnreachable(SyntaxToken tokenUnreachable, SyntaxToken tokenSemiColon)
+    : SyntaxNode(tokenUnreachable.Location)
+{
+    public SyntaxToken TokenUnreachable { get; } = tokenUnreachable;
+    public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenUnreachable, tokenSemiColon];
+}
+
 public sealed class SyntaxStmtAssert(SyntaxToken? tokenStatic, SyntaxToken tokenAssert, SyntaxNode condition, SyntaxToken? tokenComma, SyntaxToken? tokenMessage, SyntaxToken tokenSemiColon)
     : SyntaxNode(tokenAssert.Location)
 {

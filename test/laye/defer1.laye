@@ -1,0 +1,8 @@
+foreign i32 puts(i8[*] s);
+
+int main() {
+    defer discard puts("Puts 1");
+    defer discard puts("Puts 2");
+    defer discard puts("Puts 3");
+    return 0;
+}

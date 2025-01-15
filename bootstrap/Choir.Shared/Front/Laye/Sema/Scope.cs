@@ -8,6 +8,8 @@ public sealed class Scope(Scope? parent = null)
     public Scope? Parent { get; } = parent;
     public int Count => _symbols.Count;
 
+    public SemaDeferStackNode? CurrentDefer { get; set; }
+
     private readonly Dictionary<string, HashSet<SemaDeclNamed>> _symbols = [];
 
     public IReadOnlyList<SemaDeclNamed> LookUp(string name) => [.. GetDeclSet(name)];

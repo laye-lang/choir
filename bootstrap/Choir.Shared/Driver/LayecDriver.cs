@@ -171,9 +171,73 @@ Options:
         return true;
     }
 
+    private void CollectCompilerSearchPaths()
+    {
+        var builtInSearchPaths = new List<DirectoryInfo>();
+
+        string envName = "Lib";
+        string envSplit = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ";" : ":";
+        string[] pathEntries = Environment.GetEnvironmentVariable(envName)?.Split(envSplit) ?? [];
+
+        builtInSearchPaths.AddRange(pathEntries.Where(path => !path.IsNullOrEmpty()).Select(path => new DirectoryInfo(path)));
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            builtInSearchPaths.Add(new DirectoryInfo("/usr/local/lib/laye"));
+            builtInSearchPaths.Add(new DirectoryInfo("/usr/local/lib"));
+            //builtInSearchPaths.Add(new DirectoryInfo($"/usr/lib/{Triple}"));
+            builtInSearchPaths.Add(new DirectoryInfo("/usr/lib/laye"));
+            builtInSearchPaths.Add(new DirectoryInfo("/usr/lib"));
+            //builtInSearchPaths.Add(new DirectoryInfo($"/lib/{Triple}"));
+        }
+
+        string selfExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+        DirectoryInfo? searchDirectoryRoot = new DirectoryInfo(Path.GetDirectoryName(selfExePath)!);
+
+        while (searchDirectoryRoot is not null)
+        {
+            builtInSearchPaths.Add(searchDirectoryRoot.ChildDirectory("lib").ChildDirectory("laye"));
+            builtInSearchPaths.Add(searchDirectoryRoot.ChildDirectory("lib"));
+            searchDirectoryRoot = searchDirectoryRoot.Parent;
+        }
+
+        DirectoryInfo[] allPaths = [.. builtInSearchPaths, .. Options.LibrarySearchPaths];
+        Options.LibrarySearchPaths.Clear();
+        Options.LibrarySearchPaths.AddRange(allPaths.Where(dir => dir.Exists).Distinct());
+    }
+
     public int Execute()
     {
         Context.LogVerbose(string.Format(DriverVersion, ProgramName));
+
+        CollectCompilerSearchPaths();
+
+        Context.LogVerbose("Configured library search paths:");
+        foreach (var libDir in Options.LibrarySearchPaths)
+            Context.LogVerbose("  " + libDir.FullName);
+
+        if (!Options.NoCoreLibrary)
+        {
+            if (FindCompilerLibrary("core") is { } corelibFileInfo)
+                Options.BinaryDependencyFiles.Add(corelibFileInfo);
+            else Context.Assert(Context.HasIssuedError, "Should have errored when the compiler could not find a library it ships with.");
+
+            FileInfo? FindCompilerLibrary(string libraryName)
+            {
+                string libraryFileName = $"{libraryName}.mod";
+                foreach (var libDir in Options.LibrarySearchPaths)
+                {
+                    var modFile = libDir.ChildFile(libraryFileName);
+                    if (modFile.Exists) return modFile;
+                }
+
+                Context.Diag.Error($"Could not find Laye module file '{libraryFileName}'.");
+                return null;
+            }
+        }
+
+        if (Context.HasIssuedError)
+            return 1;
 
         if (!LoadDependencies(out var dependencies))
             return 1;
@@ -441,6 +505,13 @@ public sealed record class LayecDriverOptions
     public List<FileInfo> BinaryDependencyFiles { get; } = [];
 
     /// <summary>
+    /// Additional library search directories.
+    /// Library search directories are searched in the order they are specified.
+    /// Any built-in or environment-specified library search paths are prepended to this list in the order they are identified.
+    /// </summary>
+    public List<DirectoryInfo> LibrarySearchPaths { get; } = [];
+
+    /// <summary>
     /// The `-i` flag.
     /// Specifies that the contents of stdin are the only input source text rather than explicitly provided file paths.
     /// </summary>
@@ -484,7 +555,7 @@ public sealed record class LayecDriverOptions
     /// Disables linking to the Laye standard library, requiring the programmer to provide their own implementation if desired.
     /// `layec` does not handle linking itself, but it does ensure the default libraries are referenced by default and they are expected to be available when linking occurs.
     /// </summary>
-    public bool NoStandardLibrary { get; set; }
+    //public bool NoStandardLibrary { get; set; }
 
     /// <summary>
     /// Through what stage the driver should run.
@@ -614,7 +685,7 @@ public sealed record class LayecDriverOptions
                 case "--distribution": options.IsDistribution = true; break;
 
                 case "--no-corelib": options.NoCoreLibrary = true; break;
-                case "--no-stdlib": options.NoStandardLibrary = true; break;
+                //case "--no-stdlib": options.NoStandardLibrary = true; break;
 
                 case "--lex": options.DriverStage = DriverStage.Lex; break;
                 case "--parse": options.DriverStage = DriverStage.Parse; break;
@@ -629,8 +700,7 @@ public sealed record class LayecDriverOptions
             }
         }
 
-        if (options.NoCoreLibrary)
-            options.NoStandardLibrary = true;
+        //if (options.NoCoreLibrary) options.NoStandardLibrary = true;
 
         if (options.ModuleSourceFiles.Count == 0)
         {

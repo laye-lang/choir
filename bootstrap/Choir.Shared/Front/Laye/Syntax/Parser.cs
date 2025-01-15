@@ -916,6 +916,7 @@ public partial class Parser(SourceFile sourceFile)
             case TokenKind.While:
             case TokenKind.Xyzzy:
             case TokenKind.Yield:
+            case TokenKind.Unreachable:
                 return ParseStmt();
 
             default:
@@ -1092,6 +1093,7 @@ public partial class Parser(SourceFile sourceFile)
             }
 
             case TokenKind.Xyzzy: return new SyntaxStmtXyzzy(Consume(), ExpectSemiColon());
+            case TokenKind.Unreachable: return new SyntaxStmtUnreachable(Consume(), ExpectSemiColon());
 
             case TokenKind.Yield when !PeekAt(1, TokenKind.Break, TokenKind.Return):
                 return new SyntaxStmtYield(Consume(), ParseExpr(ExprParseContext.Default), ExpectSemiColon());

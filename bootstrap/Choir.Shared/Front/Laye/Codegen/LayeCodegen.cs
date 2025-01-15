@@ -464,6 +464,16 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         return _assertHandlerFunction;
     }
 
+    private void GenerateDefers(LLVMBuilderRef builder, SemaDeferStackNode? current, SemaDeferStackNode? last)
+    {
+        while (current != last)
+        {
+            Context.Assert(current is not null, "Well, somehow current != last but current == null, so something did a fuckey.");
+            BuildStmt(builder, current!.Defer.DeferredStatement);
+            current = current.Previous;
+        }
+    }
+
     private void BuildStmt(LLVMBuilderRef builder, SemaStmt stmt)
     {
         switch (stmt)
@@ -491,6 +501,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 // Nothing happens.
             } break;
 
+            case SemaStmtDefer:
+            {
+                // Skip it, and let the defer generation handle it at the appropriate time
+            } break;
+
             case SemaStmtCompound compound:
             {
                 foreach (var child in compound.Statements)
@@ -499,10 +514,14 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     if (child.ControlFlow != StmtControlFlow.Fallthrough)
                         break;
                 }
+
+                if (compound.ControlFlow == StmtControlFlow.Fallthrough)
+                    GenerateDefers(builder, compound.EndDefer, compound.StartDefer);
             } break;
 
             case SemaStmtReturnVoid @return:
             {
+                GenerateDefers(builder, @return.Defer, null);
                 builder.BuildRetVoid();
             } break;
 
@@ -514,11 +533,15 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     var sretStorage = CurrentFunctionValue.GetParam(0);
                     Context.Assert(sretStorage.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "The first parameter of an SRet function must be a pointer, the address to store the return value in.");
                     BuildExprIntoMemory(builder, @return.Value, sretStorage);
+
+                    GenerateDefers(builder, @return.Defer, null);
                     builder.BuildRetVoid();
                 }
                 else
                 {
                     var value = BuildExpr(builder, @return.Value);
+
+                    GenerateDefers(builder, @return.Defer, null);
                     builder.BuildRet(value);
                 }
             } break;
