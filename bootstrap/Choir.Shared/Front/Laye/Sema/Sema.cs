@@ -5,8 +5,6 @@ using System.Numerics;
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
 
-using LLVMSharp;
-
 namespace Choir.Front.Laye.Sema;
 
 #pragma warning disable CA1822 // Mark members as static
@@ -1354,7 +1352,7 @@ public partial class Sema
         {
             case SemaTypePoison typePoison:
             {
-                var arguments = call.Args.Select(arg => AnalyseExpr(arg)).ToArray();
+                var arguments = call.Args.Select(arg => EvaluateIfPossible(AnalyseExpr(arg))).ToArray();
                 return new SemaExprCall(call.Location, SemaTypePoison.InstanceQualified, callee, arguments);
             }
 
@@ -1429,7 +1427,7 @@ public partial class Sema
                 var C = new Colors(Context.UseColor);
                 Context.Diag.Error(call.Callee.Location, $"Cannot call an expression of type {callee.Type.ToDebugString(C)}");
 
-                var arguments = call.Args.Select(e => AnalyseExpr(e)).ToArray();
+                var arguments = call.Args.Select(e => EvaluateIfPossible(AnalyseExpr(e))).ToArray();
             } break;
         }
 
@@ -1706,6 +1704,14 @@ public partial class Sema
         return evaluator.TryEvaluate(expr, out value);
     }
 
+    private SemaExpr EvaluateIfPossible(SemaExpr expr)
+    {
+        if (TryEvaluate(expr, out var constant))
+            return new SemaExprEvaluatedConstant(expr, constant);
+
+        return expr;
+    }
+
     private const int ConvertScoreNoOp = 0;
     private const int ConvertScoreImpossible = -1;
     private const int ConvertScoreContainsErrors = -2;
@@ -1729,7 +1735,12 @@ public partial class Sema
             score = 1;
         }
 
-        if (from == to) return score;
+        if (from == to)
+        {
+            if (performConversion)
+                expr = EvaluateIfPossible(expr);
+            return score;
+        }
 
         {
             if (from is SemaTypePointer fromPtr && to is SemaTypePointer toPtr)
