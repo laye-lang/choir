@@ -69,14 +69,31 @@ public sealed class SemaStmtBreak(Location location, SemaDecl breakTarget)
 {
     public SemaDecl BreakTarget { get; } = breakTarget;
 
+    // The 'start defer' at the opening of the scope associated with the break target
     public SemaDeferStackNode? StartDefer { get; set; }
+    // The most recent defer as of this break statement
     public SemaDeferStackNode? EndDefer { get; set; }
+
+    public override StmtControlFlow ControlFlow { get; } = StmtControlFlow.Jump;
 }
 
 public sealed class SemaStmtContinue(Location location, SemaDecl continueTarget)
     : SemaStmt(location)
 {
     public SemaDecl ContinueTarget { get; } = continueTarget;
+
+    // The 'start defer' at the opening of the scope associated with the continue target
+    public SemaDeferStackNode? StartDefer { get; set; }
+    // The most recent defer as of this continue statement
+    public SemaDeferStackNode? EndDefer { get; set; }
+
+    public override StmtControlFlow ControlFlow { get; } = StmtControlFlow.Jump;
+}
+
+public sealed class SemaStmtUnreachable(Location location)
+    : SemaStmt(location)
+{
+    public override StmtControlFlow ControlFlow { get; } = StmtControlFlow.Return;
 }
 
 public sealed class SemaStmtDefer(Location location, SemaStmt deferred)

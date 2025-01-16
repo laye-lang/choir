@@ -2,16 +2,10 @@
 using System.Runtime.InteropServices;
 
 using Choir.CommandLine;
-using Choir.Front.Laye;
-using Choir.Front.Laye.Codegen;
-using Choir.Front.Laye.Sema;
-using Choir.Front.Laye.Syntax;
-
-using LLVMSharp.Interop;
 
 namespace Choir.Driver;
 
-public sealed class LayecDriver
+public sealed class LayeDriver
 {
     private const string DriverVersion = @"{0} version 0.1.0";
 
@@ -55,7 +49,7 @@ Options:
 
     public static int RunWithArgs(StreamingDiagnosticWriter diag, string[] args, string programName = "layec")
     {
-        var options = LayecDriverOptions.Parse(diag, new CliArgumentIterator(args));
+        var options = LayeDriverOptions.Parse(diag, new CliArgumentIterator(args));
         if (diag.HasIssuedErrors)
         {
             diag.Flush();
@@ -81,16 +75,16 @@ Options:
         return exitCode;
     }
 
-    public static LayecDriver Create(DiagnosticWriter diag, LayecDriverOptions options, string programName = "layec")
+    public static LayeDriver Create(DiagnosticWriter diag, LayecDriverOptions options, string programName = "laye")
     {
-        return new LayecDriver(programName, diag, options);
+        return new LayeDriver(programName, diag, options);
     }
 
     public string ProgramName { get; }
     public LayecDriverOptions Options { get; }
     public ChoirContext Context { get; }
 
-    private LayecDriver(string programName, DiagnosticWriter diag, LayecDriverOptions options)
+    private LayeDriver(string programName, DiagnosticWriter diag, LayecDriverOptions options)
     {
         ProgramName = programName;
         Options = options;
@@ -103,375 +97,13 @@ Options:
         };
     }
 
-    internal LayecDriver(string programName, LayecDriverOptions options, ChoirContext context)
-    {
-        ProgramName = programName;
-        Options = options;
-        Context = context;
-    }
-
-    private bool LoadDependencies(out LayeModule[] dependencies)
-    {
-        dependencies = [];
-
-        var moduleHeaders = Options.BinaryDependencyFiles
-            .Select(file => LayeModule.DeserializeHeaderFromObject(Context, file)).ToList();
-
-        for (int i = 0; i < moduleHeaders.Count; i++)
-        {
-            if (moduleHeaders[i].ModuleName == ".program")
-            {
-                Context.Diag.Error("A program module cannot be a dependency.");
-                return false;
-            }
-        }
-
-        var moduleNamesToDependencies = moduleHeaders
-            .ToDictionary(header => header.ModuleName!, header => header.DependencyNames);
-
-        var moduleNamesToFiles = Options.BinaryDependencyFiles.Zip(moduleHeaders)
-            .ToDictionary(pair => pair.Second.ModuleName!, pair => pair.First);
-
-        HashSet<string> allModuleNames = [];
-        foreach (var desc in moduleHeaders)
-        {
-            allModuleNames.Add(desc.ModuleName);
-            foreach (string dependencyName in desc.DependencyNames)
-                allModuleNames.Add(dependencyName);
-        }
-
-        List<(string From, string To)> dependencyEdges = [];
-        foreach (var desc in moduleHeaders)
-        {
-            foreach (string dependencyName in desc.DependencyNames)
-                dependencyEdges.Add((desc.ModuleName, dependencyName));
-        }
-
-        var sortResult = TopologicalSort.Sort(allModuleNames, dependencyEdges);
-        if (sortResult.CircularDependencies)
-        {
-            // TODO(local): report discovered circular dependencies
-            Context.Diag.Error("Detected circular dependencies.");
-            return false;
-        }
-
-        dependencies = new LayeModule[sortResult.Sorted.Length];
-        for (int i = 0; i < dependencies.Length; i++)
-        {
-            string moduleName = sortResult.Sorted[i];
-            if (!moduleNamesToFiles.TryGetValue(moduleName, out var moduleFile))
-            {
-                Context.Diag.ICE($"A dependency (module '{moduleName}') did not have an associated binary file.");
-                return false;
-            }
-
-            if (!moduleNamesToDependencies.TryGetValue(moduleName, out var moduleDependencyNames))
-            {
-                Context.Diag.ICE($"A dependency (module '{moduleName}') did not have an associated dependencies.");
-                return false;
-            }
-
-            var moduleDependencies = dependencies.Take(i)
-                .Where(d => moduleDependencyNames.Contains(d.ModuleName!))
-                .ToArray();
-
-            Context.Assert(moduleDependencies.Length == moduleDependencyNames.Count, $"Failed to map a list of dependency names ({(string.Join(", ", moduleDependencyNames.Select(n => $"'{n}'")))}) to their loaded modules.");
-            dependencies[i] = LayeModule.DeserializeFromObject(Context, moduleDependencies, moduleFile);
-        }
-
-        return true;
-    }
-
-    private void CollectCompilerSearchPaths()
-    {
-        var builtInSearchPaths = new List<DirectoryInfo>();
-
-        string envName = "Lib";
-        string envSplit = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ";" : ":";
-        string[] pathEntries = Environment.GetEnvironmentVariable(envName)?.Split(envSplit) ?? [];
-
-        builtInSearchPaths.AddRange(pathEntries.Where(path => !path.IsNullOrEmpty()).Select(path => new DirectoryInfo(path)));
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            builtInSearchPaths.Add(new DirectoryInfo("/usr/local/lib/laye"));
-            builtInSearchPaths.Add(new DirectoryInfo("/usr/local/lib"));
-            //builtInSearchPaths.Add(new DirectoryInfo($"/usr/lib/{Triple}"));
-            builtInSearchPaths.Add(new DirectoryInfo("/usr/lib/laye"));
-            builtInSearchPaths.Add(new DirectoryInfo("/usr/lib"));
-            //builtInSearchPaths.Add(new DirectoryInfo($"/lib/{Triple}"));
-        }
-
-        string selfExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-        DirectoryInfo? searchDirectoryRoot = new DirectoryInfo(Path.GetDirectoryName(selfExePath)!);
-
-        while (searchDirectoryRoot is not null)
-        {
-            builtInSearchPaths.Add(searchDirectoryRoot.ChildDirectory("lib").ChildDirectory("laye"));
-            builtInSearchPaths.Add(searchDirectoryRoot.ChildDirectory("lib"));
-            searchDirectoryRoot = searchDirectoryRoot.Parent;
-        }
-
-        DirectoryInfo[] allPaths = [.. builtInSearchPaths, .. Options.LibrarySearchPaths];
-        Options.LibrarySearchPaths.Clear();
-        Options.LibrarySearchPaths.AddRange(allPaths.Where(dir => dir.Exists).Distinct());
-    }
-
     public int Execute()
     {
-        Context.LogVerbose(string.Format(DriverVersion, ProgramName));
-
-        CollectCompilerSearchPaths();
-
-        Context.LogVerbose("Configured library search paths:");
-        foreach (var libDir in Options.LibrarySearchPaths)
-            Context.LogVerbose("  " + libDir.FullName);
-
-        if (!Options.NoCoreLibrary)
-        {
-            if (FindCompilerLibrary("core") is { } corelibFileInfo)
-                Options.BinaryDependencyFiles.Add(corelibFileInfo);
-            else Context.Assert(Context.HasIssuedError, "Should have errored when the compiler could not find a library it ships with.");
-
-            FileInfo? FindCompilerLibrary(string libraryName)
-            {
-                string libraryFileName = $"{libraryName}.mod";
-                foreach (var libDir in Options.LibrarySearchPaths)
-                {
-                    var modFile = libDir.ChildFile(libraryFileName);
-                    if (modFile.Exists) return modFile;
-                }
-
-                Context.Diag.Error($"Could not find Laye module file '{libraryFileName}'.");
-                return null;
-            }
-        }
-
-        if (Context.HasIssuedError)
-            return 1;
-
-        if (!LoadDependencies(out var dependencies))
-            return 1;
-
-        var sourceFiles = Options.ModuleSourceFiles.Select(Context.GetSourceFile);
-
-        var module = new LayeModule(Context, sourceFiles, dependencies);
-        var syntaxPrinter = new SyntaxPrinter(Context, false);
-        var semaPrinter = new SemaPrinter(Context, false);
-
-        #region Total Driver Flow
-
-        if (Options.DriverStage == DriverStage.Lex)
-            return LexOnly();
-
-        var unitDecls = new SyntaxDeclModuleUnit[module.SourceFiles.Count];
-        for (int i = 0; i < module.SourceFiles.Count; i++)
-        {
-            var sourceFile = module.SourceFiles[i];
-            unitDecls[i] = Parser.ParseModuleUnit(sourceFile);
-        }
-
-        if (Context.Diag.HasIssuedErrors) return 1;
-
-        string[] declaredModuleNames = unitDecls.Select(decl => decl.Header.ModuleName).Where(name => name is not null).Cast<string>().Distinct().ToArray();
-        if (declaredModuleNames.Length == 1)
-            module.ModuleName = declaredModuleNames[0];
-        else if (declaredModuleNames.Length != 0)
-        {
-            Context.Diag.Error("Source files do not all declare the same module.");
-            return 1;
-        }
-
-        if (Options.DriverStage == DriverStage.Parse)
-            return ParseOnly();
-
-        Sema.AnalyseModule(module, unitDecls);
-
-        if (Context.Diag.HasIssuedErrors) return 1;
-
-        if (Options.DriverStage == DriverStage.Sema)
-            return SemaOnly();
-
-        var llvmModule = LayeCodegen.GenerateIR(module);
-
-        if (Context.Diag.HasIssuedErrors) return 1;
-
-        if (Options.DriverStage == DriverStage.Codegen)
-            return CodegenOnly();
-
-        if (Options.DriverStage == DriverStage.Compile)
-            return CompileOnly();
-
-        try
-        {
-            string tempFilePath = Path.GetTempFileName();
-            EmitLLVMModuleToFile(tempFilePath, LLVMCodeGenFileType.LLVMObjectFile);
-
-            if (Options.ObjectFilePath == "-")
-            {
-                using var stdout = Console.OpenStandardOutput();
-                stdout.Write(File.ReadAllBytes(tempFilePath));
-                File.Delete(tempFilePath);
-            }
-            else File.Move(tempFilePath, GetOutputFilePath(isObject: true), true);
-        }
-        catch (Exception ex)
-        {
-            Context.Diag.ICE($"Failed to generate LLVM IR text: {ex.Message}");
-            return 1;
-        }
-
-        return 0;
-
-        #endregion
-
-        #region Specific Driver Stage Implementations
-
-        int LexOnly()
-        {
-            var tokens = new Dictionary<SourceFile, SyntaxToken[]>();
-            for (int i = 0; i < module.SourceFiles.Count; i++)
-            {
-                var sourceFile = module.SourceFiles[i];
-                var lexer = new Lexer(sourceFile);
-
-                var unitTokens = new List<SyntaxToken>();
-                SyntaxToken token;
-                do
-                {
-                    token = lexer.ReadToken();
-                    unitTokens.Add(token);
-                } while (token.Kind != TokenKind.EndOfFile);
-            }
-
-            if (Context.Diag.HasIssuedErrors) return 1;
-
-            if (Options.PrintTokens)
-            {
-                for (int i = 0; i < module.SourceFiles.Count; i++)
-                {
-                    if (i > 0 && Options.PrintTokens) Console.Error.WriteLine();
-
-                    var sourceFile = module.SourceFiles[i];
-                    Console.Error.WriteLine($"{sourceFile.FilePath}");
-
-                    foreach (var token in tokens[sourceFile])
-                        syntaxPrinter.PrintToken(token);
-                }
-            }
-
-            return 0;
-        }
-
-        int ParseOnly()
-        {
-            if (Options.PrintAst)
-            {
-                for (int i = 0; i < unitDecls.Length; i++)
-                {
-                    if (i > 0) Console.Error.WriteLine();
-
-                    Console.Error.WriteLine($"{unitDecls[i].SourceFile.FilePath}");
-                    syntaxPrinter.PrintSyntax(unitDecls[i]);
-                }
-            }
-
-            return 0;
-        }
-
-        int SemaOnly()
-        {
-            if (Options.PrintAst)
-            {
-                semaPrinter.PrintModule(module);
-            }
-
-            return 0;
-        }
-
-        int CodegenOnly()
-        {
-            if (Options.PrintIR)
-            {
-                llvmModule.Dump();
-            }
-
-            return 0;
-        }
-
-        int CompileOnly()
-        {
-            try
-            {
-                string tempFilePath = Path.GetTempFileName();
-                if (Options.AssemblerFormat == AssemblerFormat.Assembler)
-                    EmitLLVMModuleToFile(tempFilePath, LLVMCodeGenFileType.LLVMAssemblyFile);
-                else PrintLLVMModuleToFile(tempFilePath);
-
-                if (Options.ObjectFilePath == "-")
-                {
-                    Console.Write(File.ReadAllText(tempFilePath));
-                    File.Delete(tempFilePath);
-                }
-                else File.Move(tempFilePath, GetOutputFilePath(isObject: false), true);
-            }
-            catch (Exception ex)
-            {
-                Context.Diag.ICE($"Failed to emit assembler file: {ex.Message}");
-                return 1;
-            }
-
-            return 0;
-        }
-
-        string GetOutputFilePath(bool isObject)
-        {
-            Context.Assert(Options.ObjectFilePath != "-", "Handle output to stdio separately.");
-
-            string? objectFilePath = Options.ObjectFilePath;
-            if (objectFilePath is null)
-            {
-                string objectFileName = module.ModuleName is LayeConstants.ProgramModuleName ? "a" : module.ModuleName;
-                if (isObject)
-                    objectFilePath = $"{objectFileName}.mod";
-                else objectFilePath = Options.AssemblerFormat == AssemblerFormat.LLVM ? $"{objectFileName}.ll" : $"{objectFileName}.s";
-            }
-
-            return objectFilePath;
-        }
-
-        void PrintLLVMModuleToFile(string outputFilePath)
-        {
-            File.Delete(outputFilePath);
-            if (!llvmModule.TryPrintToFile(outputFilePath, out string printError))
-            {
-                Context.Diag.ICE($"Failed to print LLVM IR to file '{outputFilePath}': {printError}");
-            }
-        }
-
-        void EmitLLVMModuleToFile(string outputFilePath, LLVMCodeGenFileType fileType = LLVMCodeGenFileType.LLVMObjectFile)
-        {
-            LLVM.LinkInMCJIT();
-            LLVM.InitializeX86TargetMC();
-            LLVM.InitializeX86Target();
-            LLVM.InitializeX86TargetInfo();
-            LLVM.InitializeX86AsmParser();
-            LLVM.InitializeX86AsmPrinter();
-
-            var target = LLVMTargetRef.GetTargetFromTriple(LLVMTargetRef.DefaultTriple);
-            var machine = target.CreateTargetMachine(LLVMTargetRef.DefaultTriple, "generic", "", LLVMCodeGenOptLevel.LLVMCodeGenLevelNone, LLVMRelocMode.LLVMRelocDefault, LLVMCodeModel.LLVMCodeModelDefault);
-
-            if (!machine.TryEmitToFile(llvmModule, outputFilePath, fileType, out string message))
-            {
-                Context.Diag.ICE($"LLVM Emit to File Error: {message}");
-            }
-        }
-
-        #endregion
+        throw new NotImplementedException();
     }
 }
 
-public sealed record class LayecDriverOptions
+public sealed record class LayeDriverOptions
 {
     /// <summary>
     /// The `--version` flag.
@@ -498,16 +130,13 @@ public sealed record class LayecDriverOptions
     public bool OutputColoring { get; set; }
 
     /// <summary>
-    /// Every input source file is treated as a Laye source file of the same semantic module.
-    /// `layec` will validate that every source file begins with a `module` directive and that the directives specify the same module name.
-    /// The only exception to this rule is that executables may not specify a module name, so long as every program source file does the same.
-    /// Since `layec` does not know which other modules you are building and linking against, this is not strictly enforced.
-    /// You *may* build modules manually which have no module declarations in them using `layec`, though it is discouraged.
-    /// A compiler driver or build system may emit an error if you explicitly output libraries which do not have module directives in them.
-    /// 
-    /// Other files may be passed to `layec` if they are of known binary output formats so that library information can be extracted from them and are stored separately.
+    /// Laye module directories to compile.
+    /// If no directories are provided, then one of 'src', 'source' or '.' are implied, whichever is found first and also
+    /// contains Laye source files.
+    /// This means a call to the 'laye' driver with no explicit directories specified will try to be smart based on
+    /// common conventions.
     /// </summary>
-    public List<FileInfo> ModuleSourceFiles { get; } = [];
+    public List<DirectoryInfo> ModuleDirectories { get; } = [];
 
     /// <summary>
     /// Additional binary files that the input source code expects to link against in the future.
@@ -632,7 +261,8 @@ public sealed record class LayecDriverOptions
                             {
                                 diag.Error($"File extension '{inputFileExtension}' not recognized; use `--file-kind <kind> to manually specify.");
                                 inputFileType = InputFileLanguage.LayeModule;
-                            } break;
+                            }
+                            break;
                         }
                     }
 
@@ -682,7 +312,7 @@ public sealed record class LayecDriverOptions
                         }
                     }
                 } break;
-                
+
                 case "-o":
                 {
                     if (!args.Shift(out string? outputPath))

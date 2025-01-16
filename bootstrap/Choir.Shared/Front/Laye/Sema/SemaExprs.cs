@@ -39,9 +39,21 @@ public enum BinaryOperatorKind : long
     Neq = 1 << 4,
 
     Integer = 1 << 50,
+    Pointer = 1 << 51,
 
     OperatorMask = (1 << 50) - 1,
     TypeMask = ~OperatorMask,
+}
+
+public static class BinaryOperatorKindExtensions
+{
+    public static bool IsComparisonOperator(this BinaryOperatorKind kind) => (kind & BinaryOperatorKind.OperatorMask) switch
+    {
+        BinaryOperatorKind.Eq or
+        BinaryOperatorKind.Neq
+            => true,
+        _ => false,
+    };
 }
 
 public sealed class SemaExprLookup(Location location, SemaTypeQual type, SemaDeclNamed? entity)
@@ -149,6 +161,11 @@ public sealed class SemaExprLiteralBool(Location location, bool literalValue, Se
     : SemaExpr(location, type)
 {
     public bool LiteralValue { get; } = literalValue;
+}
+
+public sealed class SemaExprLiteralNil(Location location, SemaTypeQual? type = null)
+    : SemaExpr(location, type ?? SemaTypeNil.Instance.Qualified(location))
+{
 }
 
 public sealed class SemaExprCast(Location location, CastKind castKind, SemaTypeQual type, SemaExpr operand)

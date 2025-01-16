@@ -280,6 +280,26 @@ public sealed class SemaTypeTemplateParameter(string parameterName)
     public override bool TypeEquals(SemaTypeTemplateParameter other, TypeComparison comp) => Id == other.Id;
 }
 
+public sealed class SemaTypeNil
+    : SemaType<SemaTypeNil>
+{
+    public static readonly SemaTypeNil Instance = new();
+    public static readonly SemaTypeQual InstanceQualified = Instance.Qualified(Location.Nowhere);
+
+    public override Size Size { get; } = Size.FromBits(0);
+    public override Align Align { get; } = Align.ForBits(0);
+
+    private SemaTypeNil()
+        : base()
+    {
+    }
+
+    public override string ToDebugString(Colors colors) =>
+        $"{colors.LayeKeyword()}nil{colors.Default}";
+
+    public override bool TypeEquals(SemaTypeNil other, TypeComparison comp) => Id == other.Id;
+}
+
 public abstract class SemaContainerType<T>(SemaTypeQual elementType)
     : SemaType<T>
     where T : SemaContainerType<T>

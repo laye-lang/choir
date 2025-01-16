@@ -270,6 +270,12 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 throw new UnreachableException();
             }
 
+            case SemaTypeNil:
+            {
+                Context.Diag.ICE("The 'nil' type should not make it to code generation, it should always be converted to a proper type.");
+                throw new UnreachableException();
+            }
+
             case SemaTypeBuiltIn builtIn:
             {
                 switch (builtIn.Kind)
@@ -546,6 +552,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 }
             } break;
 
+            case SemaStmtUnreachable:
+            {
+                builder.BuildUnreachable();
+            } break;
+
             case SemaStmtIf @if:
             {
                 Context.Assert(CurrentFunction is not null, @if.Location, "`if` should be within a function.");
@@ -743,6 +754,8 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
     private LLVMValueRef BuildExpr(LLVMBuilderRef builder, SemaExpr expr)
     {
+        var exprType = expr.Type.Type.CanonicalType;
+
         unsafe
         {
             switch (expr)
@@ -765,6 +778,15 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 {
                     var type = GenerateType(expr.Type);
                     return LLVMValueRef.CreateConstInt(type, literalBool.LiteralValue ? 1ul : 0ul, false);
+                }
+
+                case SemaExprLiteralNil literalNil when exprType is SemaTypePointer or SemaTypeBuffer:
+                    return LLVMValueRef.CreateConstPointerNull(LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0));
+
+                case SemaExprLiteralNil literalNil:
+                {
+                    Context.Diag.ICE(literalNil.Location, $"Unimplemented type for literal 'nil' value: ${expr.Type.ToDebugString(Colors)} (canonical: {exprType.ToDebugString(Colors)})");
+                    throw new UnreachableException();
                 }
 
                 case SemaExprEvaluatedConstant constant:
@@ -870,8 +892,12 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                             Context.Diag.ICE(expr.Location, $"Unimplemented Laye built-in binary operator kind in Choir builder/codegen: {binaryBuiltIn.Kind}");
                             throw new UnreachableException();
                         }
+                        
+                        case BinaryOperatorKind.Eq | BinaryOperatorKind.Pointer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "peq");
+                        case BinaryOperatorKind.Neq | BinaryOperatorKind.Pointer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, "pne");
 
                         case BinaryOperatorKind.Eq | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "ieq");
+                        case BinaryOperatorKind.Neq | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, "ine");
                         case BinaryOperatorKind.Add | BinaryOperatorKind.Integer: return builder.BuildAdd(left, right, "iadd");
                         case BinaryOperatorKind.Sub | BinaryOperatorKind.Integer: return builder.BuildSub(left, right, "isub");
                     }
