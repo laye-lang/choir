@@ -1,0 +1,7 @@
+int main() {
+    if (false) {
+        unreachable;
+    } else {
+        return 0;
+    }
+}
