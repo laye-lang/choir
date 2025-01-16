@@ -1829,13 +1829,15 @@ public partial class Parser(SourceFile sourceFile)
             case TokenKind.Cast:
             {
                 var tokenCast = Consume();
-                Expect(TokenKind.OpenParen, "'('");
 
                 SyntaxNode? targetType = null;
-                if (!At(TokenKind.CloseParen))
-                    targetType = ParseType();
+                if (Consume(TokenKind.OpenParen))
+                {
+                    if (!At(TokenKind.CloseParen))
+                        targetType = ParseType();
 
-                Expect(TokenKind.CloseParen, "')'");
+                    Expect(TokenKind.CloseParen, "')'");
+                }
 
                 var expr = ParsePrimaryExpr(parseContext);
                 return new SyntaxExprCast(tokenCast, targetType, expr);
