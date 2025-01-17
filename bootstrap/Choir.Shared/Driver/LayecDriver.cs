@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 using Choir.CommandLine;
@@ -110,14 +111,41 @@ Options:
         Context = context;
     }
 
-    private bool LoadDependencies(out LayeModule[] dependencies)
+    private FileInfo? FindModuleBinaryFile(string libraryName)
+    {
+        string libraryFileName = $"{libraryName}.mod";
+        foreach (var libDir in Options.LibrarySearchPaths)
+        {
+            var modFile = libDir.ChildFile(libraryFileName);
+            if (modFile.Exists) return modFile;
+        }
+
+        Context.Diag.Error($"Could not find Laye module file '{libraryFileName}'.");
+        return null;
+    }
+
+    private bool LoadDependencies(SyntaxDeclModuleUnitHeader[] sourceHeaders, out LayeModule[] dependencies)
     {
         dependencies = [];
 
-        var moduleHeaders = Options.BinaryDependencyFiles
-            .Select(file => LayeModule.DeserializeHeaderFromObject(Context, file)).ToList();
+        HashSet<string> unitDependencies = [];
+        string unitName = sourceHeaders.FirstOrDefault()?.ModuleName ?? ".program";
 
-        for (int i = 0; i < moduleHeaders.Count; i++)
+        for (int i = 0; i < sourceHeaders.Length; i++)
+        {
+            var sourceHeaderSyntax = sourceHeaders[i];
+
+            foreach (var import in sourceHeaderSyntax.ImportDeclarations)
+                unitDependencies.Add(import.ModuleNameText);
+        }
+
+        var dependencyFiles = new List<FileInfo>(Options.BinaryDependencyFiles);
+
+    redo_dependency_checks:;
+        var moduleHeaders = dependencyFiles
+            .Select(file => LayeModule.DeserializeHeaderFromObject(Context, file)).ToArray();
+
+        for (int i = 0; i < moduleHeaders.Length; i++)
         {
             if (moduleHeaders[i].ModuleName == ".program")
             {
@@ -126,11 +154,34 @@ Options:
             }
         }
 
+        string[] allDependencyNames = [.. unitDependencies, .. moduleHeaders.SelectMany(mh => mh.DependencyNames)];
+        string[] missingDependencyNames = allDependencyNames
+            .Where(n => !dependencyFiles.Any(df => Path.GetFileNameWithoutExtension(df.Name) == n))
+            .ToArray();
+
+        foreach (string missing in missingDependencyNames)
+        {
+            if (FindModuleBinaryFile(missing) is { } missingModuleBinary)
+                dependencyFiles.Add(missingModuleBinary);
+        }
+
+        if (Context.HasIssuedError)
+            return false;
+
+        if (missingDependencyNames.Length != 0)
+            goto redo_dependency_checks;
+
         var moduleNamesToDependencies = moduleHeaders
             .ToDictionary(header => header.ModuleName!, header => header.DependencyNames);
 
-        var moduleNamesToFiles = Options.BinaryDependencyFiles.Zip(moduleHeaders)
+        var moduleNamesToFiles = dependencyFiles.Zip(moduleHeaders)
             .ToDictionary(pair => pair.Second.ModuleName!, pair => pair.First);
+
+        Context.LogVerbose("Build dependency files:");
+        foreach (var (dep, depDeps) in moduleNamesToDependencies)
+        {
+            Context.LogVerbose($"  {moduleNamesToFiles[dep].FullName} [{string.Join(", ", depDeps)}]");
+        }
 
         HashSet<string> allModuleNames = [];
         foreach (var desc in moduleHeaders)
@@ -155,6 +206,13 @@ Options:
             return false;
         }
 
+        Context.LogVerbose("Build dependency names, sorted:");
+        foreach (string depname in sortResult.Sorted)
+        {
+            Context.LogVerbose($"  {depname}");
+        }
+
+        //Context.LogVerbose("dependencies:");
         dependencies = new LayeModule[sortResult.Sorted.Length];
         for (int i = 0; i < dependencies.Length; i++)
         {
@@ -167,7 +225,7 @@ Options:
 
             if (!moduleNamesToDependencies.TryGetValue(moduleName, out var moduleDependencyNames))
             {
-                Context.Diag.ICE($"A dependency (module '{moduleName}') did not have an associated dependencies.");
+                Context.Diag.ICE($"A dependency (module '{moduleName}') did not have associated dependencies.");
                 return false;
             }
 
@@ -175,8 +233,10 @@ Options:
                 .Where(d => moduleDependencyNames.Contains(d.ModuleName!))
                 .ToArray();
 
-            Context.Assert(moduleDependencies.Length == moduleDependencyNames.Count, $"Failed to map a list of dependency names ({(string.Join(", ", moduleDependencyNames.Select(n => $"'{n}'")))}) to their loaded modules.");
+            Context.Assert(moduleDependencies.Length == moduleDependencyNames.Count, $"Failed to map a list of dependency names for module '{moduleName}' ({(string.Join(", ", moduleDependencyNames.Select(n => $"'{n}'")))}) to their loaded modules. Expected {moduleDependencyNames.Count} dependencies, but found {moduleDependencies.Length}.");
             dependencies[i] = LayeModule.DeserializeFromObject(Context, moduleDependencies, moduleFile);
+
+            //Context.LogVerbose($"  dependencies[i].ModuleName = {dependencies[i].ModuleName}");
         }
 
         return true;
@@ -229,31 +289,19 @@ Options:
 
         if (!Options.NoCoreLibrary)
         {
-            if (FindCompilerLibrary("core") is { } corelibFileInfo)
+            if (FindModuleBinaryFile("core") is { } corelibFileInfo)
                 Options.BinaryDependencyFiles.Add(corelibFileInfo);
             else Context.Assert(Context.HasIssuedError, "Should have errored when the compiler could not find a library it ships with.");
-
-            FileInfo? FindCompilerLibrary(string libraryName)
-            {
-                string libraryFileName = $"{libraryName}.mod";
-                foreach (var libDir in Options.LibrarySearchPaths)
-                {
-                    var modFile = libDir.ChildFile(libraryFileName);
-                    if (modFile.Exists) return modFile;
-                }
-
-                Context.Diag.Error($"Could not find Laye module file '{libraryFileName}'.");
-                return null;
-            }
         }
 
         if (Context.HasIssuedError)
             return 1;
 
-        if (!LoadDependencies(out var dependencies))
-            return 1;
+        var sourceFiles = Options.ModuleSourceFiles.Select(Context.GetSourceFile).ToArray();
+        var sourceHeaders = sourceFiles.Select(Parser.ParseModuleUnitHeader).ToArray();
 
-        var sourceFiles = Options.ModuleSourceFiles.Select(Context.GetSourceFile);
+        if (!LoadDependencies(sourceHeaders, out var dependencies))
+            return 1;
 
         var module = new LayeModule(Context, sourceFiles, dependencies);
         var syntaxPrinter = new SyntaxPrinter(Context, false);

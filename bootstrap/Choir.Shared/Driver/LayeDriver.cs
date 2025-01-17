@@ -75,16 +75,16 @@ Options:
         return exitCode;
     }
 
-    public static LayeDriver Create(DiagnosticWriter diag, LayecDriverOptions options, string programName = "laye")
+    public static LayeDriver Create(DiagnosticWriter diag, LayeDriverOptions options, string programName = "laye")
     {
         return new LayeDriver(programName, diag, options);
     }
 
     public string ProgramName { get; }
-    public LayecDriverOptions Options { get; }
+    public LayeDriverOptions Options { get; }
     public ChoirContext Context { get; }
 
-    private LayeDriver(string programName, DiagnosticWriter diag, LayecDriverOptions options)
+    private LayeDriver(string programName, DiagnosticWriter diag, LayeDriverOptions options)
     {
         ProgramName = programName;
         Options = options;
@@ -152,18 +152,12 @@ public sealed record class LayeDriverOptions
     public List<DirectoryInfo> LibrarySearchPaths { get; } = [];
 
     /// <summary>
-    /// The `-i` flag.
-    /// Specifies that the contents of stdin are the only input source text rather than explicitly provided file paths.
-    /// </summary>
-    public bool ReadFromStdIn { get; set; } = false;
-
-    /// <summary>
-    /// The name of the generated object file.
+    /// The name of the generated binary file.
     /// 
-    /// `layec` can only produce object files; it is not a linker and does not delegate work to one.
-    /// It is assumed the invoker, a build system or a compiler driver will delegate work to a linker.
+    /// `laye` can produce executable or object files. It delegates to `layec` to produce object files
+    /// and to the system linker to link into executables.
     /// </summary>
-    public string? ObjectFilePath { get; set; }
+    public string? OutputFilePath { get; set; }
 
     /// <summary>
     /// The format of assembler output when compiling with the `--compile` flag.
@@ -191,19 +185,12 @@ public sealed record class LayeDriverOptions
     public bool NoCoreLibrary { get; set; }
 
     /// <summary>
-    /// The `--no-stdlib` flag.
-    /// Disables linking to the Laye standard library, requiring the programmer to provide their own implementation if desired.
-    /// `layec` does not handle linking itself, but it does ensure the default libraries are referenced by default and they are expected to be available when linking occurs.
-    /// </summary>
-    //public bool NoStandardLibrary { get; set; }
-
-    /// <summary>
     /// Through what stage the driver should run.
     /// By default, a call to `layec` will generate an object file for the target system.
-    /// Only the <see cref="DriverStage.Lex"/> (--lex), <see cref="DriverStage.Parse"/> (--parse), <see cref="DriverStage.Sema"/>, (--sema), <see cref="DriverStage.Codegen"/> (--codegen), <see cref="DriverStage.Compile"/> (--compile) and <see cref="DriverStage.Assemble"/> stages are supported.
+    /// All of the <see cref="DriverStage.Lex"/> (--lex), <see cref="DriverStage.Parse"/> (--parse), <see cref="DriverStage.Sema"/>, (--sema), <see cref="DriverStage.Codegen"/> (--codegen), <see cref="DriverStage.Compile"/> (--compile), <see cref="DriverStage.Assemble"/> (-c, --assemble), and <see cref="DriverStage.Link"/> stages are supported.
     /// When a specific driver stage is selected, any alternate output forms it supports may also be set; any alternate output form which does not apply to the set driver stage is ignored.
     /// </summary>
-    public DriverStage DriverStage { get; set; } = DriverStage.Assemble;
+    public DriverStage DriverStage { get; set; } = DriverStage.Link;
 
     /// <summary>
     /// The `--tokens` compiler flag, determining if tokens should be printed when running only the <see cref="DriverStage.Lex"/> stage.
@@ -225,15 +212,9 @@ public sealed record class LayeDriverOptions
     /// </summary>
     public bool NoLower { get; set; } = false;
 
-    public static LayecDriverOptions Parse(DiagnosticWriter diag, CliArgumentIterator args)
+    public static LayeDriverOptions Parse(DiagnosticWriter diag, CliArgumentIterator args)
     {
-        var options = new LayecDriverOptions();
-
-        if (args.RemainingCount == 0)
-        {
-            options.ShowHelp = true;
-            return options;
-        }
+        var options = new LayeDriverOptions();
 
         var currentFileType = InputFileLanguage.Default;
         var outputColoring = Driver.OutputColoring.Auto;
@@ -244,6 +225,13 @@ public sealed record class LayeDriverOptions
             {
                 default:
                 {
+                    var inputDirectoryInfo = new DirectoryInfo(arg);
+                    if (inputDirectoryInfo.Exists)
+                    {
+                        options.ModuleDirectories.Add(inputDirectoryInfo);
+                        break;
+                    }
+
                     var inputFileInfo = new FileInfo(arg);
                     if (!inputFileInfo.Exists)
                         diag.Error($"No such file or directory '{arg}'.");
@@ -261,13 +249,16 @@ public sealed record class LayeDriverOptions
                             {
                                 diag.Error($"File extension '{inputFileExtension}' not recognized; use `--file-kind <kind> to manually specify.");
                                 inputFileType = InputFileLanguage.LayeModule;
-                            }
-                            break;
+                            } break;
                         }
                     }
 
                     if (inputFileType == InputFileLanguage.LayeSource)
-                        options.ModuleSourceFiles.Add(inputFileInfo);
+                    {
+                        diag.Error($"Laye source files ('{arg}') are not accepted by the Laye build tool/compiler driver.");
+                        diag.Note("To compile Laye with this tool, pass 0 or more directory paths containing Laye source files;\neach directory represents a Laye module, a collection of its immediate child source files.");
+                        diag.Note("If no directory paths are given as input, this tool will search for some common directories automatically.");
+                    }
                     else
                     {
                         Debug.Assert(inputFileType == InputFileLanguage.LayeModule);
@@ -295,29 +286,11 @@ public sealed record class LayeDriverOptions
                     }
                 } break;
 
-                case "-i": options.ReadFromStdIn = true; break;
-
-                case "--file-kind":
-                {
-                    if (!args.Shift(out string? fileKind))
-                        diag.Error($"Argument to '{arg}' is missing; expected 1 value.");
-                    else
-                    {
-                        switch (fileKind)
-                        {
-                            default: diag.Error($"File kind '{fileKind}' not recognized."); break;
-
-                            case "laye": currentFileType = InputFileLanguage.LayeSource; break;
-                            case "module": currentFileType = InputFileLanguage.LayeModule; break;
-                        }
-                    }
-                } break;
-
                 case "-o":
                 {
                     if (!args.Shift(out string? outputPath))
                         diag.Error($"Argument to '{arg}' is missing; expected 1 value.");
-                    else options.ObjectFilePath = outputPath;
+                    else options.OutputFilePath = outputPath;
                 } break;
 
                 case "-L":
@@ -333,13 +306,14 @@ public sealed record class LayeDriverOptions
                 case "--distribution": options.IsDistribution = true; break;
 
                 case "--no-corelib": options.NoCoreLibrary = true; break;
-                //case "--no-stdlib": options.NoStandardLibrary = true; break;
 
                 case "--lex": options.DriverStage = DriverStage.Lex; break;
                 case "--parse": options.DriverStage = DriverStage.Parse; break;
                 case "--sema": options.DriverStage = DriverStage.Sema; break;
                 case "--codegen": options.DriverStage = DriverStage.Codegen; break;
                 case "--compile": options.DriverStage = DriverStage.Compile; break;
+                case "--assemble":
+                case "-c": options.DriverStage = DriverStage.Assemble; break;
 
                 case "--tokens": options.PrintTokens = true; break;
                 case "--ast": options.PrintAst = true; break;
@@ -348,13 +322,29 @@ public sealed record class LayeDriverOptions
             }
         }
 
-        //if (options.NoCoreLibrary) options.NoStandardLibrary = true;
-
-        if (options.ModuleSourceFiles.Count == 0)
+        if (options.ModuleDirectories.Count == 0)
         {
             if (!options.ShowHelp && !options.ShowVersion)
-                diag.Error("No input source files.");
+            {
+                DirectoryInfo[] predefinedDirs = [
+                    new("src"),
+                    new("source"),
+                    new("."),
+                ];
+
+                foreach (var dir in predefinedDirs)
+                {
+                    if (dir.Exists && dir.EnumerateFiles().Any(f => f.Extension == ".laye"))
+                    {
+                        options.ModuleDirectories.Add(dir);
+                        break;
+                    }
+                }
+            }
         }
+
+        if (options.ModuleDirectories.Count == 0)
+            options.ShowHelp = true;
 
         if (outputColoring == Driver.OutputColoring.Auto)
             outputColoring = Console.IsErrorRedirected ? Driver.OutputColoring.Never : Driver.OutputColoring.Always;

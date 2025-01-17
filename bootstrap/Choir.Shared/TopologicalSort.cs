@@ -53,6 +53,7 @@ public static class TopologicalSort
                 };
             }
 
+            result.Reverse();
             return new TopologicalSortResult<T>()
             {
                 Sorted = [.. result],

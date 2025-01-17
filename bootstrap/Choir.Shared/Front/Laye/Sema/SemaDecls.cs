@@ -96,8 +96,9 @@ public sealed class SemaDeclFunction(Location location, string name)
         if (IsForeign) flags1 |= SerializerConstants.Attrib1ForeignFlag;
         if (IsInline) flags1 |= SerializerConstants.Attrib1InlineFlag;
         if (IsDiscardable) flags1 |= SerializerConstants.Attrib1DiscardableFlag;
-
-        // TODO(local): variadic-ness in the next flag
+        
+        if (VarargsKind == VarargsKind.C) flags2 |= SerializerConstants.Attrib2CStyleVariadicFlag;
+        if (VarargsKind == VarargsKind.Laye) flags2 |= SerializerConstants.Attrib2LayeVariadicFlag;
 
         if (flags2 != 0)
             flags1 |= SerializerConstants.AttribExtensionFlag;
@@ -168,7 +169,10 @@ public sealed class SemaDeclFunction(Location location, string name)
         if (0 != (flags1 & SerializerConstants.AttribExtensionFlag))
         {
             ushort flags2 = reader.ReadUInt16();
-            deserializer.Context.Unreachable("No flags2 deserialization");
+            if (0 != (flags2 & SerializerConstants.Attrib2CStyleVariadicFlag))
+                VarargsKind = VarargsKind.C;
+            if (0 != (flags2 & SerializerConstants.Attrib2LayeVariadicFlag))
+                VarargsKind = VarargsKind.Laye;
         }
 
         #endregion

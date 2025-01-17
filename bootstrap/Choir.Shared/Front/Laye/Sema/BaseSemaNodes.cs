@@ -190,6 +190,7 @@ public abstract class SemaType : BaseSemaNode
                 throw new UnreachableException();
             }
 
+            case SerializedTypeKind.Pointer: return SemaTypePointer.Deserialize(deserializer, reader);
             case SerializedTypeKind.Buffer: return SemaTypeBuffer.Deserialize(deserializer, reader);
 
             case SerializedTypeKind.Void: return deserializer.Context.Types.LayeTypeVoid;

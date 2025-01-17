@@ -1,5 +1,11 @@
 module libc;
 
-export import
-  printf
-from "stdio.h";
+// export struct FILE { }
+
+export foreign i8* fopen(i8[*] path, i8[*] mode);
+export foreign i32 fclose(i8* stream);
+export foreign i32 fread(i8 mut[*] buffer, int elem_size, int count, i8* stream);
+export foreign i32 feof(i8 *stream);
+export foreign i32 ferror(i8 *stream);
+
+export foreign i32 printf(i8[*] format, varargs);
