@@ -10,6 +10,6 @@ internal class Program
         Console.OutputEncoding = Encoding.UTF8;
 
         var diag = new StreamingDiagnosticWriter(writer: Console.Error, useColor: !Console.IsErrorRedirected);
-        return LayecDriver.RunWithArgs(diag, args);
+        return LayecHighLevelDriver.RunWithArgs(diag, args);
     }
 }

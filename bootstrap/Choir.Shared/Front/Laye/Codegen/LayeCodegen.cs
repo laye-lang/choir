@@ -339,6 +339,14 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
         string functionName = Mangler.GetMangledName(function);
 
+        var existingFunction = LlvmModule.GetNamedFunction(functionName);
+        if (existingFunction.Handle != IntPtr.Zero)
+        {
+            // TODO(local): assert some invariants to make sure sema did the right thing
+            _declaredValues[function] = existingFunction;
+            return;
+        }
+
         var returnClass = Classify(function.ReturnType.Type);
         var functionInfo = _functionInfos[function] = new();
 

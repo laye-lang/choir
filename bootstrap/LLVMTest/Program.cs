@@ -24,12 +24,12 @@ internal class Program
     static int CompileCore()
     {
         var diag = new StreamingDiagnosticWriter(writer: Console.Error, useColor: !Console.IsErrorRedirected);
-        return LayecDriver.RunWithArgs(diag, ["lib/laye/core/entry.laye"]);
+        return LayecHighLevelDriver.RunWithArgs(diag, ["lib/laye/core/entry.laye"]);
     }
 
     static int CompileBasic()
     {
         var diag = new StreamingDiagnosticWriter(writer: Console.Error, useColor: !Console.IsErrorRedirected);
-        return LayecDriver.RunWithArgs(diag, ["test/laye/basic.laye", "core.mod"]);
+        return LayecHighLevelDriver.RunWithArgs(diag, ["test/laye/basic.laye", "core.mod"]);
     }
 }

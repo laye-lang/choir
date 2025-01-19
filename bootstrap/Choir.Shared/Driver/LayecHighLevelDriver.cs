@@ -1,8 +1,7 @@
-﻿using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 using Choir.CommandLine;
+using Choir.Driver.Options;
 using Choir.Front.Laye;
 using Choir.Front.Laye.Codegen;
 using Choir.Front.Laye.Sema;
@@ -12,7 +11,7 @@ using LLVMSharp.Interop;
 
 namespace Choir.Driver;
 
-public sealed class LayecDriver
+public sealed class LayecHighLevelDriver
 {
     private const string DriverVersion = @"{0} version 0.1.0";
 
@@ -56,7 +55,7 @@ Options:
 
     public static int RunWithArgs(StreamingDiagnosticWriter diag, string[] args, string programName = "layec")
     {
-        var options = LayecDriverOptions.Parse(diag, new CliArgumentIterator(args));
+        var options = LayecHighLevelDriverOptions.Parse(diag, new CliArgumentIterator(args));
         if (diag.HasIssuedErrors)
         {
             diag.Flush();
@@ -82,16 +81,16 @@ Options:
         return exitCode;
     }
 
-    public static LayecDriver Create(DiagnosticWriter diag, LayecDriverOptions options, string programName = "layec")
+    public static LayecHighLevelDriver Create(DiagnosticWriter diag, LayecHighLevelDriverOptions options, string programName = "layec")
     {
-        return new LayecDriver(programName, diag, options);
+        return new LayecHighLevelDriver(programName, diag, options);
     }
 
     public string ProgramName { get; }
-    public LayecDriverOptions Options { get; }
+    public LayecHighLevelDriverOptions Options { get; }
     public ChoirContext Context { get; }
 
-    private LayecDriver(string programName, DiagnosticWriter diag, LayecDriverOptions options)
+    private LayecHighLevelDriver(string programName, DiagnosticWriter diag, LayecHighLevelDriverOptions options)
     {
         ProgramName = programName;
         Options = options;
@@ -104,7 +103,7 @@ Options:
         };
     }
 
-    internal LayecDriver(string programName, LayecDriverOptions options, ChoirContext context)
+    internal LayecHighLevelDriver(string programName, LayecHighLevelDriverOptions options, ChoirContext context)
     {
         ProgramName = programName;
         Options = options;
@@ -355,7 +354,7 @@ Options:
             string tempFilePath = Path.GetTempFileName();
             EmitLLVMModuleToFile(tempFilePath, LLVMCodeGenFileType.LLVMObjectFile);
 
-            if (Options.ObjectFilePath == "-")
+            if (Options.OutputFilePath == "-")
             {
                 using var stdout = Console.OpenStandardOutput();
                 stdout.Write(File.ReadAllBytes(tempFilePath));
@@ -456,7 +455,7 @@ Options:
                     EmitLLVMModuleToFile(tempFilePath, LLVMCodeGenFileType.LLVMAssemblyFile);
                 else PrintLLVMModuleToFile(tempFilePath);
 
-                if (Options.ObjectFilePath == "-")
+                if (Options.OutputFilePath == "-")
                 {
                     Console.Write(File.ReadAllText(tempFilePath));
                     File.Delete(tempFilePath);
@@ -474,9 +473,9 @@ Options:
 
         string GetOutputFilePath(bool isObject)
         {
-            Context.Assert(Options.ObjectFilePath != "-", "Handle output to stdio separately.");
+            Context.Assert(Options.OutputFilePath != "-", "Handle output to stdio separately.");
 
-            string? objectFilePath = Options.ObjectFilePath;
+            string? objectFilePath = Options.OutputFilePath;
             if (objectFilePath is null)
             {
                 string objectFileName = module.ModuleName is LayeConstants.ProgramModuleName ? "a" : module.ModuleName;
@@ -516,268 +515,5 @@ Options:
         }
 
         #endregion
-    }
-}
-
-public sealed record class LayecDriverOptions
-{
-    /// <summary>
-    /// The `--version` flag.
-    /// When specified, the driver prints the program version, then exits.
-    /// </summary>
-    public bool ShowVersion { get; set; }
-
-    /// <summary>
-    /// The `--help` flag.
-    /// When specified, the driver prints the help text, then exits.
-    /// </summary>
-    public bool ShowHelp { get; set; }
-
-    /// <summary>
-    /// The `--verbose` flag.
-    /// Allows emitting verbose information about the compilation to stderr.
-    /// </summary>
-    public bool ShowVerboseOutput { get; set; }
-
-    /// <summary>
-    /// True if the compiler output should be colored.
-    /// Determined by the `--color` flag.
-    /// </summary>
-    public bool OutputColoring { get; set; }
-
-    /// <summary>
-    /// Every input source file is treated as a Laye source file of the same semantic module.
-    /// `layec` will validate that every source file begins with a `module` directive and that the directives specify the same module name.
-    /// The only exception to this rule is that executables may not specify a module name, so long as every program source file does the same.
-    /// Since `layec` does not know which other modules you are building and linking against, this is not strictly enforced.
-    /// You *may* build modules manually which have no module declarations in them using `layec`, though it is discouraged.
-    /// A compiler driver or build system may emit an error if you explicitly output libraries which do not have module directives in them.
-    /// 
-    /// Other files may be passed to `layec` if they are of known binary output formats so that library information can be extracted from them and are stored separately.
-    /// </summary>
-    public List<FileInfo> ModuleSourceFiles { get; } = [];
-
-    /// <summary>
-    /// Additional binary files that the input source code expects to link against in the future.
-    /// `layec` will read Laye metadata from these files to perform smenatic analysis against.
-    /// </summary>
-    public List<FileInfo> BinaryDependencyFiles { get; } = [];
-
-    /// <summary>
-    /// Additional library search directories.
-    /// Library search directories are searched in the order they are specified.
-    /// Any built-in or environment-specified library search paths are prepended to this list in the order they are identified.
-    /// </summary>
-    public List<DirectoryInfo> LibrarySearchPaths { get; } = [];
-
-    /// <summary>
-    /// The `-i` flag.
-    /// Specifies that the contents of stdin are the only input source text rather than explicitly provided file paths.
-    /// </summary>
-    public bool ReadFromStdIn { get; set; } = false;
-
-    /// <summary>
-    /// The name of the generated object file.
-    /// 
-    /// `layec` can only produce object files; it is not a linker and does not delegate work to one.
-    /// It is assumed the invoker, a build system or a compiler driver will delegate work to a linker.
-    /// </summary>
-    public string? ObjectFilePath { get; set; }
-
-    /// <summary>
-    /// The format of assembler output when compiling with the `--compile` flag.
-    /// Defaults to traditional assembler code, but can be switched to LLVM IR with the `--emit-llvm` flag.
-    /// </summary>
-    public AssemblerFormat AssemblerFormat { get; set; } = AssemblerFormat.Assembler;
-
-    /// <summary>
-    /// The `--omit-source-text` flag.
-    /// Disables the inclusion of source text in binary module files.
-    /// </summary>
-    public bool OmitSourceTextInModuleBinary { get; set; } = false;
-
-    /// <summary>
-    /// The `--distribution` flag.
-    /// Enables "distribution" builds, where file paths are simplified since the end user won't have source files for the module on their system.
-    /// </summary>
-    public bool IsDistribution { get; set; } = false;
-
-    /// <summary>
-    /// The `--no-corelib` flag. This implies `--no-stdlib`.
-    /// Disables linking to the Laye core library, requiring the programmer to provide their own implementation.
-    /// `layec` does not handle linking itself, but it does ensure the default libraries are referenced by default and they are expected to be available when linking occurs.
-    /// </summary>
-    public bool NoCoreLibrary { get; set; }
-
-    /// <summary>
-    /// The `--no-stdlib` flag.
-    /// Disables linking to the Laye standard library, requiring the programmer to provide their own implementation if desired.
-    /// `layec` does not handle linking itself, but it does ensure the default libraries are referenced by default and they are expected to be available when linking occurs.
-    /// </summary>
-    //public bool NoStandardLibrary { get; set; }
-
-    /// <summary>
-    /// Through what stage the driver should run.
-    /// By default, a call to `layec` will generate an object file for the target system.
-    /// Only the <see cref="DriverStage.Lex"/> (--lex), <see cref="DriverStage.Parse"/> (--parse), <see cref="DriverStage.Sema"/>, (--sema), <see cref="DriverStage.Codegen"/> (--codegen), <see cref="DriverStage.Compile"/> (--compile) and <see cref="DriverStage.Assemble"/> stages are supported.
-    /// When a specific driver stage is selected, any alternate output forms it supports may also be set; any alternate output form which does not apply to the set driver stage is ignored.
-    /// </summary>
-    public DriverStage DriverStage { get; set; } = DriverStage.Assemble;
-
-    /// <summary>
-    /// The `--tokens` compiler flag, determining if tokens should be printed when running only the <see cref="DriverStage.Lex"/> stage.
-    /// </summary>
-    public bool PrintTokens { get; set; } = false;
-
-    /// <summary>
-    /// The `--ast` compiler flag, determining if the AST should be printed when running only the <see cref="DriverStage.Parse"/> or <see cref="DriverStage.Sema"/> stages.
-    /// </summary>
-    public bool PrintAst { get; set; } = false;
-
-    /// <summary>
-    /// The `--ir` compiler flag, determining if the IR should be printed when running only the <see cref="DriverStage.Codegen"/> stage.
-    /// </summary>
-    public bool PrintIR { get; set; } = false;
-
-    /// <summary>
-    /// The `--no-lower` compiler flag, determining if lowering should be skipped only during the <see cref="DriverStage.Sema"/> stage.
-    /// </summary>
-    public bool NoLower { get; set; } = false;
-
-    public static LayecDriverOptions Parse(DiagnosticWriter diag, CliArgumentIterator args)
-    {
-        var options = new LayecDriverOptions();
-
-        if (args.RemainingCount == 0)
-        {
-            options.ShowHelp = true;
-            return options;
-        }
-
-        var currentFileType = InputFileLanguage.Default;
-        var outputColoring = Driver.OutputColoring.Auto;
-
-        while (args.Shift(out string arg))
-        {
-            switch (arg)
-            {
-                default:
-                {
-                    var inputFileInfo = new FileInfo(arg);
-                    if (!inputFileInfo.Exists)
-                        diag.Error($"No such file or directory '{arg}'.");
-
-                    var inputFileType = currentFileType;
-                    if (inputFileType == InputFileLanguage.Default)
-                    {
-                        string inputFileExtension = inputFileInfo.Extension;
-                        switch (inputFileExtension.ToLower())
-                        {
-                            case ".laye": inputFileType = InputFileLanguage.LayeSource; break;
-                            case ".mod": inputFileType = InputFileLanguage.LayeModule; break;
-
-                            default:
-                            {
-                                diag.Error($"File extension '{inputFileExtension}' not recognized; use `--file-kind <kind> to manually specify.");
-                                inputFileType = InputFileLanguage.LayeModule;
-                            } break;
-                        }
-                    }
-
-                    if (inputFileType == InputFileLanguage.LayeSource)
-                        options.ModuleSourceFiles.Add(inputFileInfo);
-                    else
-                    {
-                        Debug.Assert(inputFileType == InputFileLanguage.LayeModule);
-                        options.BinaryDependencyFiles.Add(inputFileInfo);
-                    }
-                } break;
-
-                case "--help": options.ShowHelp = true; break;
-                case "--version": options.ShowVersion = true; break;
-                case "--verbose": options.ShowVerboseOutput = true; break;
-
-                case "--color":
-                {
-                    if (!args.Shift(out string? color))
-                        diag.Error($"Argument to '{arg}' is missing; expected 1 value.");
-                    else
-                    {
-                        switch (color.ToLower())
-                        {
-                            default: diag.Error($"Color mode '{color}' not recognized."); break;
-                            case "auto": outputColoring = Driver.OutputColoring.Auto; break;
-                            case "always": outputColoring = Driver.OutputColoring.Always; break;
-                            case "never": outputColoring = Driver.OutputColoring.Never; break;
-                        }
-                    }
-                } break;
-
-                case "-i": options.ReadFromStdIn = true; break;
-
-                case "--file-kind":
-                {
-                    if (!args.Shift(out string? fileKind))
-                        diag.Error($"Argument to '{arg}' is missing; expected 1 value.");
-                    else
-                    {
-                        switch (fileKind)
-                        {
-                            default: diag.Error($"File kind '{fileKind}' not recognized."); break;
-
-                            case "laye": currentFileType = InputFileLanguage.LayeSource; break;
-                            case "module": currentFileType = InputFileLanguage.LayeModule; break;
-                        }
-                    }
-                } break;
-                
-                case "-o":
-                {
-                    if (!args.Shift(out string? outputPath))
-                        diag.Error($"Argument to '{arg}' is missing; expected 1 value.");
-                    else options.ObjectFilePath = outputPath;
-                } break;
-
-                case "-L":
-                {
-                    if (!args.Shift(out string? libDir) || libDir.IsNullOrEmpty())
-                        diag.Error($"Argument to '{arg}' is missing; expected 1 (non-empty) value.");
-                    else options.LibrarySearchPaths.Add(new DirectoryInfo(libDir));
-                } break;
-
-                case "--emit-llvm": options.AssemblerFormat = AssemblerFormat.LLVM; break;
-
-                case "--omit-source-text": options.OmitSourceTextInModuleBinary = true; break;
-                case "--distribution": options.IsDistribution = true; break;
-
-                case "--no-corelib": options.NoCoreLibrary = true; break;
-                //case "--no-stdlib": options.NoStandardLibrary = true; break;
-
-                case "--lex": options.DriverStage = DriverStage.Lex; break;
-                case "--parse": options.DriverStage = DriverStage.Parse; break;
-                case "--sema": options.DriverStage = DriverStage.Sema; break;
-                case "--codegen": options.DriverStage = DriverStage.Codegen; break;
-                case "--compile": options.DriverStage = DriverStage.Compile; break;
-
-                case "--tokens": options.PrintTokens = true; break;
-                case "--ast": options.PrintAst = true; break;
-                case "--no-lower": options.NoLower = true; break;
-                case "--ir": options.PrintIR = true; break;
-            }
-        }
-
-        //if (options.NoCoreLibrary) options.NoStandardLibrary = true;
-
-        if (options.ModuleSourceFiles.Count == 0)
-        {
-            if (!options.ShowHelp && !options.ShowVersion)
-                diag.Error("No input source files.");
-        }
-
-        if (outputColoring == Driver.OutputColoring.Auto)
-            outputColoring = Console.IsErrorRedirected ? Driver.OutputColoring.Never : Driver.OutputColoring.Always;
-        options.OutputColoring = outputColoring == Driver.OutputColoring.Always;
-
-        return options;
     }
 }

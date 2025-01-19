@@ -55,7 +55,7 @@ public sealed record class ExecTestInstance(DirectoryInfo LibDir, FileInfo Sourc
         {
             int exitCode;
 
-            exitCode = LayecDriver.RunWithArgs(diag, [
+            exitCode = LayecHighLevelDriver.RunWithArgs(diag, [
                 SourceFile.FullName,
                 "-o", outputFile.FullName,
             ]);
@@ -121,14 +121,14 @@ internal static class Program
         int exitCode;
         try
         {
-            exitCode = LayecDriver.RunWithArgs(CreateDiag(), [
+            exitCode = LayecHighLevelDriver.RunWithArgs(CreateDiag(), [
                 "--no-corelib",
                 "-o", libDir.ChildFile("rt0.mod").FullName,
                 libDir.ChildDirectory("rt0").ChildFile("entry.laye").FullName
             ]);
             if (0 != exitCode) return exitCode;
 
-            exitCode = LayecDriver.RunWithArgs(CreateDiag(), [
+            exitCode = LayecHighLevelDriver.RunWithArgs(CreateDiag(), [
                 "--no-corelib",
                 "-o", libDir.ChildFile("core.mod").FullName,
                 libDir.ChildDirectory("core").ChildFile("assert.laye").FullName
