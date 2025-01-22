@@ -1,11 +1,16 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.Marshalling;
 
 using Choir.CommandLine;
 using Choir.Driver.Options;
+using Choir.Front.Laye;
 
 namespace Choir.Driver;
 
 public sealed class LayeDriver
+    : BaseLayeDriver<LayeDriverOptions, BaseLayeCompilerDriverArgParseState>
 {
     private const string DriverVersion = @"{0} version 0.1.0";
 
@@ -51,10 +56,7 @@ Options:
     {
         var options = LayeDriverOptions.Parse(diag, new CliArgumentIterator(args));
         if (diag.HasIssuedErrors)
-        {
-            diag.Flush();
             return 1;
-        }
 
         if (options.ShowVersion)
         {
@@ -71,7 +73,6 @@ Options:
         var driver = Create(diag, options);
         int exitCode = driver.Execute();
 
-        diag.Flush();
         return exitCode;
     }
 
@@ -80,25 +81,319 @@ Options:
         return new LayeDriver(programName, diag, options);
     }
 
-    public string ProgramName { get; }
-    public LayeDriverOptions Options { get; }
-    public ChoirContext Context { get; }
-
     private LayeDriver(string programName, DiagnosticWriter diag, LayeDriverOptions options)
+        : base(programName, diag, options)
     {
-        ProgramName = programName;
-        Options = options;
-
-        var abi = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ChoirAbi.WindowxX64 : ChoirAbi.SysV;
-        Context = new(diag, ChoirTarget.X86_64, abi, options.OutputColoring)
-        {
-            EmitVerboseLogs = options.ShowVerboseOutput,
-            OmitSourceTextInModuleBinary = options.OmitSourceTextInModuleBinary,
-        };
     }
 
-    public int Execute()
+    public override int Execute()
     {
-        throw new NotImplementedException();
+        bool isOutputStdout = Options.OutputFilePath == "-";
+
+        DirectoryInfo[] allLibrarySearchpaths = [.. CollectBuiltInLibrarySearchPaths(), .. Options.LibrarySearchPaths];
+        Options.LibrarySearchPaths.Clear();
+        Options.LibrarySearchPaths.AddRange(allLibrarySearchpaths.Where(dir => dir.Exists).Select(d => d.Canonical()).Distinct());
+
+        #region Implicit Module Selection
+
+        if (Options.AdditionalSourceFiles.Count == 0 && Options.ModuleDirectories.Count == 0 && Options.BinaryDependencyFiles.Count == 0)
+        {
+            Context.LogVerbose("Searching for a suitable default module source directory, since no input files were provided.");
+
+
+            string[] defaultModuleDirectories = ((string[]) [ "src", "source", "lib", "library", "mod", "module", ..(Environment.GetEnvironmentVariable("LAYE_DIR_DEFAULT_MODULE")?.Split(Path.PathSeparator) ?? []) ])
+                .Distinct().ToArray();
+            foreach (string dirName in defaultModuleDirectories)
+            {
+                var directoryInfo = new DirectoryInfo(dirName);
+                if (!directoryInfo.Exists)
+                    continue;
+
+                var entities = directoryInfo.EnumerateFiles();
+                if (!entities.Any(f => f.Extension == ".laye"))
+                    continue;
+
+                Options.ModuleDirectories.Add(directoryInfo);
+                break;
+            }
+
+            if (Options.ModuleDirectories.Count == 0)
+            {
+                Context.Diag.Error("No input files or module directories.");
+                Context.Diag.Note($"'{ProgramName}' checks the following directories for '.laye' source files if you don't provide any explicitly and uses the first one it finds:\n  {string.Join(", ", defaultModuleDirectories)}");
+                Context.Diag.Note($"Try creating a 'main.laye' file in this directory, then re-running '{ProgramName}'.");
+                return 1;
+            }
+        }
+
+        #endregion
+
+        Context.LogVerbose("Input source files:");
+        foreach (var file in Options.AdditionalSourceFiles)
+            Context.LogVerbose($"  {file.FullName}");
+
+        Context.LogVerbose("Input module directories:");
+        foreach (var dir in Options.ModuleDirectories)
+            Context.LogVerbose($"  {dir.FullName}");
+
+        Context.LogVerbose("Input module binaries:");
+        foreach (var file in Options.BinaryDependencyFiles)
+            Context.LogVerbose($"  {file.FullName}");
+
+        #region Module Resolution
+
+        string[] sourceModuleDirPaths = ((string[])["third-party", "third_party", "vendor", .. (Environment.GetEnvironmentVariable("LAYE_DIR_VENDOR")?.Split(Path.PathSeparator) ?? [])])
+                .Distinct().ToArray();
+
+        List<DirectoryInfo> additionalSourceDirs = [.. sourceModuleDirPaths.Select(path => new DirectoryInfo(path))];
+        if (Options.ModuleDirectories.Count == 0 && Options.AdditionalSourceFiles.Count != 0)
+            additionalSourceDirs.AddRange(new DirectoryInfo(".").EnumerateDirectories());
+
+        SourceModuleInfo[] fileListModules = CreateFileListModules(Options.AdditionalSourceFiles);
+        var modules = ResolveModuleDependencyOrder(Options.ModuleDirectories, additionalSourceDirs, fileListModules, Options.BinaryDependencyFiles, Options.LibrarySearchPaths);
+
+        if (Context.HasIssuedError)
+            return 1;
+
+        #endregion
+
+        Context.LogVerbose("Resolved modules, sorted:");
+        foreach (var module in modules)
+            Context.LogVerbose($"  {module}");
+
+        // do some sanity checking on outputting to stdout
+        if (Options.OutputFilePath == "-")
+        {
+            var presentSourceModulesForCompilation = modules.Where(m => m is SourceModuleInfo).ToArray();
+            int compilationModuleCount = presentSourceModulesForCompilation.Length;
+
+            // we don't error for this case if no output files will be generated anyway. Maybe we warn instead?
+            if (Options.DriverStage >= DriverStage.Compile && Options.DriverStage != DriverStage.Link && compilationModuleCount != 1)
+            {
+                Context.Diag.Error($"Cannot output to stdout (the '-o -' option) with the current compiler options.");
+                Context.Diag.Note($"Can only output to stdout when either:\n  a) linking an executable, or\n  b) compiling a single source module.");
+                
+                string presentSourceModulesForCompilationDesc = string.Join("\n", presentSourceModulesForCompilation.Select(m => $"  {m}"));
+                Context.Diag.Note($"You requested for {compilationModuleCount} source modules to be compiled:\n{presentSourceModulesForCompilationDesc}");
+
+                if (!Context.EmitVerboseLogs)
+                    Context.Diag.Note($"To see the modules being referred to by the compiler, add the '--verbose' command line argument.");
+
+                return 1;
+            }
+        }
+
+        var compilationArtifacts = new List<FileInfo>();
+        var linkerInputs = new List<FileInfo>();
+
+        bool isSingleSourceModule = modules.Where(m => m is SourceModuleInfo).Count() == 1;
+
+        #region Construct Compiler Calls
+
+        bool hasErroredWhenCompilingModules = false;
+
+        foreach (var module in modules)
+        {
+            if (module is BinaryModuleInfo binaryModule)
+                linkerInputs.Add(binaryModule.ModuleFile);
+            else if (module is SourceModuleInfo sourceModule)
+            {
+                FileInfo? moduleOutputFile = null;
+
+                bool hasOutputFiles = Options.DriverStage >= DriverStage.Compile;
+                bool emitModuleToStdout = hasOutputFiles && Options.DriverStage != DriverStage.Link && isOutputStdout && isSingleSourceModule;
+
+                if (hasOutputFiles)
+                {
+                    if (Options.DriverStage == DriverStage.Link || emitModuleToStdout)
+                        moduleOutputFile = new DirectoryInfo(Path.GetTempPath()).ChildFile($"{module.ModuleName}-{Path.GetRandomFileName()}.mod");
+                    else moduleOutputFile = new DirectoryInfo(".").ChildFile($"{module.ModuleName}.mod");
+                }
+
+                var layecOptions = new LayecHighLevelDriverOptions()
+                {
+                    // layec can't link, it doesn't make sense to pass that (or let it get rendered)
+                    DriverStage = (DriverStage)Math.Max((int)DriverStage.Assemble, (int)Options.DriverStage),
+                    OmitSourceTextInModuleBinary = Options.OmitSourceTextInModuleBinary,
+                    NoLower = Options.NoLower,
+                    ShowVerboseOutput = Options.ShowVerboseOutput,
+                    AssemblerFormat = Options.AssemblerFormat,
+                    IsDistribution = Options.IsDistribution,
+                    OutputColoring = Options.OutputColoring,
+                    PrintTokens = Options.PrintTokens,
+                    PrintAst = Options.PrintAst,
+                    PrintIR = Options.PrintIR,
+                };
+
+                if (moduleOutputFile is not null)
+                {
+                    Context.LogVerbose($"Outputting module '{module.ModuleName}' to '{moduleOutputFile.FullName}'.");
+                    layecOptions.OutputFilePath = moduleOutputFile.FullName;
+                    linkerInputs.Add(moduleOutputFile);
+                    compilationArtifacts.Add(moduleOutputFile);
+                }
+                else if (Options.OutputFilePath == "-")
+                    layecOptions.OutputFilePath = "-";
+
+                layecOptions.ModuleSourceFiles.AddRange(sourceModule.ModuleFiles);
+
+                var binaryDependencies = modules
+                    .Where(m => m is BinaryModuleInfo && sourceModule.DependencyNames.Contains(m.ModuleName))
+                    .Cast<BinaryModuleInfo>()
+                    .Select(m => m.ModuleFile);
+                layecOptions.BinaryDependencyFiles.AddRange(binaryDependencies);
+
+                var layecDriver = LayecHighLevelDriver.Create(Context, layecOptions);
+                int layecExitCode = layecDriver.Execute();
+
+                if (layecExitCode != 0)
+                    hasErroredWhenCompilingModules = true;
+                else
+                {
+                    if (emitModuleToStdout)
+                        WriteFileToStdout(moduleOutputFile!.FullName);
+                }
+            }
+            else
+            {
+                Context.Diag.ICE($"unknown module info type: {module.GetType()}");
+                throw new UnreachableException();
+            }
+        }
+
+        if (hasErroredWhenCompilingModules)
+        {
+            Context.LogVerbose("Failed to compile one or more modules with the 'layec' module compiler.");
+            return 1;
+        }
+
+        #endregion
+
+        #region Linking
+
+        if (Options.DriverStage == DriverStage.Link)
+        {
+            var runtimeModule = FindBinaryModule("rt0", Options.LibrarySearchPaths);
+            if (runtimeModule is null)
+            {
+                Context.Diag.Error($"Could not find Laye runtime library (rt0.mod) on the system; cannot link into an executable.");
+                return 1;
+            }
+
+            linkerInputs.Add(runtimeModule.ModuleFile);
+
+            FileInfo linker;
+            if (Options.Linker is string linkerPath)
+                linker = new(linkerPath);
+            else
+            {
+                var maybeLinker = IdentifyPlatformLinker();
+                if (maybeLinker is null)
+                {
+                    Context.Diag.Error("Failed to find a linker on this platform. Check your PATH environment variable or specify one with the `--linker` option.");
+                    return 1;
+                }
+
+                linker = maybeLinker;
+            }
+
+            var linkerSyntax = DetermineArgumentSyntaxFlavor(linker);
+
+            var linkerStartInfo = new ProcessStartInfo()
+            {
+                FileName = linker.FullName,
+            };
+
+            string outputFilePath;
+            if (Options.OutputFilePath is not null)
+            {
+                outputFilePath = Options.OutputFilePath;
+                Context.LogVerbose("Using input file path.");
+            }
+            else
+            {
+                string exeSuffix = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : "";
+                string outSuffix = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : ".out";
+                
+                var programModule = modules.Where(m => m.ModuleName == LayeConstants.ProgramModuleName).SingleOrDefault();
+                if (programModule is SourceModuleInfo { } programSourceModule)
+                {
+                    if (programSourceModule.ModuleFiles.Length == 1)
+                        outputFilePath = $"{Path.GetFileNameWithoutExtension(programSourceModule.ModuleFiles[0].Name)}{exeSuffix}";
+                    else outputFilePath = $"program{exeSuffix}";
+                }
+                else outputFilePath = $"a{outSuffix}";
+
+                Context.LogVerbose($"Setting assumed output file to '{outputFilePath}'.");
+            }
+
+            if (isOutputStdout)
+            {
+                outputFilePath = Path.GetTempFileName();
+                Context.LogVerbose($"Setting linker output to a temp file: '{outputFilePath}'.");
+            }
+
+            if (linkerSyntax == ExternalArgumentSyntaxFlavor.MSVC)
+            {
+                linkerStartInfo.ArgumentList.Add($"/nologo");
+                linkerStartInfo.ArgumentList.Add($"/out:{outputFilePath}");
+                //linkerStartInfo.ArgumentList.Add($"/defaultlib:libcmt");
+                linkerStartInfo.ArgumentList.Add("/subsystem:console");
+                linkerStartInfo.ArgumentList.Add("kernel32.lib");
+                linkerStartInfo.ArgumentList.Add("legacy_stdio_definitions.lib");
+                linkerStartInfo.ArgumentList.Add("msvcrt.lib");
+            }
+            else
+            {
+                linkerStartInfo.ArgumentList.Add($"-o{outputFilePath}");
+            }
+
+            foreach (var input in linkerInputs)
+            {
+                linkerStartInfo.ArgumentList.Add($"{input.FullName}");
+            }
+
+            Context.LogVerbose($"{linker.Name} {string.Join(" ", linkerStartInfo.ArgumentList.Select(a => $"\"{a}\""))}");
+            var linkerProcess = Process.Start(linkerStartInfo);
+            if (linkerProcess is null)
+            {
+                Context.Diag.ICE($"Failed to start linker process: '{linker.FullName}'.");
+                return 1;
+            }
+
+            linkerProcess.WaitForExit();
+            int linkerExitCode = linkerProcess.ExitCode;
+
+            if (linkerExitCode != 0)
+            {
+                Context.Diag.Error($"Linker process failed with exit code {linkerExitCode}.");
+                return 1;
+            }
+
+            if (isOutputStdout)
+            {
+                WriteFileToStdout(outputFilePath);
+            }
+            else
+            {
+                Context.Assert(File.Exists(outputFilePath), "I feel like we should have caught that the file wasn't generated yet.");
+            }
+        }
+
+        #endregion
+
+        // Context.Todo("Finish implementing the laye driver.");
+        return 0;
+
+        static void WriteFileToStdout(string filePath)
+        {
+            using var fileStream = File.OpenRead(filePath);
+            using var stdout = Console.OpenStandardOutput();
+
+            byte[] buffer = new byte[1024 * 1024];
+            int nRead;
+            while ((nRead = fileStream.Read(buffer)) != 0)
+                stdout.Write(buffer.AsSpan(0, nRead));
+        }
     }
 }

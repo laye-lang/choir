@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "laye": {
+      "commandName": "Project",
+      "commandLineArgs": "--verbose",
+      "workingDirectory": "C:\\Users\\Nashiora\\dev\\temp"
+    }
+  }
+}

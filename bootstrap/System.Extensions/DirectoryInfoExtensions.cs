@@ -11,4 +11,6 @@ public static class DirectoryInfoExtensions
     {
         return new FileInfo(Path.Combine(di.FullName, childPath));
     }
+
+    public static DirectoryInfo Canonical(this DirectoryInfo di) => new(di.FullName);
 }

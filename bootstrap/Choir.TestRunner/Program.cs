@@ -37,7 +37,7 @@ public sealed record class ExecTestInstance(DirectoryInfo LibDir, FileInfo Sourc
 
     protected override void RunTestImpl()
     {
-        var diag = new StreamingDiagnosticWriter(writer: Console.Error, useColor: !Console.IsErrorRedirected)
+        using var diag = new StreamingDiagnosticWriter(writer: Console.Error, useColor: !Console.IsErrorRedirected)
         {
             OnICE = () => throw new TestRunnerInternalCompilerError(),
         };

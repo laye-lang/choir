@@ -43,6 +43,7 @@ public readonly struct DiagnosticInfo(DiagnosticKind kind, Location? location, s
 }
 
 public abstract class DiagnosticWriter(ChoirContext? context, bool? useColor = null)
+    : IDisposable
 {
     public ChoirContext? Context { get; private set; } = context;
     public Colors Colors { get; private set; } = new Colors(useColor ?? context?.UseColor ?? false);
@@ -60,6 +61,7 @@ public abstract class DiagnosticWriter(ChoirContext? context, bool? useColor = n
             Colors = new Colors(useColor ?? context.UseColor);
     }
 
+    public virtual void Dispose() => Flush();
     public virtual void Flush()
     {
     }
@@ -119,7 +121,7 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
         _group.Clear();
     }
 
-    protected (Rune[] Runes, int Columns) TakeColumns(ref Rune[] runes, int n)
+    protected static (Rune[] Runes, int Columns) TakeColumns(ref Rune[] runes, int n)
     {
         const int TabSize = 4;
 
@@ -255,21 +257,28 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
             throw new UnreachableException();
         }
 
-        int columnsRem = columns - 3;
-
         var builder = new StringBuilder();
 
-        bool isFirstLine = true;
+        // Subtract 3 here for the leading character and the space after it.
+        int columnsRem = columns - 3;
+
+        // Print an extra line after a line that was broken into multiple lines if
+        // another line would immediately follow; this keeps track of that.
         bool wasPrevMultiLine = false;
 
+        // Print all diagnostics that we have queued up as a group.
+        bool isFirstLine = true;
         Location? previousLocation = null;
         for (int diagIndex = 0, groupCount = group.Count; diagIndex < groupCount; diagIndex++)
         {
             if (diagIndex > 0)
                 builder.AppendLine("│");
-                
+
+            // Render the diagnostic text.
             var diag = group[diagIndex];
             string diagText = FormatDiagnostic(diag, previousLocation);
+
+            // Then, indent everything properly.
             string[] diagLines = diagText.TrimEnd('\n').Split('\n').Select(s => s.TrimEnd('\r')).ToArray();
 
             if (groupCount == 1 && diagLines.Length == 1 && diag.Location is null && !diagLines[0].ContainsAny('\v', '\f') && TextWidth([.. diagLines[0].EnumerateRunes()]) <= columnsRem)
@@ -302,6 +311,8 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
                     builder.Append(Colors.Reset);
                 }
 
+                // A '\r' at the start of the line prints an empty line only if
+                // the previous line was not empty.
                 bool addLine = line.StartsWith('\r');
                 if (addLine && !builder.EndsWith("|\n"))
                 {
@@ -310,24 +321,41 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
                     builder.AppendLine();
                 }
 
+                // Print an extra empty line after a line that was broken into pieces.
                 if (wasPrevMultiLine && line.Length != 0 && !addLine)
                 {
                     EmitLeading(false, true);
                     builder.AppendLine();
                 }
 
+                // Always clear this flag.
                 wasPrevMultiLine = false;
 
+                // The text might need some post processing: within a line,
+                // a vertical tab can be used to set a tab stop to which the
+                // line is indented if broken into multiple pieces; form feeds
+                // can additionally be used to specify where a line break can
+                // happen, in which case no other line breaks are allowed.
                 if (line.ContainsAny('\v', '\f'))
                 {
+                    // Convert to utf32 so we can iterate chars more easily.
                     var utf32 = line.EnumerateRunes().ToArray();
+
+                    // Check if everything fits in a single line. Length may be
+                    // an overestimate because it contains ANSI escape code etc.
+                    // but if that already fits, then we don’t need to check
+                    // anything else.
                     if (utf32.Length < columnsRem || TextWidth(utf32) < columnsRem)
                     {
                         EmitLeading(true);
                         builder.AppendLine(line.Replace('\f', ' ').Replace("\v", ""));
                     }
+                    // Otherwise, we need to break the line.
                     else
                     {
+                        // Determine hanging indentation. This is the position of
+                        // the first '\v', or all leading whitespace if there is
+                        // none.
                         int hang;
                         if (utf32.Contains(new Rune('\v')))
                         {
@@ -335,31 +363,55 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
                             var start = utf32.Take(vIndex).ToArray();
                             hang = TextWidth(start);
 
+                            // Emit everything up to the tab stop.
                             utf32 = utf32.Skip(vIndex + 1).ToArray();
                             EmitLeading(false);
                             builder.AppendRunes(start);
                         }
                         else
                         {
+                            // We don’t use tabs in diagnostics, so just check for spaces.
                             EmitLeading(false);
                             for (hang = 0; hang < utf32.Length && utf32[hang] != new Rune(' '); hang++)
                                 builder.AppendRune(utf32[hang]);
                             utf32 = utf32.Skip(hang).ToArray();
                         }
 
+                        // Emit the rest of the line.
                         var hangIndent = new Rune[hang];
                         for (int hi = 0; hi < hang; hi++)
                             hangIndent[hi] = new Rune(' ');
                         
                         void EmitRestOfLine(Rune[] restOfLine, Span<Rune[]> parts)
                         {
+                            builder.AppendRunes(restOfLine);
+                            builder.AppendLine();
+
+                            // Emit the remaining parts.
+                            for (int j = 0; j < parts.Length; j++)
+                            {
+                                Rune[] part = parts[j];
+                                EmitLeading(j == parts.Length - 1, part.Length == 0);
+                                if (part.Length != 0)
+                                {
+                                    builder.AppendRunes(hangIndent);
+                                    builder.AppendRunes(part);
+                                }
+
+                                builder.AppendLine();
+                            }
+
+                            wasPrevMultiLine = true;
                         }
 
+                        // Next, if we have form feeds, split the text along them
+                        // and indent every part based on the hanging indentation.
                         if (utf32.Contains(new Rune('\f')))
                         {
                             var parts = utf32.Split(new Rune('\f'));
                             EmitRestOfLine(parts[0], parts.AsSpan()[1..]);
                         }
+                        // Otherwise, just wrap the test at screen width.
                         else
                         {
                             int chunkSize = columnsRem - hang;
@@ -375,6 +427,7 @@ public class StreamingDiagnosticWriter(ChoirContext? context = null, TextWriter?
                         }
                     }
                 }
+                // If neither is present, emit the line literally.
                 else
                 {
                     EmitLeading(true, line.Length == 0);

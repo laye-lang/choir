@@ -8,11 +8,29 @@ public record class LayeDriverOptions
     : BaseLayeDriverOptions<LayeDriverOptions, BaseLayeCompilerDriverArgParseState>
 {
     /// <summary>
+    /// <para>
+    /// While the `laye` compiler driver expects to operate on module *directories*, it still accepts source files.
+    /// `laye` will parse the module headers of all module source files and group them based on their module declaration.
+    /// This is the same process which is done for the contents of module directories, except that all files within a specified directory are required to be of the same module.
+    /// This restriction is not present on the list of input files.
+    /// </para>
+    /// <para>
+    /// If the module declaration of an input file conflicts with those of files discovered in module directories, an error will be emitted.
+    /// </para>
+    /// </summary>
+    public List<FileInfo> AdditionalSourceFiles { get; } = [];
+
+    /// <summary>
+    /// <para>
     /// Laye module directories to compile.
-    /// If no directories are provided, then one of 'src', 'source' or '.' are implied, whichever is found first and also
-    /// contains Laye source files.
-    /// This means a call to the 'laye' driver with no explicit directories specified will try to be smart based on
-    /// common conventions.
+    /// </para>
+    /// <para>
+    /// When a Laye source file imports a module by name, the compiler drivers will attempt to find a `.mod` file with that name adjacent to the module or in the library search path.
+    /// In the case of the `laye` tool specificly, it will also search for directories with that name which contain Laye source files declaring that module and add the module directory to the build process if found.
+    /// </para>
+    /// <para>
+    /// A module directory given this way is also implicitly added to the library search path for the purposes of identifying source modules only.
+    /// </para>
     /// </summary>
     public List<DirectoryInfo> ModuleDirectories { get; } = [];
 
@@ -32,6 +50,12 @@ public record class LayeDriverOptions
     /// Disables linking to the Laye core library, requiring the programmer to provide their own implementation.
     /// </summary>
     public bool NoCoreLibrary { get; set; }
+
+    /// <summary>
+    /// Specifies the linker to use.
+    /// This should be directly executable by the process and accept arguments as expected by the common linkers supported by the driver.
+    /// </summary>
+    public string? Linker { get; set; }
 
     protected override void HandleValue(string value, DiagnosticWriter diag,
         CliArgumentIterator args, BaseLayeCompilerDriverArgParseState state)
@@ -66,9 +90,10 @@ public record class LayeDriverOptions
 
         if (inputFileType == InputFileLanguage.LayeSource)
         {
-            diag.Error($"Laye source files ('{value}') are not accepted by the Laye build tool/compiler driver.");
-            diag.Note("To compile Laye with this tool, pass 0 or more directory paths containing Laye source files;\neach directory represents a Laye module, a collection of its immediate child source files.");
-            diag.Note("If no directory paths are given as input, this tool will search for some common directories automatically.");
+            AdditionalSourceFiles.Add(inputFileInfo);
+            // diag.Error($"Laye source files ('{value}') are not accepted by the Laye build tool/compiler driver.");
+            // diag.Note("To compile Laye with this tool, pass 0 or more directory paths containing Laye source files;\neach directory represents a Laye module, a collection of its immediate child source files.");
+            // diag.Note("If no directory paths are given as input, this tool will search for some common directories automatically.");
         }
         else
         {

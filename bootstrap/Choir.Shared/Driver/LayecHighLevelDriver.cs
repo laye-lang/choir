@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 using Choir.CommandLine;
 using Choir.Driver.Options;
@@ -57,10 +58,7 @@ Options:
     {
         var options = LayecHighLevelDriverOptions.Parse(diag, new CliArgumentIterator(args));
         if (diag.HasIssuedErrors)
-        {
-            diag.Flush();
             return 1;
-        }
 
         if (options.ShowVersion)
         {
@@ -74,16 +72,27 @@ Options:
             return 0;
         }
 
+        if (options.ModuleSourceFiles.Count == 0)
+        {
+            diag.Error("No input source files.");
+            diag.Flush();
+            return 1;
+        }
+
         var driver = Create(diag, options);
         int exitCode = driver.Execute();
 
-        diag.Flush();
         return exitCode;
     }
 
     public static LayecHighLevelDriver Create(DiagnosticWriter diag, LayecHighLevelDriverOptions options, string programName = "layec")
     {
         return new LayecHighLevelDriver(programName, diag, options);
+    }
+
+    public static LayecHighLevelDriver Create(ChoirContext context, LayecHighLevelDriverOptions options, string programName = "layec")
+    {
+        return new LayecHighLevelDriver(programName, options, context);
     }
 
     public string ProgramName { get; }
@@ -198,24 +207,31 @@ Options:
         }
 
         var sortResult = TopologicalSort.Sort(allModuleNames, dependencyEdges);
-        if (sortResult.CircularDependencies)
+        if (sortResult is TopologicalSortCircular<string> circular)
         {
-            // TODO(local): report discovered circular dependencies
-            Context.Diag.Error("Detected circular dependencies.");
+            Context.Diag.Error($"Detected circular dependencies: from module '{circular.From}' to '{circular.To}'.");
+            if (!Context.EmitVerboseLogs)
+                Context.Diag.Note($"To see the modules being referred to by the compiler, add the '--verbose' command line argument.");
             return false;
         }
 
+        if (sortResult is not TopologicalSortSuccess<string> sorted)
+        {
+            Context.Diag.ICE("Only circular references and sorted lists are expected after dependency sorting.");
+            throw new UnreachableException();
+        }
+
         Context.LogVerbose("Build dependency names, sorted:");
-        foreach (string depname in sortResult.Sorted)
+        foreach (string depname in sorted.Sorted)
         {
             Context.LogVerbose($"  {depname}");
         }
 
         //Context.LogVerbose("dependencies:");
-        dependencies = new LayeModule[sortResult.Sorted.Length];
+        dependencies = new LayeModule[sorted.Sorted.Length];
         for (int i = 0; i < dependencies.Length; i++)
         {
-            string moduleName = sortResult.Sorted[i];
+            string moduleName = sorted.Sorted[i];
             if (!moduleNamesToFiles.TryGetValue(moduleName, out var moduleFile))
             {
                 Context.Diag.ICE($"A dependency (module '{moduleName}') did not have an associated binary file.");

@@ -475,12 +475,12 @@ public sealed class ChoirContext
     public void LogVerbose(ref VerboseInterpolatedStringHandler message)
     {
         if (!EmitVerboseLogs) return;
-        Console.Error.WriteLine(message.GetFormattedText());
+        Console.Error.WriteLine($"V: {message.GetFormattedText()}");
     }
 
     public void LogVerbose(string message)
     {
         if (!EmitVerboseLogs) return;
-        Console.Error.WriteLine(message);
+        Console.Error.WriteLine($"V: {message}");
     }
 }
