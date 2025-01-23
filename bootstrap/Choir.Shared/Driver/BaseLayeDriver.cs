@@ -311,20 +311,20 @@ public abstract class BaseLayeDriver<TOptions, TArgParseState>
         return [.. sorted.Sorted.Select(name => resolvedDependencies[name])];
     }
 
-    protected ExternalArgumentSyntaxFlavor DetermineArgumentSyntaxFlavor(FileInfo toolFilePath)
+    protected ExternalArgumentSyntaxFlavor DetermineArgumentSyntaxFlavor(string toolFilePath)
     {
         try
         {
-            var startInfo = new System.Diagnostics.ProcessStartInfo(toolFilePath.FullName, "--help")
+            var startInfo = new ProcessStartInfo(toolFilePath, "--help")
             {
                 RedirectStandardError = true,
                 RedirectStandardOutput = true,
             };
 
-            var process = System.Diagnostics.Process.Start(startInfo);
+            var process = Process.Start(startInfo);
             if (process is null) return ExternalArgumentSyntaxFlavor.GCC;
 
-            process.WaitForExit();
+            process.WaitForExit(500);
             return process.ExitCode == 0 ? ExternalArgumentSyntaxFlavor.GCC : ExternalArgumentSyntaxFlavor.MSVC;
         }
         catch

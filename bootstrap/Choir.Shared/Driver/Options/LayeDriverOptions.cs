@@ -117,6 +117,13 @@ public record class LayeDriverOptions
                     diag.Error($"Argument to '{arg}' is missing; expected 1 (non-empty) value.");
                 else LibrarySearchPaths.Add(new DirectoryInfo(libDir));
             } break;
+
+            case "--linker":
+            {
+                if (!args.Shift(out string? linker) || linker.IsNullOrEmpty())
+                    diag.Error($"Argument to '{arg}' is missing; expected 1 (non-empty) value.");
+                else Linker = linker;
+            } break;
         }
     }
 }

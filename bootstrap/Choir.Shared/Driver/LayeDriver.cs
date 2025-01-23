@@ -282,6 +282,8 @@ Options:
 
         if (Options.DriverStage == DriverStage.Link)
         {
+            Context.LogVerbose("Beginning link process.");
+
             var runtimeModule = FindBinaryModule("rt0", Options.LibrarySearchPaths);
             if (runtimeModule is null)
             {
@@ -291,9 +293,9 @@ Options:
 
             linkerInputs.Add(runtimeModule.ModuleFile);
 
-            FileInfo linker;
+            string linker;
             if (Options.Linker is string linkerPath)
-                linker = new(linkerPath);
+                linker = linkerPath;
             else
             {
                 var maybeLinker = IdentifyPlatformLinker();
@@ -303,14 +305,16 @@ Options:
                     return 1;
                 }
 
-                linker = maybeLinker;
+                linker = maybeLinker.FullName;
             }
 
+            Context.LogVerbose($"Using linker: '{linker}'.");
             var linkerSyntax = DetermineArgumentSyntaxFlavor(linker);
+            Context.LogVerbose($"Linker option syntax is {linkerSyntax}.");
 
             var linkerStartInfo = new ProcessStartInfo()
             {
-                FileName = linker.FullName,
+                FileName = linker,
             };
 
             string outputFilePath;
@@ -342,15 +346,14 @@ Options:
                 Context.LogVerbose($"Setting linker output to a temp file: '{outputFilePath}'.");
             }
 
+            List<string> allLinkLibraries = [.. foreignLinkLibraries];
             if (linkerSyntax == ExternalArgumentSyntaxFlavor.MSVC)
             {
                 linkerStartInfo.ArgumentList.Add($"/nologo");
                 linkerStartInfo.ArgumentList.Add($"/out:{outputFilePath}");
                 //linkerStartInfo.ArgumentList.Add($"/defaultlib:libcmt");
                 linkerStartInfo.ArgumentList.Add("/subsystem:console");
-                linkerStartInfo.ArgumentList.Add("kernel32.lib");
-                linkerStartInfo.ArgumentList.Add("legacy_stdio_definitions.lib");
-                linkerStartInfo.ArgumentList.Add("msvcrt.lib");
+                allLinkLibraries.AddRange(["kernel32.lib", "legacy_stdio_definitions.lib", "msvcrt.lib"]);
             }
             else
             {
@@ -369,16 +372,16 @@ Options:
                 linkerStartInfo.ArgumentList.Add($"{input.FullName}");
             }
 
-            foreach (string linkLibrary in foreignLinkLibraries)
+            foreach (string linkLibrary in allLinkLibraries.Distinct())
             {
                 linkerStartInfo.ArgumentList.Add(linkLibrary);
             }
 
-            Context.LogVerbose($"{linker.Name} {string.Join(" ", linkerStartInfo.ArgumentList.Select(a => $"\"{a}\""))}");
+            Context.LogVerbose($"{linker} {string.Join(" ", linkerStartInfo.ArgumentList.Select(a => $"\"{a}\""))}");
             var linkerProcess = Process.Start(linkerStartInfo);
             if (linkerProcess is null)
             {
-                Context.Diag.ICE($"Failed to start linker process: '{linker.FullName}'.");
+                Context.Diag.ICE($"Failed to start linker process: '{linker}'.");
                 return 1;
             }
 
