@@ -1075,6 +1075,8 @@ public partial class Parser(SourceFile sourceFile)
 
             case TokenKind.For:
             {
+                // TODO(local): I think I need to take more control over how I parse the init/inc forms (and maybe extend that to statement parsing in general?)
+
                 var tokenFor = Consume();
                 Expect(TokenKind.OpenParen, "'('", out var tokenOpenParen);
 
@@ -1104,10 +1106,10 @@ public partial class Parser(SourceFile sourceFile)
                     }
                     else
                     {
-                        increment = ParseExpr(ExprParseContext.Default);
+                        increment = ParsePrimaryExpr(ExprParseContext.Default);
                         if (CurrentToken.Kind.IsAssignmentOperator())
                             increment = ParseStmtContinue(increment, false);
-                        else increment = new SyntaxStmtExpr(increment, null);
+                        else increment = new SyntaxStmtExpr(ParseBinaryExpr(ExprParseContext.Default, increment), null);
                     }
                 }
 

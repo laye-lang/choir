@@ -663,6 +663,47 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 }
             } break;
 
+            case SemaStmtForLoop @for:
+            {
+                Context.Assert(CurrentFunction is not null, @for.Location, "`if` should be within a function.");
+
+                var f = CurrentFunctionValue;
+                string forName = NextName("cfor");
+
+                var initializerBlock = f.AppendBasicBlock($".{forName}.loopinit");
+                var conditionBlock = f.AppendBasicBlock($".{forName}.loopcond");
+                var incrementBlock = f.AppendBasicBlock($".{forName}.loopinc");
+                var bodyBlock = f.AppendBasicBlock($".{forName}.body");
+                var joinBlock = f.AppendBasicBlock($".{forName}.join");
+
+                EnterBlock(builder, initializerBlock);
+                BuildStmt(builder, @for.Initializer);
+
+                if (@for.Initializer.ControlFlow == StmtControlFlow.Fallthrough)
+                    builder.BuildBr(conditionBlock);
+
+                EnterBlock(builder, conditionBlock);
+                var condition = BuildExpr(builder, @for.Condition);
+
+                // ensure condition is *always* i1
+                condition = builder.BuildTrunc(condition, LLVMTypeRef.Int1, "conv2i1");
+                builder.BuildCondBr(condition, bodyBlock, joinBlock);
+
+                EnterBlock(builder, bodyBlock);
+                BuildStmt(builder, @for.Body);
+
+                if (@for.Body.ControlFlow == StmtControlFlow.Fallthrough)
+                    builder.BuildBr(incrementBlock);
+
+                EnterBlock(builder, incrementBlock);
+                BuildStmt(builder, @for.Increment);
+
+                if (@for.Increment.ControlFlow == StmtControlFlow.Fallthrough)
+                    builder.BuildBr(conditionBlock);
+
+                EnterBlock(builder, joinBlock);
+            } break;
+
             case SemaStmtAssign assign:
             {
                 if (assign.Target is SemaExprLookup { ValueCategory: ValueCategory.Register } register)
@@ -736,6 +777,30 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     Context.Todo(stmtInc.Location, $"Implement increment for type {stmtInc.Operand.Type.ToDebugString(Colors)}");
                 }
             } break;
+
+            case SemaStmtDecrement stmtDec:
+            {
+                var targetType = stmtDec.Operand.Type.CanonicalType.Type;
+                var target = BuildExpr(builder, stmtDec.Operand);
+                Context.Assert(target.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Target should be an l-value, needs to be 'ptr'.");
+
+                if (targetType is SemaTypeBuffer)
+                {
+                    var intType = LLVMTypeRef.Int64;
+                    var ptrType = LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
+                    builder.BuildStore(builder.BuildPtrAdd(builder.BuildLoad2(ptrType, target, "load"), LLVMValueRef.CreateConstInt(intType, unchecked((ulong)-1), true)), target);
+                }
+                else if (targetType.IsInteger)
+                {
+                    var intType = GenerateType(targetType);
+                    builder.BuildStore(builder.BuildSub(builder.BuildLoad2(intType, target, "load"), LLVMValueRef.CreateConstInt(intType, 1)), target);
+                }
+                else
+                {
+                    Context.Todo(stmtDec.Location, $"Implement increment for type {stmtDec.Operand.Type.ToDebugString(Colors)}");
+                }
+            }
+            break;
 
             case SemaStmtExpr expr:
             {
@@ -988,6 +1053,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                         case BinaryOperatorKind.Ge | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSGE, left, right, "sge");
                         case BinaryOperatorKind.Add | BinaryOperatorKind.Integer: return builder.BuildAdd(left, right, "iadd");
                         case BinaryOperatorKind.Sub | BinaryOperatorKind.Integer: return builder.BuildSub(left, right, "isub");
+                        case BinaryOperatorKind.Mul | BinaryOperatorKind.Integer: return builder.BuildMul(left, right, "imul");
+                        case BinaryOperatorKind.Div | BinaryOperatorKind.Integer: return builder.BuildSDiv(left, right, "isdiv");
+                        case BinaryOperatorKind.UDiv | BinaryOperatorKind.Integer: return builder.BuildUDiv(left, right, "iudiv");
+                        case BinaryOperatorKind.Rem | BinaryOperatorKind.Integer: return builder.BuildSRem(left, right, "isrem");
+                        case BinaryOperatorKind.URem | BinaryOperatorKind.Integer: return builder.BuildURem(left, right, "iurem");
                     }
                 }
 

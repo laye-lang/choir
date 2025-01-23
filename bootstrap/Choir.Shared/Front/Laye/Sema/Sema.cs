@@ -1404,7 +1404,7 @@ public partial class Sema
             (TokenKind.Minus, BinaryOperatorKind.Sub),
             (TokenKind.Star, BinaryOperatorKind.Mul),
             (TokenKind.Slash, BinaryOperatorKind.Div),
-            (TokenKind.Percent, BinaryOperatorKind.Mod),
+            (TokenKind.Percent, BinaryOperatorKind.Rem),
 
             (TokenKind.EqualEqual, BinaryOperatorKind.Eq),
             (TokenKind.BangEqual, BinaryOperatorKind.Neq),

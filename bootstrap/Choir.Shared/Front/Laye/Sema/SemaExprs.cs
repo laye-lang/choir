@@ -35,8 +35,10 @@ public enum BinaryOperatorKind : long
     Sub = 1 << 1,
     Mul = 1 << 2,
     Div = 1 << 3,
-    Idiv = 1 << 4,
-    Mod = 1 << 5,
+    UDiv = 1 << 4,
+    FloorDiv = 1 << 5,
+    Rem = 1 << 6,
+    URem = 1 << 7,
 
     Eq = 1 << 10,
     Neq = 1 << 11,
