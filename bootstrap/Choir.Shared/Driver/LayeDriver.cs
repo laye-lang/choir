@@ -357,6 +357,13 @@ Options:
                 linkerStartInfo.ArgumentList.Add($"-o{outputFilePath}");
             }
 
+            foreach (var libSearchPath in Options.LibrarySearchPaths)
+            {
+                if (linkerSyntax == ExternalArgumentSyntaxFlavor.MSVC)
+                    linkerStartInfo.ArgumentList.Add($"/libpath:{libSearchPath.FullName}");
+                else linkerStartInfo.ArgumentList.Add($"-L{libSearchPath.FullName}");
+            }
+
             foreach (var input in linkerInputs)
             {
                 linkerStartInfo.ArgumentList.Add($"{input.FullName}");
