@@ -363,6 +363,7 @@ public abstract class SemaExpr(Location location, SemaTypeQual type) : BaseSemaN
     public ValueCategory ValueCategory { get; set; } = ValueCategory.RValue;
     public bool IsLValue => ValueCategory == ValueCategory.LValue;
     public bool IsRegister => ValueCategory == ValueCategory.Register;
+    public bool IsDiscardable { get; set; } = false;
 }
 
 public abstract class SemaPattern(Location location) : BaseSemaNode

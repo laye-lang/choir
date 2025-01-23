@@ -68,6 +68,7 @@ public sealed class SemaDeclFunction(Location location, string name)
     public SemaTypeFunction FunctionType(ChoirContext context) => new(context, ReturnType, ParameterDecls.Select(p => p.ParamType).ToArray())
     {
         CallingConvention = CallingConvention,
+        IsDiscardable = IsDiscardable,
         VarargsKind = VarargsKind,
     };
 

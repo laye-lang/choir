@@ -832,6 +832,24 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     return ptradd;
                 }
 
+                case SemaExprIndexBuffer bufferIndex:
+                {
+                    var lvalue = BuildExpr(builder, bufferIndex.Operand);
+                    Context.Assert(lvalue.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Buffer index lookup requires a value of type `ptr`.");
+
+                    var typeInt = GenerateType(Context.Types.LayeTypeInt);
+                    var typeBuffer = (SemaTypeBuffer)bufferIndex.Operand.Type.CanonicalType.Type;
+
+                    var indexValue = BuildExpr(builder, bufferIndex.Index);
+
+                    var elementSize = typeBuffer.ElementType.Size;
+                    var totalOffset = builder.BuildMul(LLVMValueRef.CreateConstInt(typeInt, (ulong)elementSize.Bytes), indexValue);
+
+                    var ptradd = builder.BuildPtrAdd(lvalue, totalOffset, "buffidx.ptradd");
+                    ptradd.Alignment = (uint)bufferIndex.Type.Align.Bytes;
+                    return ptradd;
+                }
+
                 case SemaExprIndexArray arrayIndex:
                 {
                     var lvalue = BuildExpr(builder, arrayIndex.Operand);

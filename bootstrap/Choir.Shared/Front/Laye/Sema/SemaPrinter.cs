@@ -63,6 +63,8 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
         {
             Console.Write(C[ColorBase]);
             Console.Write($"{expr.ValueCategory} ");
+            if (expr.IsDiscardable)
+            Console.Write("Discardable ");
             Console.Write($"{expr.Type.ToDebugString(C)} ");
         }
 

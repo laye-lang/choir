@@ -437,6 +437,8 @@ public partial class Sema
                 attribs = declFunction.Attribs;
                 forwardDecl = new SemaDeclFunction(declFunction.Location, functionName)
                 {
+                    IsDiscardable = declFunction.Attribs.Any(a => a is SyntaxAttribDiscardable),
+                    IsInline = declFunction.Attribs.Any(a => a is SyntaxAttribInline),
                     VarargsKind = declFunction.VarargsKind,
                 };
             } break;
@@ -845,8 +847,12 @@ public partial class Sema
             case SyntaxStmtExpr stmtExpr:
             {
                 var expr = AnalyseExpr(stmtExpr.Expr);
-                if (!expr.Type.IsVoid && !expr.Type.IsNoReturn && !expr.Type.IsPoison)
-                    Context.Diag.Error(stmtExpr.Location, "The result of this expression is implicitly discarded. Use the `discard` keyword to mark this as intentional.");
+                if (!expr.IsDiscardable)
+                {
+                    if (!expr.Type.IsVoid && !expr.Type.IsNoReturn && !expr.Type.IsPoison)
+                        Context.Diag.Error(stmtExpr.Location, "The result of this expression is implicitly discarded. Use the `discard` keyword to mark this as intentional.");
+                }
+
                 return new SemaStmtExpr(expr);
             }
         }
@@ -1460,7 +1466,10 @@ public partial class Sema
                     arguments[i] = argument;
                 }
 
-                return new SemaExprCall(call.Location, typeFunction.ReturnType, callee, arguments);
+                return new SemaExprCall(call.Location, typeFunction.ReturnType, callee, arguments)
+                {
+                    IsDiscardable = typeFunction.IsDiscardable
+                };
             }
 
             default:
@@ -1558,7 +1567,25 @@ public partial class Sema
         var operand = AnalyseExpr(index.Operand);
         var indices = index.Indices.Select(expr => AnalyseExpr(expr)).ToArray();
 
-        if (operand.Type.CanonicalType.Type is SemaTypeArray typeArray)
+        var operandTypeCanon = operand.Type.CanonicalType.Type;
+
+        if (operandTypeCanon is SemaTypeBuffer typeBuffer)
+        {
+            operand = LValueToRValue(operand);
+
+            for (int i = 0; i < indices.Length; i++)
+                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(Location.Nowhere));
+
+            if (indices.Length != 1)
+                Context.Diag.Error(index.Location, $"Expected exactly one index to a buffer, but got {indices.Length}.");
+
+            var elementType = typeBuffer.ElementType;
+            return new SemaExprIndexBuffer(elementType, operand, indices[0])
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+        else if (operandTypeCanon is SemaTypeArray typeArray)
         {
             for (int i = 0; i < indices.Length; i++)
                 indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(Location.Nowhere));

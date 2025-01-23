@@ -483,16 +483,17 @@ public sealed class SemaTypeFunction(ChoirContext context, SemaTypeQual returnTy
 
     public CallingConvention CallingConvention { get; init; } = CallingConvention.Laye;
     public VarargsKind VarargsKind { get; init; } = VarargsKind.None;
+    public bool IsDiscardable { get; init; } = false;
 
     public override string ToDebugString(Colors colors)
     {
         var builder = new StringBuilder();
-        
-        builder.Append(colors.LayeKeyword()).Append("function");
+
+        builder.Append(colors.LayeKeyword()).Append("function").Append(colors.Default);
 
         if (CallingConvention != CallingConvention.Laye)
         {
-            builder.Append(' ').Append("callconv").Append(colors.Default).Append('(').Append(colors.LayeName());
+            builder.Append(' ').Append(colors.LayeKeyword()).Append("callconv").Append(colors.Default).Append('(').Append(colors.LayeName());
             switch (CallingConvention)
             {
                 default: throw new InvalidOperationException();
@@ -503,7 +504,9 @@ public sealed class SemaTypeFunction(ChoirContext context, SemaTypeQual returnTy
 
             builder.Append(colors.Default).Append(") ");
         }
-        else builder.Append(colors.Default);
+
+        if (IsDiscardable)
+            builder.Append(' ').Append(colors.LayeKeyword()).Append("discardable").Append(colors.Default);
 
         builder.Append('(');
         for (int i = 0; i < ParamTypes.Count; i++)

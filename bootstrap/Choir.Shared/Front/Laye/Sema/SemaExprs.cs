@@ -93,6 +93,14 @@ public abstract class SemaExprIndex(Location location, SemaTypeQual type)
 {
 }
 
+public sealed class SemaExprIndexBuffer(SemaTypeQual type, SemaExpr operand, SemaExpr index)
+    : SemaExprIndex(operand.Location, type)
+{
+    public SemaExpr Operand { get; } = operand;
+    public SemaExpr Index { get; } = index;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand, index];
+}
+
 public sealed class SemaExprIndexArray(SemaTypeQual type, SemaExpr operand, IReadOnlyList<SemaExpr> indices)
     : SemaExprIndex(operand.Location, type)
 {
