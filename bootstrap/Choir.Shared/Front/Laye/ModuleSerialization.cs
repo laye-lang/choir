@@ -100,7 +100,7 @@ public enum SerializedTypeKind : byte
 }
 
 public readonly record struct SerializedModuleHeader(
-    ulong Magic, string ModuleName, IReadOnlyList<string> DependencyNames, long DataSize);
+    ulong Magic, string ModuleName, IReadOnlyList<string> DependencyNames, IReadOnlyList<string> LinkLibraryNames, long DataSize);
 
 public sealed class ModuleSerializer : IDisposable
 {
@@ -260,6 +260,10 @@ public sealed class ModuleSerializer : IDisposable
         writer.Write(Module.ModuleName);
         foreach (var moduleDep in Module.Dependencies)
             writer.Write(moduleDep.ModuleName);
+        WritePadding(writer, writer.BaseStream.Position);
+        writer.Write7BitEncodedInt(Module.LinkLibraries.Count);
+        foreach (string moduleLib in Module.LinkLibraries)
+            writer.Write(moduleLib);
         WritePadding(writer, writer.BaseStream.Position);
         writer.Write(size);
     }
@@ -517,12 +521,19 @@ public sealed class ModuleDeserializer : IDisposable
         DeserializeTypes();
         DeserializeDecls();
 
-        var module = new LayeModule(Context, _files, _dependencies);
+        var module = new LayeModule(Context, _files, _dependencies, header.LinkLibraryNames);
         module.ModuleName = header.ModuleName;
         foreach (var decl in _decls)
             module.ExportScope.AddDecl(decl);
 
         return module;
+    }
+
+    private static void ReadRemaining(BinaryReader reader, long startPosition, long currentPosition, long length)
+    {
+        long endPosition = startPosition + length;
+        long readCount = endPosition - currentPosition;
+        if (readCount > 0) reader.ReadBytes((int)readCount);
     }
 
     private static void ReadPadding(BinaryReader reader, long nRead)
@@ -536,6 +547,9 @@ public sealed class ModuleDeserializer : IDisposable
         ulong magic = reader.ReadUInt64();
         Context.Assert(magic == SerializerConstants.ModuleMagicNumber, "Only the LAYEMOD1 serialized module version is supported.");
 
+        //long headerStartPosition = reader.BaseStream.Position;
+        //int headerLength = reader.Read7BitEncodedInt();
+
         int dependencyCount = reader.Read7BitEncodedInt();
         string moduleName = reader.ReadString();
 
@@ -545,9 +559,17 @@ public sealed class ModuleDeserializer : IDisposable
 
         ReadPadding(reader, reader.BaseStream.Position);
 
+        int linkLibraryCount = reader.Read7BitEncodedInt();
+        string[] linkLibraryNames = new string[linkLibraryCount];
+        for (int i = 0; i < linkLibraryCount; i++)
+            linkLibraryNames[i] = reader.ReadString();
+
+        //ReadRemaining(reader, headerStartPosition, reader.BaseStream.Position, headerLength);
+        ReadPadding(reader, reader.BaseStream.Position);
+
         long dataSize = reader.ReadInt64();
 
-        return new(magic, moduleName, dependencyNames, dataSize);
+        return new(magic, moduleName, dependencyNames, linkLibraryNames, dataSize);
     }
 
     private void PopulateFileTable()

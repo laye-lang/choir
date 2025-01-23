@@ -359,13 +359,26 @@ public partial class Parser(SourceFile sourceFile)
             declModule = ParseModuleDeclaration();
 
         var declImports = new List<SyntaxDeclImport>();
-        while (At(TokenKind.Import) || (At(TokenKind.Export) && PeekAt(1, TokenKind.Import)))
+        var declForeignImports = new List<SyntaxDeclForeignImport>();
+
+        //while (At(TokenKind.Import) || (At(TokenKind.Export) && PeekAt(1, TokenKind.Import)) || (At(TokenKind.Foreign) && PeekAt(1, TokenKind.Import)))
+        while (At(TokenKind.Foreign, TokenKind.Import, TokenKind.Export))
         {
-            var declImport = ParseImportDeclaration();
-            declImports.Add(declImport);
+            if (At(TokenKind.Import) || (At(TokenKind.Export) && PeekAt(1, TokenKind.Import)))
+            {
+                var declImport = ParseImportDeclaration();
+                declImports.Add(declImport);
+            }
+            else if (At(TokenKind.Foreign) && PeekAt(1, TokenKind.Import))
+            {
+                var declForeignImport = ParseForeignImportDeclaration();
+                declForeignImports.Add(declForeignImport);
+            }
+            // it's not actually a valid import statement, we'll error on it later if we didn't handle the error cases here.
+            else break;
         }
 
-        return new(location, declModule, declImports);
+        return new(location, declModule, declImports, declForeignImports);
     }
 
     public SyntaxNode? ParseTopLevelSyntax()
@@ -378,6 +391,12 @@ public partial class Parser(SourceFile sourceFile)
             return ParseImportDeclaration();
         }
 
+        if (At(TokenKind.Foreign) && PeekAt(1, TokenKind.Import))
+        {
+            Context.Diag.Error("Foreign import declarations must appear at the start of the source file in the module unit header.");
+            return ParseImportDeclaration();
+        }
+
         SyntaxTemplateParams? templateParams = null;
         if (TryAdvance(TokenKind.Template, out var tokenTemplate))
             templateParams = ParseTemplateParams(tokenTemplate);
@@ -386,17 +405,6 @@ public partial class Parser(SourceFile sourceFile)
 
         switch (CurrentToken.Kind)
         {
-            case TokenKind.Import:
-            {
-                if (templateParams is not null)
-                    Context.Diag.Error("Cannot template an import declaration.");
-                if (attribs.Count != 0)
-                    Context.Diag.Error("Cannot apply attributes to an import declaration.");
-
-                Context.Diag.Error("Import declarations must appear at the start of the source file in the module unit header.");
-                return ParseImportDeclaration();
-            }
-
             case TokenKind.Alias:
             case TokenKind.Identifier when CurrentToken.TextValue == "strict" && PeekAt(1, TokenKind.Alias):
                 return ParseAliasDeclaration(templateParams, attribs);
@@ -506,8 +514,18 @@ public partial class Parser(SourceFile sourceFile)
             case TokenKind.Foreign:
             {
                 var tokenForeign = Consume();
+                SyntaxToken? tokenForeignLibraryName = null;
+                if (TryAdvance(TokenKind.OpenParen, out var tokenOpenParen))
+                {
+                    ExpectIdentifier(out tokenForeignLibraryName);
+                    Expect(TokenKind.CloseParen, "')'");
+                }
+
                 TryAdvance(TokenKind.LiteralString, out var tokenName);
-                return new SyntaxAttribForeign(tokenForeign, tokenName);
+                return new SyntaxAttribForeign(tokenForeign, tokenName)
+                {
+                    TokenForeignLibraryName = tokenForeignLibraryName,
+                };
             }
 
             case TokenKind.Callconv:
@@ -599,6 +617,31 @@ public partial class Parser(SourceFile sourceFile)
             TokenModuleName = tokenModuleName,
             TokenAs = tokenAs,
             TokenAlias = tokenAlias,
+            TokenSemiColon = tokenSemiColon,
+        };
+    }
+
+    private SyntaxDeclForeignImport ParseForeignImportDeclaration()
+    {
+        if (TryAdvance(TokenKind.Export, out var tokenExport))
+        {
+            Context.Diag.Error(tokenExport.Location, "Foreign import declarations cannot be marked as 'export'.");
+        }
+        
+        Context.Assert(At(TokenKind.Foreign) && PeekAt(1, TokenKind.Import), CurrentLocation, $"{nameof(ParseForeignImportDeclaration)} called when not at 'foreign import'.");
+        Advance(out var tokenForeign);
+        Advance(out var tokenImport);
+
+        ExpectIdentifier(out var tokenLibraryName);
+        Expect(TokenKind.LiteralString, "a string literal", out var tokenLibraryPath);
+
+        ExpectSemiColon(out var tokenSemiColon);
+
+        return new SyntaxDeclForeignImport(tokenForeign, tokenImport)
+        {
+            TokenExport = tokenExport,
+            TokenLibraryName = tokenLibraryName,
+            TokenLibraryPath = tokenLibraryPath,
             TokenSemiColon = tokenSemiColon,
         };
     }

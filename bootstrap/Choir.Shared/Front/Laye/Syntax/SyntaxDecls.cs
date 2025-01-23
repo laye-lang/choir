@@ -20,12 +20,13 @@ public sealed class SyntaxDeclModuleUnit(SourceFile sourceFile, SyntaxDeclModule
     }
 }
 
-public sealed class SyntaxDeclModuleUnitHeader(Location location, SyntaxDeclModule? declModule, IEnumerable<SyntaxDeclImport> declImports)
+public sealed class SyntaxDeclModuleUnitHeader(Location location, SyntaxDeclModule? declModule, IEnumerable<SyntaxDeclImport> declImports, IEnumerable<SyntaxDeclForeignImport> declForeignImports)
     : SyntaxNode(location)
 {
     public SyntaxDeclModule? ModuleDeclaration { get; } = declModule;
     public string? ModuleName => ModuleDeclaration?.TokenName.TextValue;
     public IReadOnlyList<SyntaxDeclImport> ImportDeclarations { get; } = [.. declImports];
+    public IReadOnlyList<SyntaxDeclForeignImport> ForeignImportDeclarations { get; } = [.. declForeignImports];
     public override bool IsDecl { get; } = true;
     public override IEnumerable<SyntaxNode> Children
     {
@@ -34,6 +35,8 @@ public sealed class SyntaxDeclModuleUnitHeader(Location location, SyntaxDeclModu
             if (ModuleDeclaration is not null)
                 yield return ModuleDeclaration;
             foreach (var decl in ImportDeclarations)
+                yield return decl;
+            foreach (var decl in ForeignImportDeclarations)
                 yield return decl;
         }
     }
@@ -127,6 +130,36 @@ public sealed class SyntaxDeclImport(SyntaxToken tokenImport)
                 yield return TokenAs;
             if (TokenAlias is not null)
                 yield return TokenAlias;
+            if (TokenSemiColon is not null)
+                yield return TokenSemiColon;
+        }
+    }
+}
+
+public sealed class SyntaxDeclForeignImport(SyntaxToken tokenForeign, SyntaxToken tokenImport)
+    : SyntaxNode(tokenImport.Location)
+{
+    public SyntaxToken? TokenExport { get; init; }
+    public SyntaxToken TokenForeign { get; } = tokenForeign;
+    public SyntaxToken TokenImport { get; } = tokenImport;
+    public required SyntaxToken TokenLibraryName { get; init; }
+    public required SyntaxToken TokenLibraryPath { get; init; }
+    public required SyntaxToken? TokenSemiColon { get; init; }
+
+    public string LibraryNameText => TokenLibraryName.TextValue;
+    public string LibraryPathText => TokenLibraryPath.TextValue;
+
+    public override bool IsDecl { get; } = true;
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            if (TokenExport is not null)
+                yield return TokenExport;
+            yield return TokenForeign;
+            yield return TokenImport;
+            yield return TokenLibraryName;
+            yield return TokenLibraryPath;
             if (TokenSemiColon is not null)
                 yield return TokenSemiColon;
         }

@@ -13,6 +13,7 @@ using LLVMSharp.Interop;
 namespace Choir.Driver;
 
 public sealed class LayecHighLevelDriver
+    : BaseLayeDriver<LayecHighLevelDriverOptions, BaseLayeCompilerDriverArgParseState>
 {
     private const string DriverVersion = @"{0} version 0.1.0";
 
@@ -95,28 +96,14 @@ Options:
         return new LayecHighLevelDriver(programName, options, context);
     }
 
-    public string ProgramName { get; }
-    public LayecHighLevelDriverOptions Options { get; }
-    public ChoirContext Context { get; }
-
     private LayecHighLevelDriver(string programName, DiagnosticWriter diag, LayecHighLevelDriverOptions options)
+        : base(programName, diag, options)
     {
-        ProgramName = programName;
-        Options = options;
-
-        var abi = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ChoirAbi.WindowxX64 : ChoirAbi.SysV;
-        Context = new(diag, ChoirTarget.X86_64, abi, options.OutputColoring)
-        {
-            EmitVerboseLogs = options.ShowVerboseOutput,
-            OmitSourceTextInModuleBinary = options.OmitSourceTextInModuleBinary,
-        };
     }
 
     internal LayecHighLevelDriver(string programName, LayecHighLevelDriverOptions options, ChoirContext context)
+        : base(programName, context, options)
     {
-        ProgramName = programName;
-        Options = options;
-        Context = context;
     }
 
     private FileInfo? FindModuleBinaryFile(string libraryName)
@@ -132,171 +119,13 @@ Options:
         return null;
     }
 
-    private bool LoadDependencies(SyntaxDeclModuleUnitHeader[] sourceHeaders, out LayeModule[] dependencies)
-    {
-        dependencies = [];
-
-        HashSet<string> unitDependencies = [];
-        string unitName = sourceHeaders.FirstOrDefault()?.ModuleName ?? ".program";
-
-        for (int i = 0; i < sourceHeaders.Length; i++)
-        {
-            var sourceHeaderSyntax = sourceHeaders[i];
-
-            foreach (var import in sourceHeaderSyntax.ImportDeclarations)
-                unitDependencies.Add(import.ModuleNameText);
-        }
-
-        var dependencyFiles = new List<FileInfo>(Options.BinaryDependencyFiles);
-
-    redo_dependency_checks:;
-        var moduleHeaders = dependencyFiles
-            .Select(file => LayeModule.DeserializeHeaderFromObject(Context, file)).ToArray();
-
-        for (int i = 0; i < moduleHeaders.Length; i++)
-        {
-            if (moduleHeaders[i].ModuleName == ".program")
-            {
-                Context.Diag.Error("A program module cannot be a dependency.");
-                return false;
-            }
-        }
-
-        string[] allDependencyNames = [.. unitDependencies, .. moduleHeaders.SelectMany(mh => mh.DependencyNames)];
-        string[] missingDependencyNames = allDependencyNames
-            .Where(n => !dependencyFiles.Any(df => Path.GetFileNameWithoutExtension(df.Name) == n))
-            .ToArray();
-
-        foreach (string missing in missingDependencyNames)
-        {
-            if (FindModuleBinaryFile(missing) is { } missingModuleBinary)
-                dependencyFiles.Add(missingModuleBinary);
-        }
-
-        if (Context.HasIssuedError)
-            return false;
-
-        if (missingDependencyNames.Length != 0)
-            goto redo_dependency_checks;
-
-        var moduleNamesToDependencies = moduleHeaders
-            .ToDictionary(header => header.ModuleName!, header => header.DependencyNames);
-
-        var moduleNamesToFiles = dependencyFiles.Zip(moduleHeaders)
-            .ToDictionary(pair => pair.Second.ModuleName!, pair => pair.First);
-
-        Context.LogVerbose("Build dependency files:");
-        foreach (var (dep, depDeps) in moduleNamesToDependencies)
-        {
-            Context.LogVerbose($"  {moduleNamesToFiles[dep].FullName} [{string.Join(", ", depDeps)}]");
-        }
-
-        HashSet<string> allModuleNames = [];
-        foreach (var desc in moduleHeaders)
-        {
-            allModuleNames.Add(desc.ModuleName);
-            foreach (string dependencyName in desc.DependencyNames)
-                allModuleNames.Add(dependencyName);
-        }
-
-        List<(string From, string To)> dependencyEdges = [];
-        foreach (var desc in moduleHeaders)
-        {
-            foreach (string dependencyName in desc.DependencyNames)
-                dependencyEdges.Add((desc.ModuleName, dependencyName));
-        }
-
-        var sortResult = TopologicalSort.Sort(allModuleNames, dependencyEdges);
-        if (sortResult is TopologicalSortCircular<string> circular)
-        {
-            Context.Diag.Error($"Detected circular dependencies: from module '{circular.From}' to '{circular.To}'.");
-            if (!Context.EmitVerboseLogs)
-                Context.Diag.Note($"To see the modules being referred to by the compiler, add the '--verbose' command line argument.");
-            return false;
-        }
-
-        if (sortResult is not TopologicalSortSuccess<string> sorted)
-        {
-            Context.Diag.ICE("Only circular references and sorted lists are expected after dependency sorting.");
-            throw new UnreachableException();
-        }
-
-        Context.LogVerbose("Build dependency names, sorted:");
-        foreach (string depname in sorted.Sorted)
-        {
-            Context.LogVerbose($"  {depname}");
-        }
-
-        //Context.LogVerbose("dependencies:");
-        dependencies = new LayeModule[sorted.Sorted.Length];
-        for (int i = 0; i < dependencies.Length; i++)
-        {
-            string moduleName = sorted.Sorted[i];
-            if (!moduleNamesToFiles.TryGetValue(moduleName, out var moduleFile))
-            {
-                Context.Diag.ICE($"A dependency (module '{moduleName}') did not have an associated binary file.");
-                return false;
-            }
-
-            if (!moduleNamesToDependencies.TryGetValue(moduleName, out var moduleDependencyNames))
-            {
-                Context.Diag.ICE($"A dependency (module '{moduleName}') did not have associated dependencies.");
-                return false;
-            }
-
-            var moduleDependencies = dependencies.Take(i)
-                .Where(d => moduleDependencyNames.Contains(d.ModuleName!))
-                .ToArray();
-
-            Context.Assert(moduleDependencies.Length == moduleDependencyNames.Count, $"Failed to map a list of dependency names for module '{moduleName}' ({(string.Join(", ", moduleDependencyNames.Select(n => $"'{n}'")))}) to their loaded modules. Expected {moduleDependencyNames.Count} dependencies, but found {moduleDependencies.Length}.");
-            dependencies[i] = LayeModule.DeserializeFromObject(Context, moduleDependencies, moduleFile);
-
-            //Context.LogVerbose($"  dependencies[i].ModuleName = {dependencies[i].ModuleName}");
-        }
-
-        return true;
-    }
-
-    private void CollectCompilerSearchPaths()
-    {
-        var builtInSearchPaths = new List<DirectoryInfo>();
-
-        string envName = "Lib";
-        string envSplit = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ";" : ":";
-        string[] pathEntries = Environment.GetEnvironmentVariable(envName)?.Split(envSplit) ?? [];
-
-        builtInSearchPaths.AddRange(pathEntries.Where(path => !path.IsNullOrEmpty()).Select(path => new DirectoryInfo(path)));
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            builtInSearchPaths.Add(new DirectoryInfo("/usr/local/lib/laye"));
-            builtInSearchPaths.Add(new DirectoryInfo("/usr/local/lib"));
-            //builtInSearchPaths.Add(new DirectoryInfo($"/usr/lib/{Triple}"));
-            builtInSearchPaths.Add(new DirectoryInfo("/usr/lib/laye"));
-            builtInSearchPaths.Add(new DirectoryInfo("/usr/lib"));
-            //builtInSearchPaths.Add(new DirectoryInfo($"/lib/{Triple}"));
-        }
-
-        string selfExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-        DirectoryInfo? searchDirectoryRoot = new DirectoryInfo(Path.GetDirectoryName(selfExePath)!);
-
-        while (searchDirectoryRoot is not null)
-        {
-            builtInSearchPaths.Add(searchDirectoryRoot.ChildDirectory("lib").ChildDirectory("laye"));
-            builtInSearchPaths.Add(searchDirectoryRoot.ChildDirectory("lib"));
-            searchDirectoryRoot = searchDirectoryRoot.Parent;
-        }
-
-        DirectoryInfo[] allPaths = [.. builtInSearchPaths, .. Options.LibrarySearchPaths];
-        Options.LibrarySearchPaths.Clear();
-        Options.LibrarySearchPaths.AddRange(allPaths.Where(dir => dir.Exists).Distinct());
-    }
-
-    public int Execute()
+    public override int Execute()
     {
         Context.LogVerbose(string.Format(DriverVersion, ProgramName));
 
-        CollectCompilerSearchPaths();
+        DirectoryInfo[] allLibrarySearchPaths = [.. CollectBuiltInLibrarySearchPaths(), .. Options.LibrarySearchPaths];
+        Options.LibrarySearchPaths.Clear();
+        Options.LibrarySearchPaths.AddRange(allLibrarySearchPaths.Where(dir => dir.Exists).Select(d => d.Canonical()).Distinct());
 
         Context.LogVerbose("Configured library search paths:");
         foreach (var libDir in Options.LibrarySearchPaths)
@@ -309,16 +138,40 @@ Options:
             else Context.Assert(Context.HasIssuedError, "Should have errored when the compiler could not find a library it ships with.");
         }
 
+        Context.LogVerbose("Input module binaries:");
+        foreach (var file in Options.BinaryDependencyFiles)
+            Context.LogVerbose($"  {file.FullName}");
+
         if (Context.HasIssuedError)
             return 1;
 
         var sourceFiles = Options.ModuleSourceFiles.Select(Context.GetSourceFile).ToArray();
         var sourceHeaders = sourceFiles.Select(Parser.ParseModuleUnitHeader).ToArray();
 
-        if (!LoadDependencies(sourceHeaders, out var dependencies))
+        var sourceModule = CreateSourceModuleFromLayeSourceFiles(null, Options.ModuleSourceFiles);
+        if (sourceModule is null)
+        {
+            Context.Assert(Context.HasIssuedError, "Should have errored if we didn't create a source module");
             return 1;
+        }
 
-        var module = new LayeModule(Context, sourceFiles, dependencies);
+        var modules = ResolveModuleDependencyOrder([], [], [sourceModule], [.. Options.BinaryDependencyFiles], [.. Options.LibrarySearchPaths]);
+        
+        var dependencyInfos = modules.TakeWhile(m => !m.Equals(sourceModule)).Cast<BinaryModuleInfo>().ToArray();
+        string[] linkLibraries = sourceHeaders.SelectMany(h => h.ForeignImportDeclarations.Select(import => import.LibraryPathText))
+            .Distinct().ToArray();
+
+        var dependencies = new LayeModule[dependencyInfos.Length];
+        for (int i = 0; i < dependencies.Length; i++)
+        {
+            var di = dependencyInfos[i];
+            var prev = dependencies.Take(i)
+                .Where(d => di.DependencyNames.Contains(d.ModuleName));
+
+            dependencies[i] = LayeModule.DeserializeFromObject(Context, [.. prev], di.ModuleFile);
+        }
+
+        var module = new LayeModule(Context, sourceFiles, dependencies, linkLibraries);
         var syntaxPrinter = new SyntaxPrinter(Context, false);
         var semaPrinter = new SemaPrinter(Context, false);
 

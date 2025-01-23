@@ -7,10 +7,25 @@ public sealed class SyntaxAttribForeign(SyntaxToken tokenForeign, SyntaxToken? t
     : SyntaxAttrib(tokenForeign.Location)
 {
     public SyntaxToken TokenForegin { get; } = tokenForeign;
+    public SyntaxToken? TokenForeignLibraryName { get; init; } = null;
     public SyntaxToken? TokenName { get; } = tokenName;
+    
+    public bool HasForeignLibraryName => TokenForeignLibraryName is not null;
     public bool HasForeignName => TokenName is not null;
+    public string? ForeignLibraryNameText => TokenForeignLibraryName?.TextValue;
     public string? ForeignNameText => TokenName?.TextValue;
-    public override IEnumerable<SyntaxNode> Children { get; } = tokenName is not null ? [tokenForeign, tokenName] : [tokenForeign];
+
+    public override IEnumerable<SyntaxNode> Children
+    {
+        get
+        {
+            yield return TokenForegin;
+            if (TokenForeignLibraryName is not null)
+                yield return TokenForeignLibraryName;
+            if (TokenName is not null)
+                yield return TokenName;
+        }
+    }
 }
 
 public sealed class SyntaxAttribCallconv(SyntaxToken tokenCallconv, SyntaxToken tokenKind)

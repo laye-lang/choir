@@ -32,7 +32,10 @@ else
 endif
 
 .PHONY: all
-all: layec librt0 libcore libffi
+all: layec libs
+
+.PHONY: libs
+libs: librt0 libcore libc
 
 .PHONY: layec
 layec: $(LAYEC_EXE)
@@ -56,6 +59,12 @@ libffi_sources = $(wildcard ./lib/laye/ffi/*.laye)
 libffi: ./lib/laye/ffi.mod
 ./lib/laye/ffi.mod: $(LAYEC_EXE) $(libffi_sources)
 	$(LAYEC_EXE) -o $@ --no-corelib $(libffi_sources)
+
+libc_sources = $(wildcard ./lib/laye/libc/*.laye)
+.PHONY: libc
+libc: ./lib/laye/libc.mod
+./lib/laye/libc.mod: $(LAYEC_EXE) $(libc_sources)
+	$(LAYEC_EXE) -o $@ --no-corelib $(libc_sources)
 
 .PHONY: test
 test:

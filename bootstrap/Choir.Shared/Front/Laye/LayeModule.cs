@@ -7,13 +7,14 @@ using LLVMSharp.Interop;
 
 namespace Choir.Front.Laye;
 
-public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sourceFiles, IEnumerable<LayeModule> dependencies)
+public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sourceFiles, IEnumerable<LayeModule> dependencies, IEnumerable<string> linkLibraries)
 {
     private readonly List<SemaDeclNamed> _declarations = [];
 
     public ChoirContext Context { get; } = context;
     public IReadOnlyList<SourceFile> SourceFiles = [.. sourceFiles];
     public IReadOnlyList<LayeModule> Dependencies = [.. dependencies];
+    public IReadOnlyList<string> LinkLibraries = [.. linkLibraries];
 
     public string ModuleName { get; set; } = LayeConstants.ProgramModuleName;
 

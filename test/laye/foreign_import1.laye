@@ -1,0 +1,7 @@
+foreign import kernel32 "kernel32.lib";
+
+foreign(kernel32) "ExitProcess" noreturn exit_process(i32 exit_code);
+
+int main() {
+    exit_process(0);
+}

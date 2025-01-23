@@ -90,16 +90,15 @@ Options:
     {
         bool isOutputStdout = Options.OutputFilePath == "-";
 
-        DirectoryInfo[] allLibrarySearchpaths = [.. CollectBuiltInLibrarySearchPaths(), .. Options.LibrarySearchPaths];
+        DirectoryInfo[] allLibrarySearchPaths = [.. CollectBuiltInLibrarySearchPaths(), .. Options.LibrarySearchPaths];
         Options.LibrarySearchPaths.Clear();
-        Options.LibrarySearchPaths.AddRange(allLibrarySearchpaths.Where(dir => dir.Exists).Select(d => d.Canonical()).Distinct());
+        Options.LibrarySearchPaths.AddRange(allLibrarySearchPaths.Where(dir => dir.Exists).Select(d => d.Canonical()).Distinct());
 
         #region Implicit Module Selection
 
         if (Options.AdditionalSourceFiles.Count == 0 && Options.ModuleDirectories.Count == 0 && Options.BinaryDependencyFiles.Count == 0)
         {
             Context.LogVerbose("Searching for a suitable default module source directory, since no input files were provided.");
-
 
             string[] defaultModuleDirectories = ((string[]) [ "src", "source", "lib", "library", "mod", "module", ..(Environment.GetEnvironmentVariable("LAYE_DIR_DEFAULT_MODULE")?.Split(Path.PathSeparator) ?? []) ])
                 .Distinct().ToArray();
@@ -157,9 +156,15 @@ Options:
 
         #endregion
 
+        string[] foreignLinkLibraries = modules.SelectMany(m => m.ForeignLibraryNames).ToArray();
+
         Context.LogVerbose("Resolved modules, sorted:");
         foreach (var module in modules)
             Context.LogVerbose($"  {module}");
+
+        Context.LogVerbose("Foreign link libraries:");
+        foreach (string linkLibrary in foreignLinkLibraries)
+            Context.LogVerbose($"  {linkLibrary}");
 
         // do some sanity checking on outputting to stdout
         if (Options.OutputFilePath == "-")
@@ -185,6 +190,7 @@ Options:
 
         var compilationArtifacts = new List<FileInfo>();
         var linkerInputs = new List<FileInfo>();
+        var moduleInfosToResultFiles = new Dictionary<ModuleInfo, FileInfo>();
 
         bool isSingleSourceModule = modules.Where(m => m is SourceModuleInfo).Count() == 1;
 
@@ -195,7 +201,10 @@ Options:
         foreach (var module in modules)
         {
             if (module is BinaryModuleInfo binaryModule)
+            {
                 linkerInputs.Add(binaryModule.ModuleFile);
+                moduleInfosToResultFiles[binaryModule] = binaryModule.ModuleFile;
+            }
             else if (module is SourceModuleInfo sourceModule)
             {
                 FileInfo? moduleOutputFile = null;
@@ -213,7 +222,7 @@ Options:
                 var layecOptions = new LayecHighLevelDriverOptions()
                 {
                     // layec can't link, it doesn't make sense to pass that (or let it get rendered)
-                    DriverStage = (DriverStage)Math.Max((int)DriverStage.Assemble, (int)Options.DriverStage),
+                    DriverStage = (DriverStage)Math.Min((int)DriverStage.Assemble, (int)Options.DriverStage),
                     OmitSourceTextInModuleBinary = Options.OmitSourceTextInModuleBinary,
                     NoLower = Options.NoLower,
                     ShowVerboseOutput = Options.ShowVerboseOutput,
@@ -231,6 +240,7 @@ Options:
                     layecOptions.OutputFilePath = moduleOutputFile.FullName;
                     linkerInputs.Add(moduleOutputFile);
                     compilationArtifacts.Add(moduleOutputFile);
+                    moduleInfosToResultFiles[sourceModule] = moduleOutputFile;
                 }
                 else if (Options.OutputFilePath == "-")
                     layecOptions.OutputFilePath = "-";
@@ -238,9 +248,8 @@ Options:
                 layecOptions.ModuleSourceFiles.AddRange(sourceModule.ModuleFiles);
 
                 var binaryDependencies = modules
-                    .Where(m => m is BinaryModuleInfo && sourceModule.DependencyNames.Contains(m.ModuleName))
-                    .Cast<BinaryModuleInfo>()
-                    .Select(m => m.ModuleFile);
+                    .Where(m => sourceModule.DependencyNames.Contains(m.ModuleName))
+                    .Select(m => moduleInfosToResultFiles[m]);
                 layecOptions.BinaryDependencyFiles.AddRange(binaryDependencies);
 
                 var layecDriver = LayecHighLevelDriver.Create(Context, layecOptions);
@@ -351,6 +360,11 @@ Options:
             foreach (var input in linkerInputs)
             {
                 linkerStartInfo.ArgumentList.Add($"{input.FullName}");
+            }
+
+            foreach (string linkLibrary in foreignLinkLibraries)
+            {
+                linkerStartInfo.ArgumentList.Add(linkLibrary);
             }
 
             Context.LogVerbose($"{linker.Name} {string.Join(" ", linkerStartInfo.ArgumentList.Select(a => $"\"{a}\""))}");

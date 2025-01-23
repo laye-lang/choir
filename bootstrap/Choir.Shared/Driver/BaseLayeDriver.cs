@@ -1,4 +1,6 @@
-﻿using System.Diagnostics;
+﻿using System.ComponentModel;
+using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
@@ -30,30 +32,41 @@ public abstract class BaseLayeDriver<TOptions, TArgParseState>
         };
     }
 
-    protected abstract class ModuleInfo(string moduleName, IReadOnlyList<string> dependencyNames)
+    protected BaseLayeDriver(string programName, ChoirContext context, TOptions options)
+    {
+        ProgramName = programName;
+        Context = context;
+        Options = options;
+    }
+
+    protected abstract class ModuleInfo(string moduleName, IReadOnlyList<string> dependencyNames, IReadOnlyList<string> foreignLibraryNames)
     {
         public readonly string ModuleName = moduleName;
         public readonly string[] DependencyNames = [.. dependencyNames];
+        public readonly string[] ForeignLibraryNames = [.. foreignLibraryNames];
         public abstract string LocationPath { get; }
         public override string ToString() => $"{ModuleName} [{string.Join(", ", DependencyNames)}] @ '{LocationPath}'";
+        public override bool Equals(object? obj) => obj is ModuleInfo other && other.ModuleName == ModuleName && other.DependencyNames.SequenceEqual(DependencyNames) && other.ForeignLibraryNames.SequenceEqual(ForeignLibraryNames);
+        public override int GetHashCode() => base.GetHashCode();
     }
 
-    protected class SourceModuleInfo(DirectoryInfo? moduleDir, FileInfo[] moduleFiles, string moduleName, IReadOnlyList<string> dependencyNames)
-        : ModuleInfo(moduleName, dependencyNames)
+    protected class SourceModuleInfo(DirectoryInfo? moduleDir, FileInfo[] moduleFiles, string moduleName, IReadOnlyList<string> dependencyNames, IReadOnlyList<string> foreignLibraryNames)
+        : ModuleInfo(moduleName, dependencyNames, foreignLibraryNames)
     {
         public readonly DirectoryInfo? ModuleDirectory = moduleDir;
         public readonly FileInfo[] ModuleFiles = moduleFiles;
         public override string LocationPath { get; } = moduleDir?.FullName ?? string.Join(Path.PathSeparator, moduleFiles.Select(f => f.FullName));
-        public override bool Equals(object? obj) => obj is SourceModuleInfo other && other.ModuleName == ModuleName && other.DependencyNames.SequenceEqual(DependencyNames) && other.ModuleDirectory == ModuleDirectory && other.ModuleDirectory == ModuleDirectory;
+        public override bool Equals(object? obj) => obj is SourceModuleInfo other && base.Equals(other) && other.ModuleDirectory == ModuleDirectory &&
+            other.ModuleFiles.SequenceEqual(ModuleFiles, EqualityComparer<FileInfo>.Create((a, b) => a is null ? b is null : b is not null && a.FullName == b.FullName));
         public override int GetHashCode() => HashCode.Combine(ModuleName, DependencyNames, ModuleDirectory, ModuleFiles);
     }
 
-    protected sealed class BinaryModuleInfo(FileInfo moduleFile, string moduleName, IReadOnlyList<string> dependencyNames)
-        : ModuleInfo(moduleName, dependencyNames)
+    protected sealed class BinaryModuleInfo(FileInfo moduleFile, string moduleName, IReadOnlyList<string> dependencyNames, IReadOnlyList<string> foreignLibraryNames)
+        : ModuleInfo(moduleName, dependencyNames, foreignLibraryNames)
     {
         public readonly FileInfo ModuleFile = moduleFile;
         public override string LocationPath { get; } = moduleFile.FullName;
-        public override bool Equals(object? obj) => obj is BinaryModuleInfo other && other.ModuleName == ModuleName && other.DependencyNames.SequenceEqual(DependencyNames) && other.ModuleFile == ModuleFile;
+        public override bool Equals(object? obj) => obj is BinaryModuleInfo other && base.Equals(other) && other.ModuleFile == ModuleFile;
         public override int GetHashCode() => HashCode.Combine(ModuleName, DependencyNames, ModuleFile);
     }
 
@@ -66,7 +79,7 @@ public abstract class BaseLayeDriver<TOptions, TArgParseState>
             if (!modFile.Exists) continue;
 
             var header = LayeModule.DeserializeHeaderFromObject(Context, modFile);
-            return new BinaryModuleInfo(modFile, header.ModuleName, header.DependencyNames);
+            return new BinaryModuleInfo(modFile, header.ModuleName, header.DependencyNames, header.LinkLibraryNames);
         }
 
         Context.Diag.Error($"Could not find Laye module file '{libraryFileName}'.");
@@ -81,9 +94,38 @@ public abstract class BaseLayeDriver<TOptions, TArgParseState>
         var sourceHeaders = sourceFiles.Select(f => (File: f, Header: Parser.ParseModuleUnitHeader(f)));
 
         var groups = sourceHeaders.GroupBy(pair => pair.Header.ModuleName ?? LayeConstants.ProgramModuleName)
-            .Select(g => new SourceModuleInfo(null, g.Select(pair => new FileInfo(pair.File.FilePath)).ToArray(), g.Key, g.SelectMany(pair => pair.Header.ImportDeclarations.Select(import => import.ModuleNameText)).ToArray()));
+            .Select(g => new SourceModuleInfo(null, g.Select(pair => new FileInfo(pair.File.FilePath)).ToArray(), g.Key, g.SelectMany(pair => pair.Header.ImportDeclarations.Select(import => import.ModuleNameText)).Distinct().ToArray(), g.SelectMany(pair => pair.Header.ForeignImportDeclarations.Select(import => import.LibraryPathText)).Distinct().ToArray()));
 
         return [.. groups];
+    }
+
+    protected SourceModuleInfo? CreateSourceModuleFromLayeSourceFiles(DirectoryInfo? moduleDir, IEnumerable<FileInfo> childLayeFiles)
+    {
+        var sourceFiles = childLayeFiles.Select(Context.GetSourceFile);
+        var sourceHeaders = sourceFiles.Select(Parser.ParseModuleUnitHeader);
+
+        string sourceModuleName = sourceHeaders.FirstOrDefault()?.ModuleName ?? LayeConstants.ProgramModuleName;
+
+        string[] declaredModuleNames = sourceHeaders
+            .Select(h => h.ModuleName ?? LayeConstants.ProgramModuleName)
+            .Distinct().ToArray();
+        if (declaredModuleNames.Length != 1)
+        {
+            Context.Diag.Error($"Source module at '{moduleDir?.FullName ?? string.Join(Path.PathSeparator, childLayeFiles.Select(f => f.FullName))}' declared multiple modules in its source.");
+            Context.Diag.Note($"The following module names were declared:\n  {string.Join(", ", declaredModuleNames.Order())}");
+            if (sourceHeaders.Any(h => h.ModuleName is null))
+                Context.Diag.Note("Note that the '.program' module name is implicitly declared if no 'module' declaration is present. This special module is intended only for use as an executable entry point module, and cannot be depended on.");
+            return null;
+        }
+
+        string[] dependencies = sourceHeaders
+            .SelectMany(h => h.ImportDeclarations.Select(id => id.ModuleNameText))
+            .Distinct().ToArray();
+        string[] linkLibraries = sourceHeaders
+            .SelectMany(h => h.ForeignImportDeclarations.Select(id => id.LibraryPathText))
+            .Distinct().ToArray();
+
+        return new SourceModuleInfo(moduleDir, [.. childLayeFiles], sourceModuleName, dependencies, linkLibraries);
     }
 
     protected SourceModuleInfo[] CollectAvailableSourceModules(IReadOnlyList<DirectoryInfo> inputDirs)
@@ -119,27 +161,10 @@ public abstract class BaseLayeDriver<TOptions, TArgParseState>
             if (!childLayeFiles.Any())
                 continue;
 
-            var sourceFiles = childLayeFiles.Select(Context.GetSourceFile);
-            var sourceHeaders = sourceFiles.Select(Parser.ParseModuleUnitHeader);
-
-            string sourceModuleName = sourceHeaders.FirstOrDefault()?.ModuleName ?? LayeConstants.ProgramModuleName;
-
-            string[] declaredModuleNames = sourceHeaders
-                .Select(h => h.ModuleName ?? LayeConstants.ProgramModuleName)
-                .Distinct().ToArray();
-            if (declaredModuleNames.Length != 1)
-            {
-                Context.Diag.Error($"Source module at '{dir.FullName}' declared multiple modules in its source.");
-                Context.Diag.Note($"The following module names were declared:\n  {string.Join(", ", declaredModuleNames.Order())}");
-                if (sourceHeaders.Any(h => h.ModuleName is null))
-                    Context.Diag.Note("Note that the '.program' module name is implicitly declared if no 'module' declaration is present. This special module is intended only for use as an executable entry point module, and cannot be depended on.");
-                continue;
-            }
-
-            string[] dependencies = sourceHeaders
-                .SelectMany(h => h.ImportDeclarations.Select(id => id.ModuleNameText))
-                .Distinct().ToArray();
-            result.Add(new SourceModuleInfo(dir, [.. childLayeFiles], sourceModuleName, dependencies));
+            var sourceModule = CreateSourceModuleFromLayeSourceFiles(dir, childLayeFiles);
+            // don't actually include something which has been determined a program module
+            if (sourceModule is not null && sourceModule.ModuleName != LayeConstants.ProgramModuleName)
+                result.Add(sourceModule);
         }
 
         return [.. result];
@@ -152,7 +177,7 @@ public abstract class BaseLayeDriver<TOptions, TArgParseState>
         foreach (var binaryModuleFile in binaryModules)
         {
             var header = LayeModule.DeserializeHeaderFromObject(Context, binaryModuleFile);
-            var moduleInfo = new BinaryModuleInfo(binaryModuleFile, header.ModuleName, header.DependencyNames);
+            var moduleInfo = new BinaryModuleInfo(binaryModuleFile, header.ModuleName, header.DependencyNames, header.LinkLibraryNames);
             inputBinaryModuleInfos.Add(moduleInfo);
         }
 
