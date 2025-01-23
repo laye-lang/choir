@@ -32,13 +32,11 @@ else
 endif
 
 .PHONY: all
-all: layec libs
+all: $(LAYEC_EXE) libs
 
 .PHONY: libs
 libs: librt0 libcore libc
 
-.PHONY: layec
-layec: $(LAYEC_EXE)
 $(LAYEC_EXE):
 	dotnet build ./bootstrap/layec --runtime $(RUNTIME)
 
