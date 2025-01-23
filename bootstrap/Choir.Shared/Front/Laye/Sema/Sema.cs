@@ -1318,6 +1318,14 @@ public partial class Sema
             (TokenKind.EqualEqual, BinaryOperatorKind.Eq),
             (TokenKind.BangEqual, BinaryOperatorKind.Neq),
         ] },
+
+        { BinaryOperatorKind.Bool, [
+            (TokenKind.EqualEqual, BinaryOperatorKind.Eq),
+            (TokenKind.BangEqual, BinaryOperatorKind.Neq),
+            (TokenKind.And, BinaryOperatorKind.LogAnd),
+            (TokenKind.Or, BinaryOperatorKind.LogOr),
+            (TokenKind.Xor, BinaryOperatorKind.Neq),
+        ] }
     };
 
     private SemaExprBinary AnalyseBinary(SyntaxExprBinary binary, SemaTypeQual? typeHint = null)
@@ -1334,6 +1342,8 @@ public partial class Sema
         var operatorKind = BinaryOperatorKind.Undefined;
         if (leftType.IsInteger && rightType.IsInteger)
             operatorKind |= BinaryOperatorKind.Integer;
+        else if (leftType.IsBool && rightType.IsBool)
+            operatorKind |= BinaryOperatorKind.Bool;
         else if (IsPointerLike(leftType) && IsPointerLike(rightType))
             operatorKind |= BinaryOperatorKind.Pointer;
 

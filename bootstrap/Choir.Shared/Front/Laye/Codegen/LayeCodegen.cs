@@ -1050,6 +1050,66 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     return ptradd;
                 }
 
+                case SemaExprBinaryBuiltIn { Kind: BinaryOperatorKind.LogAnd | BinaryOperatorKind.Bool } logand:
+                {
+                    var f = CurrentFunctionValue;
+
+                    var boolType = GenerateType(logand.Type);
+
+                    var leftBlock = f.AppendBasicBlock("logand.left");
+                    var rightBlock = f.AppendBasicBlock("logand.right");
+                    var joinBlock = f.AppendBasicBlock("logand.join");
+
+                    builder.BuildBr(leftBlock);
+                    EnterBlock(builder, leftBlock);
+
+                    var left = BuildExpr(builder, logand.Left);
+                    left = builder.BuildTrunc(left, LLVMTypeRef.Int1, "conv2i1");
+                    builder.BuildCondBr(left, rightBlock, joinBlock);
+
+                    EnterBlock(builder, rightBlock);
+
+                    var right = BuildExpr(builder, logand.Right);
+                    right = builder.BuildTrunc(right, LLVMTypeRef.Int1, "conv2i1");
+                    builder.BuildBr(joinBlock);
+
+                    EnterBlock(builder, joinBlock);
+                    var result = builder.BuildPhi(boolType, "logand.phi");
+                    result.AddIncoming([left, right], [leftBlock, rightBlock], 2);
+
+                    return result;
+                }
+
+                case SemaExprBinaryBuiltIn { Kind: BinaryOperatorKind.LogOr | BinaryOperatorKind.Bool } logor:
+                {
+                    var f = CurrentFunctionValue;
+
+                    var boolType = GenerateType(logor.Type);
+
+                    var leftBlock = f.AppendBasicBlock("logor.left");
+                    var rightBlock = f.AppendBasicBlock("logor.right");
+                    var joinBlock = f.AppendBasicBlock("logor.join");
+
+                    builder.BuildBr(leftBlock);
+                    EnterBlock(builder, leftBlock);
+
+                    var left = BuildExpr(builder, logor.Left);
+                    left = builder.BuildTrunc(left, LLVMTypeRef.Int1, "conv2i1");
+                    builder.BuildCondBr(left, joinBlock, rightBlock);
+
+                    EnterBlock(builder, rightBlock);
+
+                    var right = BuildExpr(builder, logor.Right);
+                    right = builder.BuildTrunc(right, LLVMTypeRef.Int1, "conv2i1");
+                    builder.BuildBr(joinBlock);
+
+                    EnterBlock(builder, joinBlock);
+                    var result = builder.BuildPhi(boolType, "logor.phi");
+                    result.AddIncoming([left, right], [leftBlock, rightBlock], 2);
+
+                    return result;
+                }
+
                 case SemaExprBinaryBuiltIn binaryBuiltIn:
                 {
                     var type = GenerateType(binaryBuiltIn.Type);
