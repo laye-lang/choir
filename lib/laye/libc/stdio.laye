@@ -2,10 +2,12 @@ module libc;
 
 // export struct FILE { }
 
-export foreign i8* fopen(i8[*] path, i8[*] mode);
-export foreign i32 fclose(i8* stream);
-export foreign i32 fread(i8 mut[*] buffer, int elem_size, int count, i8* stream);
-export foreign i32 feof(i8 *stream);
-export foreign i32 ferror(i8 *stream);
+export foreign callconv "c" i8* fopen(i8[*] path, i8[*] mode);
+export foreign callconv "c" discardable i32 fclose(i8* stream);
+export foreign callconv "c" int fread(i8 mut[*] buffer, int elem_size, int count, i8* stream);
+export foreign callconv "c" i32 feof(i8* stream);
+export foreign callconv "c" i32 ferror(i8* stream);
+export foreign callconv "c" discardable i32 fseek(i8* stream, i64 offset, i32 origin);
+export foreign callconv "c" i64 ftell(i8* stream);
 
-export foreign i32 printf(i8[*] format, varargs);
+export foreign callconv "c" discardable i32 printf(i8[*] format, varargs);

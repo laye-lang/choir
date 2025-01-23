@@ -628,6 +628,41 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     EnterBlock(builder, joinBlock);
             } break;
 
+            case SemaStmtWhileLoop @while:
+            {
+                Context.Assert(CurrentFunction is not null, @while.Location, "`if` should be within a function.");
+
+                var f = CurrentFunctionValue;
+                string whileName = NextName("while");
+
+                if (@while.ElseBody is { } elseBody)
+                {
+                    Context.Todo(@while.Location, "Implement else body for while loop.");
+                    throw new UnreachableException();
+                }
+                else
+                {
+                    var conditionBlock = f.AppendBasicBlock($".{whileName}.loopcond");
+                    var bodyBlock = f.AppendBasicBlock($".{whileName}.body");
+                    var joinBlock = f.AppendBasicBlock($".{whileName}.join");
+
+                    EnterBlock(builder, conditionBlock);
+                    var condition = BuildExpr(builder, @while.Condition);
+
+                    // ensure condition is *always* i1
+                    condition = builder.BuildTrunc(condition, LLVMTypeRef.Int1, "conv2i1");
+                    builder.BuildCondBr(condition, bodyBlock, joinBlock);
+
+                    EnterBlock(builder, bodyBlock);
+                    BuildStmt(builder, @while.Body);
+
+                    if (@while.Body.ControlFlow == StmtControlFlow.Fallthrough)
+                        builder.BuildBr(conditionBlock);
+
+                    EnterBlock(builder, joinBlock);
+                }
+            } break;
+
             case SemaStmtAssign assign:
             {
                 if (assign.Target is SemaExprLookup { ValueCategory: ValueCategory.Register } register)
@@ -677,6 +712,29 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 builder.BuildUnreachable();
 
                 EnterBlock(builder, continueBlock);
+            } break;
+
+            case SemaStmtIncrement stmtInc:
+            {
+                var targetType = stmtInc.Operand.Type.CanonicalType.Type;
+                var target = BuildExpr(builder, stmtInc.Operand);
+                Context.Assert(target.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Target should be an l-value, needs to be 'ptr'.");
+
+                if (targetType is SemaTypeBuffer)
+                {
+                    var intType = LLVMTypeRef.Int64;
+                    var ptrType = LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
+                    builder.BuildStore(builder.BuildPtrAdd(builder.BuildLoad2(ptrType, target, "load"), LLVMValueRef.CreateConstInt(intType, 1)), target);
+                }
+                else if (targetType.IsInteger)
+                {
+                    var intType = GenerateType(targetType);
+                    builder.BuildStore(builder.BuildAdd(builder.BuildLoad2(intType, target, "load"), LLVMValueRef.CreateConstInt(intType, 1)), target);
+                }
+                else
+                {
+                    Context.Todo(stmtInc.Location, $"Implement increment for type {stmtInc.Operand.Type.ToDebugString(Colors)}");
+                }
             } break;
 
             case SemaStmtExpr expr:
@@ -924,6 +982,10 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
                         case BinaryOperatorKind.Eq | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "ieq");
                         case BinaryOperatorKind.Neq | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, "ine");
+                        case BinaryOperatorKind.Lt | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSLT, left, right, "slt");
+                        case BinaryOperatorKind.Le | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSLE, left, right, "sle");
+                        case BinaryOperatorKind.Gt | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSGT, left, right, "sgt");
+                        case BinaryOperatorKind.Ge | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSGE, left, right, "sge");
                         case BinaryOperatorKind.Add | BinaryOperatorKind.Integer: return builder.BuildAdd(left, right, "iadd");
                         case BinaryOperatorKind.Sub | BinaryOperatorKind.Integer: return builder.BuildSub(left, right, "isub");
                     }

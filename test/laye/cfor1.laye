@@ -5,5 +5,5 @@ int main() {
         result = result * foo;
     }
 
-    return foo - 362880;
+    return result - 362880;
 }
