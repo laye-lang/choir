@@ -66,10 +66,10 @@ public sealed class SemaStmtReturnValue(Location location, SemaExpr value)
     public override IEnumerable<BaseSemaNode> Children { get; } = [value];
 }
 
-public sealed class SemaStmtBreak(Location location, SemaDecl breakTarget)
+public sealed class SemaStmtBreak(Location location, SemaStmt? breakTarget)
     : SemaStmt(location)
 {
-    public SemaDecl BreakTarget { get; } = breakTarget;
+    public SemaStmt? BreakTarget { get; } = breakTarget;
 
     // The 'start defer' at the opening of the scope associated with the break target
     public SemaDeferStackNode? StartDefer { get; set; }
@@ -79,10 +79,10 @@ public sealed class SemaStmtBreak(Location location, SemaDecl breakTarget)
     public override StmtControlFlow ControlFlow { get; } = StmtControlFlow.Jump;
 }
 
-public sealed class SemaStmtContinue(Location location, SemaDecl continueTarget)
+public sealed class SemaStmtContinue(Location location, SemaStmt? continueTarget)
     : SemaStmt(location)
 {
-    public SemaDecl ContinueTarget { get; } = continueTarget;
+    public SemaStmt? ContinueTarget { get; } = continueTarget;
 
     // The 'start defer' at the opening of the scope associated with the continue target
     public SemaDeferStackNode? StartDefer { get; set; }
@@ -137,37 +137,53 @@ public sealed class SemaStmtIf(IReadOnlyList<SemaStmtIfPrimary> conditions, Sema
     }
 }
 
-public sealed class SemaStmtWhileLoop(Location location, SemaExpr condition, SemaStmt body, SemaStmt? elseBody)
+public sealed class SemaStmtWhileLoop(Location location)
     : SemaStmt(location)
 {
-    public SemaExpr Condition { get; } = condition;
-    public SemaStmt Body { get; } = body;
-    public SemaStmt? ElseBody { get; } = elseBody;
+    public SemaExpr? Condition { get; set; }
+    public SemaStmt? Body { get; set; }
+    public SemaStmt? ElseBody { get; set; }
 
-    public override StmtControlFlow ControlFlow { get; } = elseBody is null ? StmtControlFlow.Fallthrough :
-        (StmtControlFlow)Math.Min((int)body.ControlFlow, (int)elseBody.ControlFlow);
+    public override StmtControlFlow ControlFlow => Body is null || ElseBody is null ? StmtControlFlow.Fallthrough :
+        (StmtControlFlow)Math.Min((int)Body.ControlFlow, (int)ElseBody.ControlFlow);
 
     public override IEnumerable<BaseSemaNode> Children
     {
         get
         {
-            yield return Condition;
-            yield return Body;
+            if (Condition is not null)
+                yield return Condition;
+            if (Body is not null)
+                yield return Body;
             if (ElseBody is not null)
                 yield return ElseBody;
         }
     }
 }
 
-public sealed class SemaStmtForLoop(Location location, SemaStmt initializer, SemaExpr condition, SemaStmt increment, SemaStmt body)
+public sealed class SemaStmtForLoop(Location location)
     : SemaStmt(location)
 {
     // remember: SemaDecl inherits SemaStmt, so this covers both cases
-    public SemaStmt Initializer { get; } = initializer;
-    public SemaExpr Condition { get; } = condition;
-    public SemaStmt Increment { get; } = increment;
-    public SemaStmt Body { get; } = body;
-    public override IEnumerable<BaseSemaNode> Children { get; } = [initializer, condition, increment, body];
+    public SemaStmt? Initializer { get; set; }
+    public SemaExpr? Condition { get; set; }
+    public SemaStmt? Increment { get; set; }
+    public SemaStmt? Body { get; set; }
+
+    public override IEnumerable<BaseSemaNode> Children
+    {
+        get
+        {
+            if (Initializer is not null)
+                yield return Initializer;
+            if (Condition is not null)
+                yield return Condition;
+            if (Increment is not null)
+                yield return Increment;
+            if (Body is not null)
+                yield return Body;
+        }
+    }
 }
 
 public sealed class SemaStmtDiscard(Location location, SemaExpr expr)

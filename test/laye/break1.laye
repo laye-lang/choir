@@ -1,0 +1,11 @@
+int main() {
+    int result = 0;
+    while (true) {
+        result = result + 1;
+        if (result > 5) {
+            break;
+        } 
+    }
+
+    return result - 6;
+}

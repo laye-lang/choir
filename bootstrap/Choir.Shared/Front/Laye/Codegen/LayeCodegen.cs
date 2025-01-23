@@ -115,6 +115,8 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
     private readonly Dictionary<SemaDeclNamed, LLVMValueRef> _declaredValues = [];
     private readonly Dictionary<SemaDeclNamed, LLVMTypeRef> _declaredTypes = [];
     private readonly Dictionary<SemaDeclFunction, FunctionInfo> _functionInfos = [];
+    private readonly Dictionary<SemaStmt, LLVMBasicBlockRef> _breakTargets = [];
+    private readonly Dictionary<SemaStmt, LLVMBasicBlockRef> _continueTargets = [];
 
     private LLVMValueRef _assertHandlerFunction = default;
 
@@ -646,17 +648,20 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     var bodyBlock = f.AppendBasicBlock($".{whileName}.body");
                     var joinBlock = f.AppendBasicBlock($".{whileName}.join");
 
+                    _breakTargets[@while] = joinBlock;
+                    _continueTargets[@while] = conditionBlock;
+
                     EnterBlock(builder, conditionBlock);
-                    var condition = BuildExpr(builder, @while.Condition);
+                    var condition = BuildExpr(builder, @while.Condition!);
 
                     // ensure condition is *always* i1
                     condition = builder.BuildTrunc(condition, LLVMTypeRef.Int1, "conv2i1");
                     builder.BuildCondBr(condition, bodyBlock, joinBlock);
 
                     EnterBlock(builder, bodyBlock);
-                    BuildStmt(builder, @while.Body);
+                    BuildStmt(builder, @while.Body!);
 
-                    if (@while.Body.ControlFlow == StmtControlFlow.Fallthrough)
+                    if (@while.Body!.ControlFlow == StmtControlFlow.Fallthrough)
                         builder.BuildBr(conditionBlock);
 
                     EnterBlock(builder, joinBlock);
@@ -676,32 +681,49 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 var bodyBlock = f.AppendBasicBlock($".{forName}.body");
                 var joinBlock = f.AppendBasicBlock($".{forName}.join");
 
-                EnterBlock(builder, initializerBlock);
-                BuildStmt(builder, @for.Initializer);
+                _breakTargets[@for] = joinBlock;
+                _continueTargets[@for] = incrementBlock;
 
-                if (@for.Initializer.ControlFlow == StmtControlFlow.Fallthrough)
+                EnterBlock(builder, initializerBlock);
+                BuildStmt(builder, @for.Initializer!);
+
+                if (@for.Initializer!.ControlFlow == StmtControlFlow.Fallthrough)
                     builder.BuildBr(conditionBlock);
 
                 EnterBlock(builder, conditionBlock);
-                var condition = BuildExpr(builder, @for.Condition);
+                var condition = BuildExpr(builder, @for.Condition!);
 
                 // ensure condition is *always* i1
                 condition = builder.BuildTrunc(condition, LLVMTypeRef.Int1, "conv2i1");
                 builder.BuildCondBr(condition, bodyBlock, joinBlock);
 
                 EnterBlock(builder, bodyBlock);
-                BuildStmt(builder, @for.Body);
+                BuildStmt(builder, @for.Body!);
 
-                if (@for.Body.ControlFlow == StmtControlFlow.Fallthrough)
+                if (@for.Body!.ControlFlow == StmtControlFlow.Fallthrough)
                     builder.BuildBr(incrementBlock);
 
                 EnterBlock(builder, incrementBlock);
-                BuildStmt(builder, @for.Increment);
+                BuildStmt(builder, @for.Increment!);
 
-                if (@for.Increment.ControlFlow == StmtControlFlow.Fallthrough)
+                if (@for.Increment!.ControlFlow == StmtControlFlow.Fallthrough)
                     builder.BuildBr(conditionBlock);
 
                 EnterBlock(builder, joinBlock);
+            } break;
+
+            case SemaStmtBreak @break:
+            {
+                Context.Assert(@break.BreakTarget is not null, "Sema should not have left a break target null with no errors");
+                Context.Assert(_breakTargets.ContainsKey(@break.BreakTarget), "Codegen should have stored a break target for this");
+                builder.BuildBr(_breakTargets[@break.BreakTarget]);
+            } break;
+
+            case SemaStmtContinue @continue:
+            {
+                Context.Assert(@continue.ContinueTarget is not null, "Sema should not have left a continue target null with no errors");
+                Context.Assert(_continueTargets.ContainsKey(@continue.ContinueTarget), "Codegen should have stored a continue target for this");
+                builder.BuildBr(_continueTargets[@continue.ContinueTarget]);
             } break;
 
             case SemaStmtAssign assign:

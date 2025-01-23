@@ -1,0 +1,15 @@
+int main() {
+    int result = 0;
+
+    int foo = 0;
+    while (foo < 10) {
+        foo = foo + 1;
+        if (foo == 5) {
+            continue;
+        }
+
+        result = result + foo;
+    }
+
+    return result - 50;
+}

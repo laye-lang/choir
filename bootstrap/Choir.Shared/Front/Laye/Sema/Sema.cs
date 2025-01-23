@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
@@ -82,6 +83,16 @@ public partial class Sema
         }
     }
 
+    [Flags]
+    private enum BreakContinueFlags
+    {
+        Break = 1 << 0,
+        Continue = 1 << 1,
+        BreakAndContinue = Break | Continue,
+    }
+
+    private readonly record struct BreakContinueTarget(SemaStmt Stmt, BreakContinueFlags Flags);
+
     public LayeModule Module { get; }
     public ChoirContext Context { get; }
     public Colors Colors { get; }
@@ -91,6 +102,7 @@ public partial class Sema
     private readonly Dictionary<SyntaxNode, SemaDeclNamed> _forwardDeclNodes = [];
     private readonly Stack<Scope> _scopeStack = [];
     private readonly Stack<SemaDeclFunction> _functionStack = [];
+    private readonly List<BreakContinueTarget> _breakContinueStack = [];
 
     private Dictionary<string, Scope> _currentFileImports = [];
 
@@ -163,158 +175,6 @@ public partial class Sema
                 }
             }
         }
-
-#if false
-        foreach (var topLevelSyntax in OldModule.TopLevelSyntax)
-            ProcessTopLevelSyntax(topLevelSyntax);
-
-        void ProcessTopLevelSyntax(SyntaxNode topLevelSyntax)
-        {
-            if (topLevelSyntax is SyntaxDeclImport importDecl)
-                ResolveModuleImport(importDecl);
-        }
-
-        void ResolveModuleImport(SyntaxDeclImport importDecl)
-        {
-            Context.Assert(false, importDecl.TokenModuleName.Location, "Library imports are currently not supported.");
-            return;
-
-#if false
-            var importedFileInfo = Context.LookupFile(importDecl.ModuleNameText, Module.SourceFile.FileInfo.Directory, FileLookupLocations.IncludeDirectories);
-            if (importedFileInfo is null)
-            {
-                Context.Diag.Error(importDecl.TokenModuleName.Location, $"could not find Laye module '{importDecl.ModuleNameText}'");
-                return;
-            }
-
-            OldModule importedModule;
-            var importedFile = Context.GetSourceFile(importedFileInfo);
-            if (TranslationUnit.FindModuleBySourceFile(importedFile) is { } importedModuleResult)
-                importedModule = importedModuleResult;
-            else
-            {
-                importedModule = new OldModule(importedFile);
-                TranslationUnit.AddModule(importedModule);
-                Lexer.ReadTokens(importedModule);
-                Parser.ParseSyntax(importedModule);
-            }
-
-            importDecl.ReferencedModule = importedModule;
-            if (Context.HasIssuedError) return;
-
-            Analyse(importedModule);
-
-            if (importDecl.IsAliased)
-            {
-                Module.FileScope.AddNamespace(importDecl.AliasNameText, importedModule.ExportScope);
-                if (importDecl.IsExported)
-                    Module.ExportScope.AddNamespace(importDecl.AliasNameText, importedModule.ExportScope);
-
-                if (importDecl.Queries.Count != 0)
-                {
-                    Context.Diag.Error(importDecl.Location, "import declarations can be aliased or have queries, but not both");
-                }
-            }
-            else if (importDecl.Queries.Count == 0)
-            {
-                string scopeName = Path.GetFileNameWithoutExtension(importDecl.ModuleNameText);
-                Module.FileScope.AddNamespace(scopeName, importedModule.ExportScope);
-                if (importDecl.IsExported)
-                    Module.ExportScope.AddNamespace(scopeName, importedModule.ExportScope);
-            }
-
-            foreach (var query in importDecl.Queries)
-            {
-                if (query is SyntaxImportQueryWildcard queryWildcard)
-                {
-                    foreach (var (symbolName, symbols) in importedModule.ExportScope)
-                    {
-                        foreach (var symbol in symbols)
-                        {
-                            Module.FileScope.AddSymbol(symbolName, symbol);
-                            if (importDecl.IsExported)
-                                Module.ExportScope.AddSymbol(symbolName, symbol);
-                        }
-                    }
-                }
-                else if (query is SyntaxImportQueryNamed queryNamed)
-                {
-                    if (queryNamed.Query.NamerefKind != NamerefKind.Default)
-                    {
-                        Context.Diag.Error(queryNamed.Location, "invalid path lookup in import context");
-                        continue;
-                    }
-
-                    Scope? scope = importedModule.ExportScope;
-                    for (int i = 0; i < queryNamed.Query.Names.Count - 1; i++)
-                    {
-                        var queryName = queryNamed.Query.Names[i];
-                        if (queryName is not SyntaxToken queryToken || queryToken.Kind != TokenKind.Identifier)
-                        {
-                            Context.Diag.Error(queryName.Location, "invalid path name part in import context");
-                            scope = null;
-                            break;
-                        }
-
-                        var queryResults = scope.GetSymbols(queryToken.TextValue);
-                        if (queryResults.Count == 0)
-                        {
-                            Context.Diag.Error(queryName.Location, $"could not find name '{queryToken.TextValue}' in this context");
-                            scope = null;
-                            break;
-                        }
-
-                        if (queryResults.Count != 1)
-                        {
-                            Context.Diag.Error(queryName.Location, $"name '{queryToken.TextValue}' does not resolve to a single namespace in this context");
-                            scope = null;
-                            break;
-                        }
-
-                        var queryResult = queryResults[0];
-                        if (queryResult is not NamespaceSymbol namespaceSymbol)
-                        {
-                            Context.Diag.Error(queryName.Location, $"name '{queryToken.TextValue}' does not resolve to a namespace in this context");
-                            scope = null;
-                            break;
-                        }
-                    }
-
-                    if (scope is null)
-                    {
-                        continue;
-                    }
-
-                    string symbolName = ImportQueryNamePartToSymbolName(queryNamed.Query.Names[^1]);
-                    var symbols = scope.GetSymbols(symbolName);
-
-                    foreach (var symbol in symbols)
-                    {
-                        Module.FileScope.AddSymbol(symbolName, symbol);
-                        if (importDecl.IsExported)
-                            Module.ExportScope.AddSymbol(symbolName, symbol);
-                    }
-                }
-                else
-                {
-                    Context.Unreachable($"an unhandled/unknown import query was encountered: {query.GetType().Name}");
-                    throw new UnreachableException();
-                }
-            }
-
-            string ImportQueryNamePartToSymbolName(SyntaxNode queryName)
-            {
-                if (queryName is SyntaxToken queryToken && queryToken.Kind == TokenKind.Identifier)
-                    return queryToken.TextValue;
-                else if (queryName is SyntaxOperatorName operatorName)
-                    return TransformOperatorNameToSymbolName(operatorName);
-
-                Context.Unreachable("a name part must always be an identifier token or operator name instance");
-                throw new UnreachableException();
-            }
-#endif
-        }
-#endif
     }
 
     private string TransformOperatorNameToSymbolName(SyntaxOperatorName operatorName)
@@ -777,6 +637,40 @@ public partial class Sema
                 };
             }
 
+            case SyntaxStmtBreak stmtBreak:
+            {
+                SemaStmt? target = null;
+                for (int i = _breakContinueStack.Count - 1; i >= 0 && target is null; i--)
+                {
+                    if (_breakContinueStack[i].Flags.HasFlag(BreakContinueFlags.Break))
+                        target = _breakContinueStack[i].Stmt;
+                }
+
+                if (target is null)
+                {
+                    Context.Diag.Error(stmtBreak.Location, "'break' statement must be within a loop or switch statement.");
+                }
+
+                return new SemaStmtBreak(stmtBreak.Location, target);
+            }
+
+            case SyntaxStmtContinue stmtContinue:
+            {
+                SemaStmt? target = null;
+                for (int i = _breakContinueStack.Count - 1; i >= 0 && target is null; i--)
+                {
+                    if (_breakContinueStack[i].Flags.HasFlag(BreakContinueFlags.Continue))
+                        target = _breakContinueStack[i].Stmt;
+                }
+
+                if (target is null)
+                {
+                    Context.Diag.Error(stmtContinue.Location, "'continue' statement must be within a loop statement.");
+                }
+
+                return new SemaStmtContinue(stmtContinue.Location, target);
+            }
+
             case SyntaxStmtUnreachable: return new SemaStmtUnreachable(stmt.Location);
 
             case SyntaxStmtDefer stmtDefer:
@@ -996,13 +890,16 @@ public partial class Sema
     {
         var boolType = Context.Types.LayeTypeBool.Qualified(Location.Nowhere);
 
+        var semaNode = new SemaStmtWhileLoop(stmtWhile.TokenWhile.Location);
+        using var _ = EnterBreakContinueScope(semaNode, BreakContinueFlags.BreakAndContinue);
+
         var condition = AnalyseExpr(stmtWhile.Condition, boolType);
-        condition = ConvertOrError(condition, boolType);
+        semaNode.Condition = ConvertOrError(condition, boolType);
 
-        var body = AnalyseStmtOrDecl(stmtWhile.Body);
-        var elseBody = stmtWhile.ElseBody is { } eb ? AnalyseStmtOrDecl(eb) : null;
+        semaNode.Body = AnalyseStmtOrDecl(stmtWhile.Body);
+        semaNode.ElseBody = stmtWhile.ElseBody is { } eb ? AnalyseStmtOrDecl(eb) : null;
 
-        return new SemaStmtWhileLoop(stmtWhile.TokenWhile.Location, condition, body, elseBody);
+        return semaNode;
     }
 
     private SemaStmtForLoop AnalyseForLoop(SyntaxStmtForLoop stmtFor)
@@ -1011,16 +908,19 @@ public partial class Sema
 
         var boolType = Context.Types.LayeTypeBool.Qualified(Location.Nowhere);
 
-        var initializer = stmtFor.Initializer is { } init ? AnalyseStmtOrDecl(init, true) : new SemaStmtXyzzy(Location.Nowhere);
+        var semaNode = new SemaStmtForLoop(stmtFor.TokenFor.Location);
+        using var _2 = EnterBreakContinueScope(semaNode, BreakContinueFlags.BreakAndContinue);
+
+        semaNode.Initializer = stmtFor.Initializer is { } init ? AnalyseStmtOrDecl(init, true) : new SemaStmtXyzzy(Location.Nowhere);
 
         var condition = stmtFor.Condition is { } cond ? AnalyseExpr(cond, boolType) : new SemaExprLiteralBool(Location.Nowhere, true, boolType);
-        condition = ConvertOrError(condition, boolType);
+        semaNode.Condition = ConvertOrError(condition, boolType);
         
-        var increment = stmtFor.Increment is { } inc ? AnalyseStmtOrDecl(inc, true) : new SemaStmtXyzzy(Location.Nowhere);
+        semaNode.Increment = stmtFor.Increment is { } inc ? AnalyseStmtOrDecl(inc, true) : new SemaStmtXyzzy(Location.Nowhere);
 
-        var body = AnalyseStmtOrDecl(stmtFor.Body, true);
+        semaNode.Body = AnalyseStmtOrDecl(stmtFor.Body, true);
 
-        return new SemaStmtForLoop(stmtFor.TokenFor.Location, initializer, condition, increment, body);
+        return semaNode;
     }
 
     private void AnalyseRegister(SyntaxDeclRegister declRegister, SemaDeclRegister semaNode)
@@ -2095,6 +1995,11 @@ public partial class Sema
         return new CurrentFunctionDisposable(this, function);
     }
 
+    private BreakContinueDisposable EnterBreakContinueScope(SemaStmt stmt, BreakContinueFlags flags)
+    {
+        return new BreakContinueDisposable(this, stmt, flags);
+    }
+
     private sealed class ScopeDisposableNoPush : IDisposable
     {
         private readonly Sema _sema;
@@ -2163,6 +2068,34 @@ public partial class Sema
             }
 
             _sema.Context.Assert(ReferenceEquals(function, _function), $"Exited a {nameof(CurrentFunctionDisposable)}, but the function was not the correct function");
+        }
+    }
+
+    private sealed class BreakContinueDisposable : IDisposable
+    {
+        private readonly Sema _sema;
+        private readonly SemaStmt _stmt;
+        private readonly BreakContinueFlags _flags;
+
+        public BreakContinueDisposable(Sema sema, SemaStmt stmt, BreakContinueFlags flags)
+        {
+            _sema = sema;
+            _stmt = stmt;
+            sema._breakContinueStack.Add(new(stmt, flags));
+        }
+
+        public void Dispose()
+        {
+            if (_sema._breakContinueStack.Count == 0)
+            {
+                _sema.Context.Diag.ICE($"Exited a {nameof(BreakContinueDisposable)}, but there were no statement");
+                throw new UnreachableException();
+            }
+
+            var target = _sema._breakContinueStack[^1];
+            _sema._breakContinueStack.RemoveAt(_sema._breakContinueStack.Count - 1);
+
+            _sema.Context.Assert(ReferenceEquals(target.Stmt, _stmt), $"Exited a {nameof(BreakContinueDisposable)}, but the function was not the correct statement");
         }
     }
 }
