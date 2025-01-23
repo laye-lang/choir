@@ -1,3 +1,5 @@
+using Choir.Front.Laye.Syntax;
+
 namespace Choir.Front.Laye.Sema;
 
 public sealed class SemaStmtXyzzy(Location location) : SemaStmt(location);
@@ -135,6 +137,39 @@ public sealed class SemaStmtIf(IReadOnlyList<SemaStmtIfPrimary> conditions, Sema
     }
 }
 
+public sealed class SemaStmtWhileLoop(Location location, SemaExpr condition, SemaStmt body, SemaStmt? elseBody)
+    : SemaStmt(location)
+{
+    public SemaExpr Condition { get; } = condition;
+    public SemaStmt Body { get; } = body;
+    public SemaStmt? ElseBody { get; } = elseBody;
+
+    public override StmtControlFlow ControlFlow { get; } = elseBody is null ? StmtControlFlow.Fallthrough :
+        (StmtControlFlow)Math.Min((int)body.ControlFlow, (int)elseBody.ControlFlow);
+
+    public override IEnumerable<BaseSemaNode> Children
+    {
+        get
+        {
+            yield return Condition;
+            yield return Body;
+            if (ElseBody is not null)
+                yield return ElseBody;
+        }
+    }
+}
+
+public sealed class SemaStmtForLoop(Location location, SemaStmt initializer, SemaExpr condition, SemaStmt increment, SemaStmt body)
+    : SemaStmt(location)
+{
+    // remember: SemaDecl inherits SemaStmt, so this covers both cases
+    public SemaStmt Initializer { get; } = initializer;
+    public SemaExpr Condition { get; } = condition;
+    public SemaStmt Increment { get; } = increment;
+    public SemaStmt Body { get; } = body;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [initializer, condition, increment, body];
+}
+
 public sealed class SemaStmtDiscard(Location location, SemaExpr expr)
     : SemaStmt(location)
 {
@@ -148,4 +183,18 @@ public sealed class SemaStmtAssert(Location location, SemaExpr condition, string
     public SemaExpr Condition { get; } = condition;
     public string FailureMessage { get; } = failureMessage;
     public override IEnumerable<BaseSemaNode> Children { get; } = [condition];
+}
+
+public sealed class SemaStmtIncrement(SemaExpr operand)
+    : SemaStmt(operand.Location)
+{
+    public SemaExpr Operand { get; } = operand;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
+}
+
+public sealed class SemaStmtDecrement(SemaExpr operand)
+    : SemaStmt(operand.Location)
+{
+    public SemaExpr Operand { get; } = operand;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
 }

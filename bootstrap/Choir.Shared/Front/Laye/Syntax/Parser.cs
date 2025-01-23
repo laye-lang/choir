@@ -1097,7 +1097,19 @@ public partial class Parser(SourceFile sourceFile)
                 ExpectSemiColon();
                 
                 if (!At(TokenKind.CloseParen))
-                    increment = ParseExpr(ExprParseContext.Default);
+                {
+                    if (TryAdvance(TokenKind.Discard, out var tokenIncDiscard))
+                    {
+                        increment = new SyntaxStmtDiscard(tokenIncDiscard, ParseExpr(ExprParseContext.Default));
+                    }
+                    else
+                    {
+                        increment = ParseExpr(ExprParseContext.Default);
+                        if (CurrentToken.Kind.IsAssignmentOperator())
+                            increment = ParseStmtContinue(increment, false);
+                        else increment = new SyntaxStmtExpr(increment, null);
+                    }
+                }
 
                 Expect(TokenKind.CloseParen, "')'", out var tokenCloseParen);
                 var body = ParseStmt();
@@ -1167,7 +1179,7 @@ public partial class Parser(SourceFile sourceFile)
         return new SyntaxCompound(tokenOpenBrace.Location, [.. body]);
     }
 
-    private SyntaxStaticIf ParseStaticIf(bool isTopLevelOnly)
+    private SyntaxStmtStaticIf ParseStaticIf(bool isTopLevelOnly)
     {
         Debug.Assert(At("static") && PeekAt(1, TokenKind.If));
         if (!TryAdvance("static", TokenKind.Static, out var tokenStatic))
@@ -1185,11 +1197,11 @@ public partial class Parser(SourceFile sourceFile)
             else
             {
                 var elseBody = ParseStaticBody();
-                return new SyntaxStaticIf(tokenStatic, [.. primaries], tokenElse, elseBody);
+                return new SyntaxStmtStaticIf(tokenStatic, [.. primaries], tokenElse, elseBody);
             }
         }
         
-        return new SyntaxStaticIf(tokenStatic, [.. primaries], null, null);
+        return new SyntaxStmtStaticIf(tokenStatic, [.. primaries], null, null);
 
         SyntaxIfPrimary ParseStaticIfPrimary()
         {
@@ -1231,7 +1243,7 @@ public partial class Parser(SourceFile sourceFile)
         }
     }
 
-    private SyntaxIf ParseIf()
+    private SyntaxStmtIf ParseIf()
     {
         var primaries = new List<SyntaxIfPrimary>
         {
@@ -1245,11 +1257,11 @@ public partial class Parser(SourceFile sourceFile)
             else
             {
                 var elseBody = ParseStmt();
-                return new SyntaxIf([.. primaries], tokenElse, elseBody);
+                return new SyntaxStmtIf([.. primaries], tokenElse, elseBody);
             }
         }
         
-        return new SyntaxIf([.. primaries], null, null);
+        return new SyntaxStmtIf([.. primaries], null, null);
 
         SyntaxIfPrimary ParseIfPrimary()
         {

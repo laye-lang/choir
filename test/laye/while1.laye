@@ -1,0 +1,8 @@
+int main() {
+    int foo = 0;
+    while (foo < 10) {
+        foo++;
+    }
+
+    return foo - 10;
+}

@@ -36,7 +36,7 @@ public sealed class SyntaxIfPrimary(SyntaxToken tokenIf, SyntaxNode condition, S
     public override IEnumerable<SyntaxNode> Children { get; } = [tokenIf, condition, body];
 }
 
-public sealed class SyntaxIf(IReadOnlyList<SyntaxIfPrimary> conditions, SyntaxToken? tokenElse, SyntaxNode? elseBody)
+public sealed class SyntaxStmtIf(IReadOnlyList<SyntaxIfPrimary> conditions, SyntaxToken? tokenElse, SyntaxNode? elseBody)
     : SyntaxNode(conditions.Count == 0 ? Location.Nowhere : conditions[0].Location)
 {
     public IReadOnlyList<SyntaxIfPrimary> Conditions { get; } = conditions;
@@ -57,7 +57,7 @@ public sealed class SyntaxIf(IReadOnlyList<SyntaxIfPrimary> conditions, SyntaxTo
     }
 }
 
-public sealed class SyntaxStaticIf(SyntaxToken tokenStatic, IReadOnlyList<SyntaxIfPrimary> conditions, SyntaxToken? tokenElse, SyntaxNode? elseBody)
+public sealed class SyntaxStmtStaticIf(SyntaxToken tokenStatic, IReadOnlyList<SyntaxIfPrimary> conditions, SyntaxToken? tokenElse, SyntaxNode? elseBody)
     : SyntaxNode(tokenStatic.Location)
 {
     public SyntaxToken TokenStatic { get; } = tokenStatic;
@@ -80,7 +80,7 @@ public sealed class SyntaxStaticIf(SyntaxToken tokenStatic, IReadOnlyList<Syntax
     }
 }
 
-public sealed class SyntaxSwitchCase(SyntaxToken tokenCase, SyntaxNode casePattern, SyntaxToken? tokenIf, SyntaxNode? guardClause, SyntaxToken tokenColon, SyntaxNode? caseBody)
+public sealed class SyntaxStmtSwitchCase(SyntaxToken tokenCase, SyntaxNode casePattern, SyntaxToken? tokenIf, SyntaxNode? guardClause, SyntaxToken tokenColon, SyntaxNode? caseBody)
     : SyntaxNode(tokenCase.Location)
 {
     public SyntaxToken TokenCase { get; } = tokenCase;

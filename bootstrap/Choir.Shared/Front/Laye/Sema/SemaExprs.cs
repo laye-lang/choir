@@ -34,9 +34,16 @@ public enum BinaryOperatorKind : long
     Add = 1 << 0,
     Sub = 1 << 1,
     Mul = 1 << 2,
+    Div = 1 << 3,
+    Idiv = 1 << 4,
+    Mod = 1 << 5,
 
-    Eq = 1 << 3,
-    Neq = 1 << 4,
+    Eq = 1 << 10,
+    Neq = 1 << 11,
+    Lt = 1 << 12,
+    Le = 1 << 13,
+    Gt = 1 << 14,
+    Ge = 1 << 15,
 
     Integer = 1 << 50,
     Pointer = 1 << 51,
@@ -50,7 +57,11 @@ public static class BinaryOperatorKindExtensions
     public static bool IsComparisonOperator(this BinaryOperatorKind kind) => (kind & BinaryOperatorKind.OperatorMask) switch
     {
         BinaryOperatorKind.Eq or
-        BinaryOperatorKind.Neq
+        BinaryOperatorKind.Neq or
+        BinaryOperatorKind.Lt or
+        BinaryOperatorKind.Le or
+        BinaryOperatorKind.Gt or
+        BinaryOperatorKind.Ge
             => true,
         _ => false,
     };

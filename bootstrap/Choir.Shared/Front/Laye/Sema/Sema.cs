@@ -796,7 +796,7 @@ public partial class Sema
                 return semaNode;
             }
 
-            case SyntaxIf stmtIf:
+            case SyntaxStmtIf stmtIf:
             {
                 Context.Assert(stmtIf.Conditions.Count > 0, stmtIf.Location, "The parser gave us an `if` statement with no conditions.");
                 var boolType = Context.Types.LayeTypeBool.Qualified(Location.Nowhere);
@@ -817,6 +817,9 @@ public partial class Sema
 
                 return new SemaStmtIf(conditions, elseBody);
             }
+
+            case SyntaxStmtWhileLoop stmtWhile: return AnalyseWhileLoop(stmtWhile);
+            case SyntaxStmtForLoop stmtFor: return AnalyseForLoop(stmtFor);
 
             case SyntaxStmtAssign stmtAssign:
             {
@@ -842,6 +845,32 @@ public partial class Sema
             {
                 var exprCondition = AnalyseExpr(stmtAssert.Condition, Context.Types.LayeTypeBool.Qualified(Location.Nowhere));
                 return new SemaStmtAssert(stmtAssert.Location, exprCondition, stmtAssert.TokenMessage?.TextValue ?? "Assertion failed.");
+            }
+
+            case SyntaxStmtExpr { Expr: SyntaxExprUnaryPostfix { TokenOperator.Kind: TokenKind.PlusPlus } exprPostInc } stmtPostInc:
+            {
+                var operand = AnalyseExpr(exprPostInc.Operand);
+                if (operand.Type.IsPoison)
+                    return new SemaStmtIncrement(operand);
+
+                if (!operand.IsLValue)
+                    Context.Diag.Error(operand.Location, $"Cannot increment {operand.ValueCategory.ToHumanString(includeArticle: true)}.");
+                else if (!operand.Type.CanonicalType.IsNumeric && operand.Type.CanonicalType.Type is not SemaTypeBuffer)
+                    Context.Diag.Error(operand.Location, $"Cannot increment a value of type {operand.Type.ToDebugString(Colors)}.");
+                return new SemaStmtIncrement(operand);
+            }
+
+            case SyntaxStmtExpr { Expr: SyntaxExprUnaryPostfix { TokenOperator.Kind: TokenKind.MinusMinus } exprPostDec } stmtPostDec:
+            {
+                var operand = AnalyseExpr(exprPostDec.Operand);
+                if (operand.Type.IsPoison)
+                    return new SemaStmtDecrement(operand);
+
+                if (!operand.IsLValue)
+                    Context.Diag.Error(operand.Location, $"Cannot decrement {operand.ValueCategory.ToHumanString(includeArticle: true)}.");
+                else if (!operand.Type.CanonicalType.IsNumeric && operand.Type.CanonicalType.Type is not SemaTypeBuffer)
+                    Context.Diag.Error(operand.Location, $"Cannot decrement a value of type {operand.Type.ToDebugString(Colors)}.");
+                return new SemaStmtDecrement(operand);
             }
 
             case SyntaxStmtExpr stmtExpr:
@@ -961,6 +990,37 @@ public partial class Sema
     {
         Context.Unreachable("Enum declarations are not implemented in sema yet.");
         return semaNode;
+    }
+
+    private SemaStmtWhileLoop AnalyseWhileLoop(SyntaxStmtWhileLoop stmtWhile)
+    {
+        var boolType = Context.Types.LayeTypeBool.Qualified(Location.Nowhere);
+
+        var condition = AnalyseExpr(stmtWhile.Condition, boolType);
+        condition = ConvertOrError(condition, boolType);
+
+        var body = AnalyseStmtOrDecl(stmtWhile.Body);
+        var elseBody = stmtWhile.ElseBody is { } eb ? AnalyseStmtOrDecl(eb) : null;
+
+        return new SemaStmtWhileLoop(stmtWhile.TokenWhile.Location, condition, body, elseBody);
+    }
+
+    private SemaStmtForLoop AnalyseForLoop(SyntaxStmtForLoop stmtFor)
+    {
+        using var _ = EnterScope();
+
+        var boolType = Context.Types.LayeTypeBool.Qualified(Location.Nowhere);
+
+        var initializer = stmtFor.Initializer is { } init ? AnalyseStmtOrDecl(init, true) : new SemaStmtXyzzy(Location.Nowhere);
+
+        var condition = stmtFor.Condition is { } cond ? AnalyseExpr(cond, boolType) : new SemaExprLiteralBool(Location.Nowhere, true, boolType);
+        condition = ConvertOrError(condition, boolType);
+        
+        var increment = stmtFor.Increment is { } inc ? AnalyseStmtOrDecl(inc, true) : new SemaStmtXyzzy(Location.Nowhere);
+
+        var body = AnalyseStmtOrDecl(stmtFor.Body, true);
+
+        return new SemaStmtForLoop(stmtFor.TokenFor.Location, initializer, condition, increment, body);
     }
 
     private void AnalyseRegister(SyntaxDeclRegister declRegister, SemaDeclRegister semaNode)
@@ -1311,6 +1371,23 @@ public partial class Sema
     private SemaExprUnary AnalyseUnaryPostfix(SyntaxExprUnaryPostfix unary, SemaTypeQual? typeHint = null)
     {
         var operand = AnalyseExpr(unary.Operand);
+        var operandType = operand.Type.CanonicalType.Type;
+
+        if (operandType.IsPoison)
+            return new SemaExprUnaryUndefined(unary.TokenOperator, operand);
+
+        switch (unary.TokenOperator.Kind)
+        {
+            case TokenKind.PlusPlus:
+            case TokenKind.MinusMinus:
+            {
+                string operatorImage = unary.TokenOperator.Kind == TokenKind.PlusPlus ? "++" : "--";
+                Context.Diag.Error(unary.TokenOperator.Location, $"The postfix unary operator '{operatorImage}' is not an expression.");
+                Context.Diag.Note("In Laye, the postfix increment and decrement operators are statements.");
+                return new SemaExprUnaryUndefined(unary.TokenOperator, operand);
+            }
+        }
+
         return UndefinedOperator();
 
         SemaExprUnary UndefinedOperator()
@@ -1326,9 +1403,15 @@ public partial class Sema
             (TokenKind.Plus, BinaryOperatorKind.Add),
             (TokenKind.Minus, BinaryOperatorKind.Sub),
             (TokenKind.Star, BinaryOperatorKind.Mul),
+            (TokenKind.Slash, BinaryOperatorKind.Div),
+            (TokenKind.Percent, BinaryOperatorKind.Mod),
 
             (TokenKind.EqualEqual, BinaryOperatorKind.Eq),
             (TokenKind.BangEqual, BinaryOperatorKind.Neq),
+            (TokenKind.Less, BinaryOperatorKind.Lt),
+            (TokenKind.LessEqual, BinaryOperatorKind.Le),
+            (TokenKind.Greater, BinaryOperatorKind.Gt),
+            (TokenKind.GreaterEqual, BinaryOperatorKind.Ge),
         ] },
 
         { BinaryOperatorKind.Pointer, [
