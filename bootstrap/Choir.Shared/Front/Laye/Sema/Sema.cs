@@ -128,8 +128,6 @@ public partial class Sema
 
             foreach (var importDecl in unitDecl.Header.ImportDeclarations)
             {
-                Context.Assert(importDecl.Queries.Count == 0, importDecl.Location, "Import queries are currently not supported.");
-
                 var referencedModule = Module.Dependencies.Where(m => m.ModuleName == importDecl.ModuleNameText).SingleOrDefault();
                 if (referencedModule is null)
                 {
@@ -137,8 +135,32 @@ public partial class Sema
                     continue;
                 }
 
-                string scopeName = importDecl.IsAliased ? importDecl.AliasNameText : importDecl.ModuleNameText;
-                importScopes[scopeName] = referencedModule.ExportScope;
+                if (importDecl.Queries.Count == 0)
+                {
+                    string scopeName = importDecl.IsAliased ? importDecl.AliasNameText : importDecl.ModuleNameText;
+                    importScopes[scopeName] = referencedModule.ExportScope;
+                }
+                else if (importDecl.Queries.Any(q => q is SyntaxImportQueryWildcard))
+                {
+                    if (importDecl.Queries.Count != 1)
+                    {
+                        Context.Diag.Error(importDecl.Location, "An import declaration cannot have both a wildcard '*' and named queries.");
+                        Context.Diag.Note(importDecl.Location, "This may change if there is a good enough reason, but it is currently restricted.");
+                    }
+
+                    var scope = importDecl.IsExported ? Module.ExportScope : Module.ModuleScope;
+                    Context.Assert(!importDecl.IsExported, importDecl.Location, "We need to be careful about how 'export import' works, so it is currently not allowed.");
+
+                    foreach (var (syntaxName, exportedDecls) in referencedModule.ExportScope)
+                    {
+                        foreach (var decl in exportedDecls)
+                            scope.AddDecl(decl);
+                    }
+                }
+                else
+                {
+                    Context.Todo(importDecl.Location, "If import queries are used, only the wildcard '*' is currently supported.");
+                }
             }
         }
 
