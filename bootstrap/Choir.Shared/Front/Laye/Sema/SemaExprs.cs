@@ -50,9 +50,9 @@ public enum BinaryOperatorKind : long
     And = 1L << 20,
     Or = 1L << 21,
     Xor = 1L << 22,
-    Lsh = 1L << 23,
-    Rsh = 1L << 24,
-    Lrsh = 1L << 25,
+    Shl = 1L << 23,
+    Shr = 1L << 24,
+    LShr = 1L << 25,
 
     LogAnd = 1L << 30,
     LogOr = 1L << 31,
@@ -60,6 +60,7 @@ public enum BinaryOperatorKind : long
     Bool = 1L << 50,
     Integer = 1L << 51,
     Pointer = 1L << 52,
+    Buffer = 1L << 53,
 
     OperatorMask = (1L << 50) - 1,
     TypeMask = ~OperatorMask,
@@ -244,4 +245,25 @@ public sealed class SemaExprNew(Location location, SemaTypeQual type, IReadOnlyL
     public IReadOnlyList<SemaExpr> Params { get; } = @params;
     public IReadOnlyList<SemaConstructorInitializer> Inits { get; } = inits;
     public override IEnumerable<BaseSemaNode> Children { get; } = [type, .. inits];
+}
+
+public sealed class SemaExprComplement(SemaExpr operand)
+    : SemaExpr(operand.Location, operand.Type)
+{
+    public SemaExpr Operand { get; } = operand;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
+}
+
+public sealed class SemaExprNegate(SemaExpr operand)
+    : SemaExpr(operand.Location, operand.Type)
+{
+    public SemaExpr Operand { get; } = operand;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
+}
+
+public sealed class SemaExprLogicalNot(SemaExpr operand)
+    : SemaExpr(operand.Location, operand.Type)
+{
+    public SemaExpr Operand { get; } = operand;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
 }

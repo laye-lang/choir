@@ -521,10 +521,16 @@ public sealed class ModuleDeserializer : IDisposable
         DeserializeTypes();
         DeserializeDecls();
 
-        var module = new LayeModule(Context, _files, _dependencies, header.LinkLibraryNames);
-        module.ModuleName = header.ModuleName;
+        var module = new LayeModule(Context, _files, _dependencies)
+        {
+            ModuleName = header.ModuleName
+        };
+
         foreach (var decl in _decls)
             module.ExportScope.AddDecl(decl);
+
+        foreach (string linkLibrary in header.LinkLibraryNames)
+            module.AddLinkLibrary(linkLibrary);
 
         return module;
     }

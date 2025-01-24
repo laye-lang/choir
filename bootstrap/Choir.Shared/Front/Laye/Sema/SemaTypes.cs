@@ -384,6 +384,8 @@ public sealed class SemaTypeBuffer(ChoirContext context, SemaTypeQual elementTyp
 public sealed class SemaTypeNilable(SemaTypeQual elementType)
     : SemaContainerType<SemaTypeNilable>(elementType)
 {
+    public override bool IsNilable { get; } = true;
+
     public override Size Size => throw new NotImplementedException();
     public override Align Align => throw new NotImplementedException();
 
@@ -406,6 +408,8 @@ public sealed class SemaTypeNilable(SemaTypeQual elementType)
 public sealed class SemaTypeSlice(ChoirContext context, SemaTypeQual elementType)
     : SemaContainerType<SemaTypeSlice>(elementType)
 {
+    public override bool IsSlice { get; } = true;
+
     public override Size Size { get; } = context.Target.SizeOfPointer + context.Target.SizeOfSizeType;
     public override Align Align { get; } = Align.Max(context.Target.AlignOfPointer, context.Target.AlignOfSizeType);
 
@@ -438,7 +442,10 @@ public sealed class SemaTypeArray(ChoirContext context, SemaTypeQual elementType
         context.Assert(eConst.Value.IntegerValue.GetBitLength() <= 64, "Expressions in an array type must be evaluated non-negative integer constants that fith within 64 bits.");
         return (long)eConst.Value.IntegerValue;
     }).ToArray();
+
     public int Arity { get; } = lengthExprs.Length;
+
+    public override bool IsArray { get; } = true;
 
     // TODO(local): don't cast to int here, use long for sizes
     public override Size Size => ElementType.Size * (int)FlatLength;

@@ -159,6 +159,9 @@ public abstract class SemaType : BaseSemaNode
     public virtual bool IsFloat { get; } = false;
     public virtual bool IsPointer { get; } = false;
     public virtual bool IsBuffer { get; } = false;
+    public virtual bool IsArray { get; } = false;
+    public virtual bool IsSlice { get; } = false;
+    public virtual bool IsNilable { get; } = false;
 
     public abstract Size Size { get; }
     public virtual Align Align => Align.ForBytes(Size.Bytes);
@@ -264,6 +267,11 @@ public sealed class SemaTypeQual(SemaType type, Location location, TypeQualifier
     public bool IsBool => Type.IsBool;
     public bool IsInteger => Type.IsInteger;
     public bool IsFloat => Type.IsFloat;
+    public bool IsPointer => Type.IsPointer;
+    public bool IsBuffer => Type.IsBuffer;
+    public bool IsArray => Type.IsArray;
+    public bool IsSlice => Type.IsSlice;
+    public bool IsNilable => Type.IsNilable;
 
     public bool IsQualified => Qualifiers != TypeQualifiers.None;
     public bool IsMutable => Qualifiers.HasFlag(TypeQualifiers.Mutable);

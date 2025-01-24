@@ -7,26 +7,32 @@ using LLVMSharp.Interop;
 
 namespace Choir.Front.Laye;
 
-public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sourceFiles, IEnumerable<LayeModule> dependencies, IEnumerable<string> linkLibraries)
+public sealed class LayeModule(ChoirContext context, IEnumerable<SourceFile> sourceFiles, IEnumerable<LayeModule> dependencies)
 {
     private readonly List<SemaDeclNamed> _declarations = [];
+    private readonly List<string> _linkLibraries = [];
 
     public ChoirContext Context { get; } = context;
     public IReadOnlyList<SourceFile> SourceFiles = [.. sourceFiles];
     public IReadOnlyList<LayeModule> Dependencies = [.. dependencies];
-    public IReadOnlyList<string> LinkLibraries = [.. linkLibraries];
 
     public string ModuleName { get; set; } = LayeConstants.ProgramModuleName;
 
     public Scope ModuleScope { get; } = new();
     public Scope ExportScope { get; } = new();
 
-    public IEnumerable<SemaDeclNamed> Declarations => _declarations;
-    public IEnumerable<SemaDeclNamed> ExportedDeclarations => ExportScope.SelectMany(s => s.Symbols).Select(s => s);
+    public IReadOnlyList<SemaDeclNamed> Declarations => _declarations;
+    public IReadOnlyList<SemaDeclNamed> ExportedDeclarations => [.. ExportScope.SelectMany(s => s.Symbols).Select(s => s)];
+    public IReadOnlyList<string> LinkLibraries => _linkLibraries;
 
     public void AddDecl(SemaDeclNamed decl)
     {
         _declarations.Add(decl);
+    }
+
+    public void AddLinkLibrary(string libraryFileName)
+    {
+        _linkLibraries.Add(libraryFileName);
     }
 
     public byte[] Serialize() => ModuleSerializer.SerializeToBytes(Context, this);

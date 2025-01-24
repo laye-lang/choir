@@ -1,0 +1,46 @@
+int main() {
+    int a = 1;
+    int b = 2;
+    int c = 3;
+    int d = 4;
+    int e = 5;
+    int f = 6;
+
+    int g = a + b;
+    assert g == 3;
+
+    int h = c - d;
+    assert h == -1;
+
+    int i = e * f;
+    assert i == 30;
+
+    int j = e / b;
+    assert j == 2;
+
+    int k = e % c;
+    assert k == 2;
+
+    int l = a << b;
+    assert l == 4;
+
+    int m = f >> a;
+    assert m == 3;
+
+    int n = f >> b;
+    assert n == 1;
+
+    int o = a | f;
+    assert o == 7;
+
+    int p = a & b;
+    assert p == 0;
+
+    int q = c & e;
+    assert q == 1;
+
+    int r = e ~ c;
+    assert r == 6;
+
+    return 0;
+}

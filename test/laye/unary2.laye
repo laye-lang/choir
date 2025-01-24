@@ -1,0 +1,12 @@
+int main() {
+    bool a = true;
+    bool b = false;
+
+    bool c = not a;
+    assert c == false;
+
+    bool d = not b;
+    assert d == true;
+
+    return 0;
+}

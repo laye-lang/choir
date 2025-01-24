@@ -1,7 +1,13 @@
-foreign import kernel32 "kernel32.lib";
+static if (LAYE_OS == ::windows) {
+    foreign import kernel32 "kernel32.lib";
 
-foreign(kernel32) "ExitProcess" noreturn exit_process(i32 exit_code);
+    foreign(kernel32) "ExitProcess" noreturn exit_process(i32 exit_code);
 
-int main() {
-    exit_process(0);
+    int main() {
+        exit_process(0);
+    }
+} else {
+    int main() {
+        return 0;
+    }
 }

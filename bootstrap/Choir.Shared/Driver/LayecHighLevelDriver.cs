@@ -158,8 +158,6 @@ Options:
         var modules = ResolveModuleDependencyOrder([], [], [sourceModule], [.. Options.BinaryDependencyFiles], [.. Options.LibrarySearchPaths]);
         
         var dependencyInfos = modules.TakeWhile(m => !m.Equals(sourceModule)).Cast<BinaryModuleInfo>().ToArray();
-        string[] linkLibraries = sourceHeaders.SelectMany(h => h.ForeignImportDeclarations.Select(import => import.LibraryPathText))
-            .Distinct().ToArray();
 
         var dependencies = new LayeModule[dependencyInfos.Length];
         for (int i = 0; i < dependencies.Length; i++)
@@ -171,7 +169,7 @@ Options:
             dependencies[i] = LayeModule.DeserializeFromObject(Context, [.. prev], di.ModuleFile);
         }
 
-        var module = new LayeModule(Context, sourceFiles, dependencies, linkLibraries);
+        var module = new LayeModule(Context, sourceFiles, dependencies);
         var syntaxPrinter = new SyntaxPrinter(Context, false);
         var semaPrinter = new SemaPrinter(Context, false);
 

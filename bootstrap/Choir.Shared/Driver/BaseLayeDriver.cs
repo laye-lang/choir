@@ -39,35 +39,41 @@ public abstract class BaseLayeDriver<TOptions, TArgParseState>
         Options = options;
     }
 
-    protected abstract class ModuleInfo(string moduleName, IReadOnlyList<string> dependencyNames, IReadOnlyList<string> foreignLibraryNames)
+    protected abstract class ModuleInfo(string moduleName, IReadOnlyList<string> dependencyNames)
     {
         public readonly string ModuleName = moduleName;
         public readonly string[] DependencyNames = [.. dependencyNames];
-        public readonly string[] ForeignLibraryNames = [.. foreignLibraryNames];
+
         public abstract string LocationPath { get; }
+
         public override string ToString() => $"{ModuleName} [{string.Join(", ", DependencyNames)}] @ '{LocationPath}'";
-        public override bool Equals(object? obj) => obj is ModuleInfo other && other.ModuleName == ModuleName && other.DependencyNames.SequenceEqual(DependencyNames) && other.ForeignLibraryNames.SequenceEqual(ForeignLibraryNames);
+        public override bool Equals(object? obj) => obj is ModuleInfo other && other.ModuleName == ModuleName && other.DependencyNames.SequenceEqual(DependencyNames);
         public override int GetHashCode() => base.GetHashCode();
     }
 
-    protected class SourceModuleInfo(DirectoryInfo? moduleDir, FileInfo[] moduleFiles, string moduleName, IReadOnlyList<string> dependencyNames, IReadOnlyList<string> foreignLibraryNames)
-        : ModuleInfo(moduleName, dependencyNames, foreignLibraryNames)
+    protected class SourceModuleInfo(DirectoryInfo? moduleDir, FileInfo[] moduleFiles, string moduleName, IReadOnlyList<string> dependencyNames)
+        : ModuleInfo(moduleName, dependencyNames)
     {
         public readonly DirectoryInfo? ModuleDirectory = moduleDir;
         public readonly FileInfo[] ModuleFiles = moduleFiles;
+
         public override string LocationPath { get; } = moduleDir?.FullName ?? string.Join(Path.PathSeparator, moduleFiles.Select(f => f.FullName));
+
         public override bool Equals(object? obj) => obj is SourceModuleInfo other && base.Equals(other) && other.ModuleDirectory == ModuleDirectory &&
             other.ModuleFiles.SequenceEqual(ModuleFiles, EqualityComparer<FileInfo>.Create((a, b) => a is null ? b is null : b is not null && a.FullName == b.FullName));
         public override int GetHashCode() => HashCode.Combine(ModuleName, DependencyNames, ModuleDirectory, ModuleFiles);
     }
 
     protected sealed class BinaryModuleInfo(FileInfo moduleFile, string moduleName, IReadOnlyList<string> dependencyNames, IReadOnlyList<string> foreignLibraryNames)
-        : ModuleInfo(moduleName, dependencyNames, foreignLibraryNames)
+        : ModuleInfo(moduleName, dependencyNames)
     {
         public readonly FileInfo ModuleFile = moduleFile;
+        public readonly string[] ForeignLibraryNames = [.. foreignLibraryNames];
+
         public override string LocationPath { get; } = moduleFile.FullName;
-        public override bool Equals(object? obj) => obj is BinaryModuleInfo other && base.Equals(other) && other.ModuleFile == ModuleFile;
-        public override int GetHashCode() => HashCode.Combine(ModuleName, DependencyNames, ModuleFile);
+
+        public override bool Equals(object? obj) => obj is BinaryModuleInfo other && base.Equals(other) && other.ModuleFile == ModuleFile && other.ForeignLibraryNames.SequenceEqual(ForeignLibraryNames);
+        public override int GetHashCode() => HashCode.Combine(ModuleName, DependencyNames, ModuleFile, ForeignLibraryNames);
     }
 
     protected BinaryModuleInfo? FindBinaryModule(string libraryName, IReadOnlyList<DirectoryInfo> librarySearchDirs)
@@ -93,8 +99,15 @@ public abstract class BaseLayeDriver<TOptions, TArgParseState>
         var sourceFiles = inputFiles.Select(Context.GetSourceFile);
         var sourceHeaders = sourceFiles.Select(f => (File: f, Header: Parser.ParseModuleUnitHeader(f)));
 
-        var groups = sourceHeaders.GroupBy(pair => pair.Header.ModuleName ?? LayeConstants.ProgramModuleName)
-            .Select(g => new SourceModuleInfo(null, g.Select(pair => new FileInfo(pair.File.FilePath)).ToArray(), g.Key, g.SelectMany(pair => pair.Header.ImportDeclarations.Select(import => import.ModuleNameText)).Distinct().ToArray(), g.SelectMany(pair => pair.Header.ForeignImportDeclarations.Select(import => import.LibraryPathText)).Distinct().ToArray()));
+        var groupedHeaders = sourceHeaders.GroupBy(pair => pair.Header.ModuleName ?? LayeConstants.ProgramModuleName);
+
+        var groups = groupedHeaders
+            .Select(g =>
+            {
+                var moduleFiles = g.Select(pair => new FileInfo(pair.File.FilePath)).ToArray();
+                string[] dependencyNames = g.SelectMany(pair => pair.Header.ImportDeclarations.Select(import => import.ModuleNameText)).Distinct().ToArray();
+                return new SourceModuleInfo(null, moduleFiles, g.Key, dependencyNames);
+            });
 
         return [.. groups];
     }
@@ -121,11 +134,8 @@ public abstract class BaseLayeDriver<TOptions, TArgParseState>
         string[] dependencies = sourceHeaders
             .SelectMany(h => h.ImportDeclarations.Select(id => id.ModuleNameText))
             .Distinct().ToArray();
-        string[] linkLibraries = sourceHeaders
-            .SelectMany(h => h.ForeignImportDeclarations.Select(id => id.LibraryPathText))
-            .Distinct().ToArray();
 
-        return new SourceModuleInfo(moduleDir, [.. childLayeFiles], sourceModuleName, dependencies, linkLibraries);
+        return new SourceModuleInfo(moduleDir, [.. childLayeFiles], sourceModuleName, dependencies);
     }
 
     protected SourceModuleInfo[] CollectAvailableSourceModules(IReadOnlyList<DirectoryInfo> inputDirs)

@@ -1228,6 +1228,33 @@ public partial class Sema
                 return UndefinedOperator();
             }
 
+            case TokenKind.Minus:
+            {
+                operand = LValueToRValue(operand);
+                if (!operand.Type.CanonicalType.IsNumeric)
+                    return UndefinedOperator();
+
+                return new SemaExprNegate(operand);
+            }
+
+            case TokenKind.Plus:
+            {
+                operand = LValueToRValue(operand);
+                if (!operand.Type.CanonicalType.IsNumeric)
+                    return UndefinedOperator();
+
+                return operand;
+            }
+
+            case TokenKind.Tilde:
+            {
+                operand = LValueToRValue(operand);
+                if (!operand.Type.CanonicalType.IsInteger)
+                    return UndefinedOperator();
+
+                return new SemaExprComplement(operand);
+            }
+
             case TokenKind.Ampersand:
             {
                 if (!operand.IsLValue)
@@ -1257,6 +1284,14 @@ public partial class Sema
                     Context.Diag.Error(unary.TokenOperator.Location, $"Cannot dereference a value of type {operand.Type.ToDebugString(Colors)}.");
                     return UndefinedOperator(false);
                 }
+            }
+
+            case TokenKind.Not:
+            {
+                operand = LValueToRValue(operand);
+                if (operand.Type.IsBool)
+                    return new SemaExprLogicalNot(operand);
+                return UndefinedOperator();
             }
         }
 
@@ -1312,11 +1347,26 @@ public partial class Sema
             (TokenKind.LessEqual, BinaryOperatorKind.Le),
             (TokenKind.Greater, BinaryOperatorKind.Gt),
             (TokenKind.GreaterEqual, BinaryOperatorKind.Ge),
+
+            (TokenKind.LessLess, BinaryOperatorKind.Shl),
+            (TokenKind.GreaterGreater, BinaryOperatorKind.Shr),
+            (TokenKind.Ampersand, BinaryOperatorKind.And),
+            (TokenKind.Pipe, BinaryOperatorKind.Or),
+            (TokenKind.Tilde, BinaryOperatorKind.Xor),
         ] },
 
         { BinaryOperatorKind.Pointer, [
             (TokenKind.EqualEqual, BinaryOperatorKind.Eq),
             (TokenKind.BangEqual, BinaryOperatorKind.Neq),
+        ] },
+
+        { BinaryOperatorKind.Buffer, [
+            (TokenKind.EqualEqual, BinaryOperatorKind.Eq),
+            (TokenKind.BangEqual, BinaryOperatorKind.Neq),
+            (TokenKind.Less, BinaryOperatorKind.Lt),
+            (TokenKind.LessEqual, BinaryOperatorKind.Le),
+            (TokenKind.Greater, BinaryOperatorKind.Gt),
+            (TokenKind.GreaterEqual, BinaryOperatorKind.Ge),
         ] },
 
         { BinaryOperatorKind.Bool, [
@@ -1325,10 +1375,14 @@ public partial class Sema
             (TokenKind.And, BinaryOperatorKind.LogAnd),
             (TokenKind.Or, BinaryOperatorKind.LogOr),
             (TokenKind.Xor, BinaryOperatorKind.Neq),
+
+            (TokenKind.Ampersand, BinaryOperatorKind.And),
+            (TokenKind.Pipe, BinaryOperatorKind.Or),
+            (TokenKind.Tilde, BinaryOperatorKind.Neq),
         ] }
     };
 
-    private SemaExprBinary AnalyseBinary(SyntaxExprBinary binary, SemaTypeQual? typeHint = null)
+    private SemaExpr AnalyseBinary(SyntaxExprBinary binary, SemaTypeQual? typeHint = null)
     {
         var left = LValueToRValue(AnalyseExpr(binary.Left));
         var right = LValueToRValue(AnalyseExpr(binary.Right));
@@ -1344,8 +1398,10 @@ public partial class Sema
             operatorKind |= BinaryOperatorKind.Integer;
         else if (leftType.IsBool && rightType.IsBool)
             operatorKind |= BinaryOperatorKind.Bool;
-        else if (IsPointerLike(leftType) && IsPointerLike(rightType))
+        else if (leftType.IsPointer && rightType.IsPointer)
             operatorKind |= BinaryOperatorKind.Pointer;
+        else if (leftType.IsBuffer && rightType.IsBuffer)
+            operatorKind |= BinaryOperatorKind.Buffer;
 
         if (operatorKind == BinaryOperatorKind.Undefined)
             return UndefinedOperator();
@@ -1368,13 +1424,10 @@ public partial class Sema
             else binaryType = left.Type;
         }
 
-        return new SemaExprBinaryBuiltIn(operatorKind, binary.TokenOperator, binaryType, left, right);
-
-        bool IsPointerLike(SemaTypeQual type)
-        {
-            var t = type.Type.CanonicalType;
-            return t.IsPointer || t.IsBuffer || t is SemaTypeNil;
-        }
+        SemaExpr result = new SemaExprBinaryBuiltIn(operatorKind, binary.TokenOperator, binaryType, left, right);
+        if (typeHint is not null)
+            result = ConvertOrError(result, typeHint);
+        return result;
 
         SemaExprBinary UndefinedOperator()
         {
@@ -1927,8 +1980,12 @@ public partial class Sema
         int b2aScore = TryConvert(ref b, a.Type);
 
         if (a2bScore >= 0 && (a2bScore <= b2aScore || b2aScore < 0))
+        {
+            b = EvaluateIfPossible(b);
             return Convert(ref a, b.Type);
-        
+        }
+
+        a = EvaluateIfPossible(a);
         return Convert(ref b, a.Type);
     }
 

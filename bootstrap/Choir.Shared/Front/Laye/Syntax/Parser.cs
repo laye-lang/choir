@@ -359,26 +359,14 @@ public partial class Parser(SourceFile sourceFile)
             declModule = ParseModuleDeclaration();
 
         var declImports = new List<SyntaxDeclImport>();
-        var declForeignImports = new List<SyntaxDeclForeignImport>();
 
-        //while (At(TokenKind.Import) || (At(TokenKind.Export) && PeekAt(1, TokenKind.Import)) || (At(TokenKind.Foreign) && PeekAt(1, TokenKind.Import)))
-        while (At(TokenKind.Foreign, TokenKind.Import, TokenKind.Export))
+        while (At(TokenKind.Import) || (At(TokenKind.Export) && PeekAt(1, TokenKind.Import)))
         {
-            if (At(TokenKind.Import) || (At(TokenKind.Export) && PeekAt(1, TokenKind.Import)))
-            {
-                var declImport = ParseImportDeclaration();
-                declImports.Add(declImport);
-            }
-            else if (At(TokenKind.Foreign) && PeekAt(1, TokenKind.Import))
-            {
-                var declForeignImport = ParseForeignImportDeclaration();
-                declForeignImports.Add(declForeignImport);
-            }
-            // it's not actually a valid import statement, we'll error on it later if we didn't handle the error cases here.
-            else break;
+            var declImport = ParseImportDeclaration();
+            declImports.Add(declImport);
         }
 
-        return new(location, declModule, declImports, declForeignImports);
+        return new(location, declModule, declImports);
     }
 
     public SyntaxNode? ParseTopLevelSyntax()
@@ -391,12 +379,6 @@ public partial class Parser(SourceFile sourceFile)
             return ParseImportDeclaration();
         }
 
-        if (At(TokenKind.Foreign) && PeekAt(1, TokenKind.Import))
-        {
-            Context.Diag.Error("Foreign import declarations must appear at the start of the source file in the module unit header.");
-            return ParseImportDeclaration();
-        }
-
         SyntaxTemplateParams? templateParams = null;
         if (TryAdvance(TokenKind.Template, out var tokenTemplate))
             templateParams = ParseTemplateParams(tokenTemplate);
@@ -405,6 +387,9 @@ public partial class Parser(SourceFile sourceFile)
 
         switch (CurrentToken.Kind)
         {
+            case TokenKind.Foreign when PeekAt(1, TokenKind.Import):
+                return ParseForeignImportDeclaration();
+
             case TokenKind.Alias:
             case TokenKind.Identifier when CurrentToken.TextValue == "strict" && PeekAt(1, TokenKind.Alias):
                 return ParseAliasDeclaration(templateParams, attribs);

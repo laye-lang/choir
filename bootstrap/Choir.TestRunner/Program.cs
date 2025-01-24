@@ -48,6 +48,9 @@ public sealed record class ExecTestInstance(DirectoryInfo LibDir, FileInfo Sourc
         var rt0LibFile = LibDir.ChildFile("rt0.mod");
         Debug.Assert(rt0LibFile.Exists);
 
+        var coreLibFile = LibDir.ChildFile("core.mod");
+        Debug.Assert(coreLibFile.Exists);
+
         var outputFile = outputDir.ChildFile($"{Path.GetFileNameWithoutExtension(SourceFile.Name)}.mod");
         var executableFile = outputDir.ChildFile($"{Path.GetFileNameWithoutExtension(SourceFile.Name)}{(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : ".out")}");
 
@@ -70,6 +73,7 @@ public sealed record class ExecTestInstance(DirectoryInfo LibDir, FileInfo Sourc
                 "-o", executableFile.FullName,
                 outputFile.FullName,
                 rt0LibFile.FullName,
+                coreLibFile.FullName,
             ]);
             linkProcess.WaitForExit();
             exitCode = linkProcess.ExitCode;

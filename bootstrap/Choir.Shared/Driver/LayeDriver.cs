@@ -156,15 +156,9 @@ Options:
 
         #endregion
 
-        string[] foreignLinkLibraries = modules.SelectMany(m => m.ForeignLibraryNames).ToArray();
-
         Context.LogVerbose("Resolved modules, sorted:");
         foreach (var module in modules)
             Context.LogVerbose($"  {module}");
-
-        Context.LogVerbose("Foreign link libraries:");
-        foreach (string linkLibrary in foreignLinkLibraries)
-            Context.LogVerbose($"  {linkLibrary}");
 
         // do some sanity checking on outputting to stdout
         if (Options.OutputFilePath == "-")
@@ -198,8 +192,10 @@ Options:
 
         bool hasErroredWhenCompilingModules = false;
 
-        foreach (var module in modules)
+        //foreach (var module in modules)
+        for (int i = 0; i < modules.Length; i++)
         {
+            var module = modules[i];
             if (module is BinaryModuleInfo binaryModule)
             {
                 linkerInputs.Add(binaryModule.ModuleFile);
@@ -261,6 +257,12 @@ Options:
                 {
                     if (emitModuleToStdout)
                         WriteFileToStdout(moduleOutputFile!.FullName);
+                    else if (moduleOutputFile is not null)
+                    {
+                        var header = LayeModule.DeserializeHeaderFromObject(Context, moduleOutputFile);
+                        Context.Assert(header.ModuleName == header.ModuleName, "The generated module has a different name to the one we compiled.");
+                        modules[i] = new BinaryModuleInfo(moduleOutputFile, header.ModuleName, header.DependencyNames, header.LinkLibraryNames);
+                    }
                 }
             }
             else
@@ -282,6 +284,13 @@ Options:
 
         if (Options.DriverStage == DriverStage.Link)
         {
+            Context.Assert(modules.All(m => m is BinaryModuleInfo), "Should have compiled all modules and replaced their module infos with binary module infos.");
+            string[] foreignLinkLibraries = modules.Cast<BinaryModuleInfo>().SelectMany(m => m.ForeignLibraryNames).ToArray();
+
+            Context.LogVerbose("Foreign link libraries:");
+            foreach (string linkLibrary in foreignLinkLibraries)
+                Context.LogVerbose($"  {linkLibrary}");
+
             Context.LogVerbose("Beginning link process.");
 
             var runtimeModule = FindBinaryModule("rt0", Options.LibrarySearchPaths);

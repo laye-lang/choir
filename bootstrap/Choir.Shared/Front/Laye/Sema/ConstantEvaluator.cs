@@ -66,6 +66,20 @@ public sealed class ConstantEvaluator
                 return true;
             }
 
+            case SemaExprNegate negate:
+            {
+                if (!TryEvaluate(negate.Operand, out var operandConst))
+                    return false;
+
+                if (operandConst.Kind == EvaluatedConstantKind.Integer)
+                {
+                    value = new EvaluatedConstant(-operandConst.IntegerValue);
+                    return true;
+                }
+
+                return false;
+            }
+
             case SemaExprBinaryBuiltIn binaryBuiltIn:
             {
                 if (!TryEvaluate(binaryBuiltIn.Left, out var leftConst))
@@ -79,8 +93,51 @@ public sealed class ConstantEvaluator
                     default: return false;
 
                     case BinaryOperatorKind.Eq | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue == rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Neq | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue != rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Lt | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue < rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Le | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue <= rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Gt | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue > rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Ge | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue >= rightConst.IntegerValue); break;
+
                     case BinaryOperatorKind.Add | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue + rightConst.IntegerValue); break;
                     case BinaryOperatorKind.Sub | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue - rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Mul | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue * rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Div | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue / rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.UDiv | BinaryOperatorKind.Integer:
+                    {
+                        var lu = new BigInteger(leftConst.IntegerValue.ToByteArray(), isUnsigned: true);
+                        var ru = new BigInteger(leftConst.IntegerValue.ToByteArray(), isUnsigned: true);
+                        value = new EvaluatedConstant(lu / ru);
+                    } break;
+                    case BinaryOperatorKind.Rem | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue % rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.URem | BinaryOperatorKind.Integer:
+                    {
+                        var lu = new BigInteger(leftConst.IntegerValue.ToByteArray(), isUnsigned: true);
+                        var ru = new BigInteger(leftConst.IntegerValue.ToByteArray(), isUnsigned: true);
+                        value = new EvaluatedConstant(lu % ru);
+                    } break;
+
+                    case BinaryOperatorKind.And | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue & rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Or | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue | rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Xor | BinaryOperatorKind.Integer: value = new EvaluatedConstant(leftConst.IntegerValue ^ rightConst.IntegerValue); break;
+                    case BinaryOperatorKind.Shl | BinaryOperatorKind.Integer:
+                    {
+                        if (rightConst.IntegerValue.GetBitLength() > 32)
+                            return false;
+                        value = new EvaluatedConstant(leftConst.IntegerValue << (int)rightConst.IntegerValue);
+                    } break;
+                    case BinaryOperatorKind.Shr | BinaryOperatorKind.Integer:
+                    {
+                        if (rightConst.IntegerValue.GetBitLength() > 32)
+                            return false;
+                        value = new EvaluatedConstant(leftConst.IntegerValue >> (int)rightConst.IntegerValue);
+                    } break;
+                    case BinaryOperatorKind.LShr | BinaryOperatorKind.Integer:
+                    {
+                        if (rightConst.IntegerValue.GetBitLength() > 32)
+                            return false;
+                        value = new EvaluatedConstant(leftConst.IntegerValue >>> (int)rightConst.IntegerValue);
+                    } break;
                 }
 
                 return true;

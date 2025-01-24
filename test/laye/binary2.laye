@@ -1,0 +1,36 @@
+int main() {
+    bool a = true;
+    bool b = false;
+
+    bool c = a and b;
+    assert c == false;
+
+    bool d = a & b;
+    assert d == false;
+
+    bool e = a or b;
+    assert e == true;
+
+    bool f = a | b;
+    assert f == true;
+
+    bool g = a xor b;
+    assert g == true;
+
+    bool h = a xor a;
+    assert h == false;
+
+    bool i = a ~ b;
+    assert i == true;
+
+    bool j = a ~ a;
+    assert j == false;
+
+    bool k = a != b;
+    assert k == true;
+
+    bool l = a != a;
+    assert l == false;
+
+    return 0;
+}

@@ -1050,6 +1050,47 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     return ptradd;
                 }
 
+                case SemaExprNegate negate:
+                {
+                    var operand = BuildExpr(builder, negate.Operand);
+                    if (negate.Operand.Type.CanonicalType.IsInteger)
+                        return builder.BuildNeg(operand, "neg");
+                    else
+                    {
+                        Context.Todo($"Unsupported type to negate in LLVM codegen: {negate.Operand.Type.ToDebugString(Colors)}");
+                        throw new UnreachableException();
+                    }
+                }
+
+                case SemaExprComplement complement:
+                {
+                    var operand = BuildExpr(builder, complement.Operand);
+                    if (complement.Operand.Type.CanonicalType.IsInteger)
+                        return builder.BuildNot(operand, "compl");
+                    else
+                    {
+                        Context.Todo($"Unsupported type to complement in LLVM codegen: {complement.Operand.Type.ToDebugString(Colors)}");
+                        throw new UnreachableException();
+                    }
+                }
+
+                case SemaExprLogicalNot lognot:
+                {
+                    var operand = BuildExpr(builder, lognot.Operand);
+                    var operandType = GenerateType(lognot.Operand.Type);
+                    if (lognot.Operand.Type.CanonicalType.IsBool)
+                    {
+                        var oTrunc = builder.BuildTrunc(operand, LLVMTypeRef.Int1);
+                        var not = builder.BuildNot(oTrunc);
+                        return builder.BuildZExt(not, operandType);
+                    }
+                    else
+                    {
+                        Context.Todo($"Unsupported type to lognot in LLVM codegen: {lognot.Operand.Type.ToDebugString(Colors)}");
+                        throw new UnreachableException();
+                    }
+                }
+
                 case SemaExprBinaryBuiltIn { Kind: BinaryOperatorKind.LogAnd | BinaryOperatorKind.Bool } logand:
                 {
                     var f = CurrentFunctionValue;
@@ -1123,9 +1164,21 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                             Context.Diag.ICE(expr.Location, $"Unimplemented Laye built-in binary operator kind in Choir builder/codegen: {binaryBuiltIn.Kind}");
                             throw new UnreachableException();
                         }
-                        
+
+                        case BinaryOperatorKind.Eq | BinaryOperatorKind.Bool: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "beq");
+                        case BinaryOperatorKind.Neq | BinaryOperatorKind.Bool: return builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, "bne");
+                        case BinaryOperatorKind.And | BinaryOperatorKind.Bool: return builder.BuildAnd(left, right, "band");
+                        case BinaryOperatorKind.Or | BinaryOperatorKind.Bool: return builder.BuildOr(left, right, "bor");
+
                         case BinaryOperatorKind.Eq | BinaryOperatorKind.Pointer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "peq");
                         case BinaryOperatorKind.Neq | BinaryOperatorKind.Pointer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, "pne");
+
+                        case BinaryOperatorKind.Eq | BinaryOperatorKind.Buffer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "peq");
+                        case BinaryOperatorKind.Neq | BinaryOperatorKind.Buffer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, "pne");
+                        case BinaryOperatorKind.Lt | BinaryOperatorKind.Buffer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSLT, left, right, "plt");
+                        case BinaryOperatorKind.Le | BinaryOperatorKind.Buffer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSLE, left, right, "ple");
+                        case BinaryOperatorKind.Gt | BinaryOperatorKind.Buffer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSGT, left, right, "pgt");
+                        case BinaryOperatorKind.Ge | BinaryOperatorKind.Buffer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSGE, left, right, "pge");
 
                         case BinaryOperatorKind.Eq | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "ieq");
                         case BinaryOperatorKind.Neq | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, "ine");
@@ -1133,6 +1186,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                         case BinaryOperatorKind.Le | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSLE, left, right, "sle");
                         case BinaryOperatorKind.Gt | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSGT, left, right, "sgt");
                         case BinaryOperatorKind.Ge | BinaryOperatorKind.Integer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntSGE, left, right, "sge");
+
                         case BinaryOperatorKind.Add | BinaryOperatorKind.Integer: return builder.BuildAdd(left, right, "iadd");
                         case BinaryOperatorKind.Sub | BinaryOperatorKind.Integer: return builder.BuildSub(left, right, "isub");
                         case BinaryOperatorKind.Mul | BinaryOperatorKind.Integer: return builder.BuildMul(left, right, "imul");
@@ -1140,6 +1194,13 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                         case BinaryOperatorKind.UDiv | BinaryOperatorKind.Integer: return builder.BuildUDiv(left, right, "iudiv");
                         case BinaryOperatorKind.Rem | BinaryOperatorKind.Integer: return builder.BuildSRem(left, right, "isrem");
                         case BinaryOperatorKind.URem | BinaryOperatorKind.Integer: return builder.BuildURem(left, right, "iurem");
+
+                        case BinaryOperatorKind.And | BinaryOperatorKind.Integer: return builder.BuildAnd(left, right, "iand");
+                        case BinaryOperatorKind.Or | BinaryOperatorKind.Integer: return builder.BuildOr(left, right, "ior");
+                        case BinaryOperatorKind.Xor | BinaryOperatorKind.Integer: return builder.BuildXor(left, right, "ixor");
+                        case BinaryOperatorKind.Shl | BinaryOperatorKind.Integer: return builder.BuildShl(left, right, "ishl");
+                        case BinaryOperatorKind.Shr | BinaryOperatorKind.Integer: return builder.BuildAShr(left, right, "iashr");
+                        case BinaryOperatorKind.LShr | BinaryOperatorKind.Integer: return builder.BuildLShr(left, right, "ilshr");
                     }
                 }
 

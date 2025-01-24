@@ -1,0 +1,22 @@
+int main() {
+    i8 a = 1;
+    i8 b = 2;
+    i8 c = 3;
+    i8 d = 4;
+    i8 e = 5;
+    i8 f = 6;
+
+    i8 g = ~a;
+    assert g == 2#1111_1110;
+
+    i8 h = -f;
+    assert h == -6;
+
+    i8* i = &e;
+    e = 7;
+    i8 j = *i;
+    assert j == 7;
+    e = 5;
+
+    return 0;
+}
