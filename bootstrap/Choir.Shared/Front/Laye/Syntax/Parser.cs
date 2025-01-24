@@ -1924,29 +1924,45 @@ public partial class Parser(SourceFile sourceFile)
             {
                 var tokenSizeof = Consume();
                 Expect(TokenKind.OpenParen, "'('");
-                var type = ParseType();
+                var operand = ParseExpr(ExprParseContext.Default);
                 Expect(TokenKind.CloseParen, "')'");
-                return ParsePrimaryExprContinuation(parseContext, new SyntaxExprSizeof(tokenSizeof, type));
+                return ParsePrimaryExprContinuation(parseContext, new SyntaxExprSizeof(tokenSizeof, operand));
+            }
+
+            case TokenKind.Countof:
+            {
+                var tokenCountof = Consume();
+                Expect(TokenKind.OpenParen, "'('");
+                var operand = ParseExpr(ExprParseContext.Default);
+                Expect(TokenKind.CloseParen, "')'");
+                return ParsePrimaryExprContinuation(parseContext, new SyntaxExprCountof(tokenCountof, operand));
+            }
+
+            case TokenKind.Rankof:
+            {
+                var tokenRankof = Consume();
+                Expect(TokenKind.OpenParen, "'('");
+                var operand = ParseExpr(ExprParseContext.Default);
+                Expect(TokenKind.CloseParen, "')'");
+                return ParsePrimaryExprContinuation(parseContext, new SyntaxExprRankof(tokenRankof, operand));
             }
 
             case TokenKind.Alignof:
             {
                 var tokenAlignof = Consume();
                 Expect(TokenKind.OpenParen, "'('");
-                var type = ParseType();
+                var operand = ParseExpr(ExprParseContext.Default);
                 Expect(TokenKind.CloseParen, "')'");
-                return ParsePrimaryExprContinuation(parseContext, new SyntaxExprAlignof(tokenAlignof, type));
+                return ParsePrimaryExprContinuation(parseContext, new SyntaxExprAlignof(tokenAlignof, operand));
             }
 
             case TokenKind.Offsetof:
             {
                 var tokenOffsetof = Consume();
                 Expect(TokenKind.OpenParen, "'('");
-                var type = ParseType();
-                Expect(TokenKind.Comma, "','");
-                var tokenFieldName = ExpectIdentifier();
+                var operand = ParseExpr(ExprParseContext.Default);
                 Expect(TokenKind.CloseParen, "')'");
-                return ParsePrimaryExprContinuation(parseContext, new SyntaxExprOffsetof(tokenOffsetof, type, tokenFieldName));
+                return ParsePrimaryExprContinuation(parseContext, new SyntaxExprOffsetof(tokenOffsetof, operand));
             }
 
             case TokenKind.Typeof:

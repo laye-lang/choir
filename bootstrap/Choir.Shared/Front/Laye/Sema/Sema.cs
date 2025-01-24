@@ -355,6 +355,8 @@ public partial class Sema
                 throw new UnreachableException();
             }
 
+            case SyntaxTypeof @typeof: return AnalyseExpr(@typeof.Expr).Type;
+
             case SyntaxQualMut typeQualMut: return AnalyseType(typeQualMut.Inner).Qualified(typeQualMut.Location, TypeQualifiers.Mutable);
             case SyntaxTypeBuiltIn typeBuiltin: return typeBuiltin.Type.Qualified(type.Location);
 
@@ -961,6 +963,13 @@ public partial class Sema
             case SyntaxIndex index: return AnalyseIndex(index, typeHint);
             case SyntaxExprConstructor ctor: return AnalyseConstructor(ctor, typeHint);
             case SyntaxGrouped grouped: return new SemaExprGrouped(grouped.Location, AnalyseExpr(grouped.Inner, typeHint));
+
+            case SyntaxExprSizeof @sizeof: return AnalyseSizeof(@sizeof, typeHint);
+            case SyntaxExprCountof @countof: return AnalyseCountof(@countof, typeHint);
+            case SyntaxExprRankof @rankof: return AnalyseRankof(@rankof, typeHint);
+            case SyntaxExprAlignof @alignof: return AnalyseAlignof(@alignof, typeHint);
+            case SyntaxExprOffsetof @offsetof: return AnalyseOffsetof(@offsetof, typeHint);
+            case SyntaxTypeof @typeof: return AnalyseTypeof(@typeof, typeHint);
 
             case SyntaxToken tokenInteger when tokenInteger.Kind == TokenKind.LiteralInteger:
             {
@@ -1810,6 +1819,46 @@ public partial class Sema
                 Context.Diag.Note(firstDesignatedLocation, "The first designated initializer occured here.");
             }
         }
+    }
+
+    public SemaExpr AnalyseSizeof(SyntaxExprSizeof @sizeof, SemaTypeQual? typeHint = null)
+    {
+        Context.Todo($"Implement {nameof(AnalyseSizeof)}");
+        throw new UnreachableException();
+        //var operand = AnalyseTypeOrExpr(@sizeof.Operand);
+        //if (operand is SemaType { } operandType)
+        //    return EvaluateIfPossible(new SemaExprSizeofType(@sizeof.Location, operandType));
+        //else return EvaluateIfPossible(new SemaExprSizeofExpr(@sizeof.Location, (SemaExpr)operand));
+    }
+
+    public SemaExpr AnalyseCountof(SyntaxExprCountof @countof, SemaTypeQual? typeHint = null)
+    {
+        Context.Todo($"Implement {nameof(AnalyseCountof)}");
+        throw new UnreachableException();
+    }
+
+    public SemaExpr AnalyseRankof(SyntaxExprRankof @rankof, SemaTypeQual? typeHint = null)
+    {
+        Context.Todo($"Implement {nameof(AnalyseRankof)}");
+        throw new UnreachableException();
+    }
+
+    public SemaExpr AnalyseAlignof(SyntaxExprAlignof @alignof, SemaTypeQual? typeHint = null)
+    {
+        Context.Todo($"Implement {nameof(AnalyseAlignof)}");
+        throw new UnreachableException();
+    }
+
+    public SemaExpr AnalyseOffsetof(SyntaxExprOffsetof @offsetof, SemaTypeQual? typeHint = null)
+    {
+        Context.Todo($"Implement {nameof(AnalyseOffsetof)}");
+        throw new UnreachableException();
+    }
+
+    public SemaExpr AnalyseTypeof(SyntaxTypeof @typeof, SemaTypeQual? typeHint = null)
+    {
+        Context.Todo($"Implement {nameof(AnalyseTypeof)}");
+        throw new UnreachableException();
     }
 
     private bool TryEvaluate(SemaExpr expr, out EvaluatedConstant value)

@@ -258,32 +258,49 @@ public sealed class SyntaxExprPatternMatch(SyntaxNode expr, SyntaxToken tokenIs,
     public override IEnumerable<SyntaxNode> Children { get; } = [expr, tokenIs, pattern];
 }
 
-public sealed class SyntaxExprSizeof(SyntaxToken tokenSizeof, SyntaxNode type)
+public sealed class SyntaxExprSizeof(SyntaxToken tokenSizeof, SyntaxNode operand)
     : SyntaxNode(tokenSizeof.Location)
 {
     public SyntaxToken TokenSizeof { get; } = tokenSizeof;
-    public SyntaxNode Type { get; } = type;
+    public SyntaxNode Operand { get; } = operand;
     
-    public override IEnumerable<SyntaxNode> Children { get; } = [tokenSizeof, type];
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenSizeof, operand];
 }
 
-public sealed class SyntaxExprAlignof(SyntaxToken tokenAlignof, SyntaxNode type)
+public sealed class SyntaxExprCountof(SyntaxToken tokenCountof, SyntaxNode operand)
+    : SyntaxNode(tokenCountof.Location)
+{
+    public SyntaxToken TokenCountof { get; } = tokenCountof;
+    public SyntaxNode Operand { get; } = operand;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenCountof, operand];
+}
+
+public sealed class SyntaxExprRankof(SyntaxToken tokenRankof, SyntaxNode operand)
+    : SyntaxNode(tokenRankof.Location)
+{
+    public SyntaxToken TokenRankof { get; } = tokenRankof;
+    public SyntaxNode Operand { get; } = operand;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenRankof, operand];
+}
+
+public sealed class SyntaxExprAlignof(SyntaxToken tokenAlignof, SyntaxNode operand)
     : SyntaxNode(tokenAlignof.Location)
 {
     public SyntaxToken TokenAlignof { get; } = tokenAlignof;
-    public SyntaxNode Type { get; } = type;
+    public SyntaxNode Operand { get; } = operand;
     
-    public override IEnumerable<SyntaxNode> Children { get; } = [tokenAlignof, type];
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenAlignof, operand];
 }
 
-public sealed class SyntaxExprOffsetof(SyntaxToken tokenOffsetof, SyntaxNode type, SyntaxToken tokenFieldName)
+public sealed class SyntaxExprOffsetof(SyntaxToken tokenOffsetof, SyntaxNode operand)
     : SyntaxNode(tokenOffsetof.Location)
 {
     public SyntaxToken TokenOffsetof { get; } = tokenOffsetof;
-    public SyntaxNode Type { get; } = type;
-    public SyntaxToken TokenFieldName { get; } = tokenFieldName;
-    
-    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOffsetof, type, tokenFieldName];
+    public SyntaxNode Operand { get; } = operand;
+
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenOffsetof, operand];
 }
 
 public sealed class SyntaxExprLambda(IReadOnlyList<SyntaxDeclParam> @params, SyntaxToken tokenArrow, SyntaxNode body)
