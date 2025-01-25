@@ -345,116 +345,6 @@ public partial class Sema
         }
     }
 
-    private SemaTypeQual AnalyseType(SyntaxNode type)
-    {
-        switch (type)
-        {
-            default:
-            {
-                Context.Assert(false, $"TODO: implement {type.GetType().Name} for {nameof(AnalyseType)}");
-                throw new UnreachableException();
-            }
-
-            case SyntaxTypeof @typeof: return AnalyseExpr(@typeof.Expr).Type;
-
-            case SyntaxQualMut typeQualMut: return AnalyseType(typeQualMut.Inner).Qualified(typeQualMut.Location, TypeQualifiers.Mutable);
-            case SyntaxTypeBuiltIn typeBuiltin: return typeBuiltin.Type.Qualified(type.Location);
-
-            case SyntaxNameref typeNamed:
-            {
-                var res = LookupName(typeNamed, CurrentScope);
-                if (res is LookupSuccess success)
-                {
-                    switch (success.Decl)
-                    {
-                        default:
-                        {
-                            Context.Diag.Error(typeNamed.Location, "This is not a type name.");
-                            return SemaTypePoison.InstanceQualified;
-                        }
-
-                        case SemaDeclStruct declStruct: return new SemaTypeStruct(declStruct).Qualified(type.Location);
-                        case SemaDeclEnum declEnum: return new SemaTypeEnum(declEnum).Qualified(type.Location);
-                        case SemaDeclAlias declAlias: return new SemaTypeAlias(declAlias).Qualified(type.Location);
-                    }
-                }
-
-                Context.Diag.Error(typeNamed.Location, "This is not a type name.");
-                return SemaTypePoison.InstanceQualified;
-            }
-
-            case SyntaxIndex typeArray:
-            {
-                var elementType = AnalyseType(typeArray.Operand);
-
-                var lengthExprs = new SemaExprEvaluatedConstant[typeArray.Indices.Count];
-                for (int i = 0; i < lengthExprs.Length; i++)
-                {
-                    var expr = AnalyseExpr(typeArray.Indices[i]);
-                    if (!TryEvaluate(expr, out var lengthConst))
-                    {
-                        Context.Diag.Error(expr.Location, "Could not evaluate this expression to a constant value.");
-                        lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
-                        continue;
-                    }
-
-                    if (lengthConst.Kind != EvaluatedConstantKind.Integer)
-                    {
-                        Context.Diag.Error(expr.Location, "The length of an array must evaluate to an integer value.");
-                        lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
-                        continue;
-                    }
-
-                    if (lengthConst.IntegerValue < 0 || lengthConst.IntegerValue > ulong.MaxValue)
-                    {
-                        Context.Diag.Error(expr.Location, $"The length of an array must evaluate to an integer value in the rage [0, {ulong.MaxValue}].");
-                        lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
-                        continue;
-                    }
-
-                    lengthExprs[i] = new SemaExprEvaluatedConstant(expr, lengthConst);
-                }
-
-                // TODO(local): check if dimensions are out of bounds for the underlying index type
-
-                return new SemaTypeArray(Context, elementType, lengthExprs).Qualified(type.Location);
-            }
-
-            case SyntaxTypePointer typePointer:
-                return new SemaTypePointer(Context, AnalyseType(typePointer.Inner)).Qualified(type.Location);
-
-            case SyntaxTypeBuffer typeBuffer:
-            {
-                SemaExpr? terminator = null;
-                if (typeBuffer.TerminatorExpr is { } terminatorExpr)
-                {
-                    Context.Diag.ICE("Buffer types with terminator expressions are currently not supported.");
-
-                    terminator = AnalyseExpr(terminatorExpr);
-                    if (!TryEvaluate(terminator, out var constantValue))
-                    {
-                        Context.Diag.Error(terminatorExpr.Location, "Could not evaluate terminator expression to a constant value");
-                        goto return_the_buffer_type;
-                    }
-
-                    // TODO(local): any buffer type could syntactically have a sentinel terminator,
-                    // but only a few types can have constant values represented.
-                    // Check for numeric types as the primary (and probably only, for a long while)
-                    // supported sentinel terminator type and validate the constant value (probably through convert functions).
-                }
-
-            return_the_buffer_type:;
-                return new SemaTypeBuffer(Context, AnalyseType(typeBuffer.Inner), terminator).Qualified(type.Location);
-            }
-
-            case SyntaxTypeSlice typeSlice:
-                return new SemaTypeSlice(Context, AnalyseType(typeSlice.Inner)).Qualified(type.Location);
-
-            case SyntaxTypeNilable typeNilable:
-                return new SemaTypeNilable(AnalyseType(typeNilable.Inner)).Qualified(type.Location);
-        }
-    }
-
     private SemaStmt AnalyseStmtOrDecl(SyntaxNode stmt, bool inheritCurrentScope = false)
     {
         if (stmt is SyntaxTypeBuffer or SyntaxTypeBuiltIn or SyntaxTypeNilable or SyntaxTypePointer or SyntaxTypeSlice)
@@ -937,11 +827,544 @@ public partial class Sema
         }
     }
 
-    private SemaExpr AnalyseExpr(SyntaxNode expr, SemaTypeQual? typeHint = null)
+    [Flags]
+    private enum TypeOrExpr
+    {
+        Neither = 0,
+        Type = 1 << 0,
+        Expr = 1 << 1,
+        TypeOrExpr = Type | Expr,
+    }
+
+    private SemaTypeQual AnalyseType(SyntaxNode syntax)
+    {
+        var node = AnalyseTypeOrExpr(syntax, which: TypeOrExpr.Type);
+        Context.Assert(node is SemaTypeQual, $"Expected a qualified type from the unified {AnalyseTypeOrExpr}.");
+        return (SemaTypeQual)node;
+    }
+
+    private SemaExpr AnalyseExpr(SyntaxNode syntax, SemaTypeQual? typeHint = null)
+    {
+        var node = AnalyseTypeOrExpr(syntax, typeHint: typeHint, which: TypeOrExpr.Type);
+        Context.Assert(node is SemaExpr, $"Expected an expression from the unified {AnalyseTypeOrExpr}.");
+        return (SemaExpr)node;
+    }
+
+    private BaseSemaNode AnalyseTypeOrExpr(SyntaxNode syntax, SemaTypeQual? typeHint = null, TypeOrExpr which = TypeOrExpr.TypeOrExpr)
+    {
+        Context.Assert(which.HasFlag(TypeOrExpr.Type) || which.HasFlag(TypeOrExpr.Expr), syntax.Location,
+            $"Something called {AnalyseTypeOrExpr} but did not specify if it wanted a type, expression or both; neither is not valid.");
+
+        switch (syntax)
+        {
+            default:
+            {
+                Context.Assert(false, $"TODO: implement {syntax.GetType().Name} for {nameof(AnalyseTypeOrExpr)}");
+                throw new UnreachableException();
+            }
+
+            case SyntaxQualMut qualMut: return MaybeTypeExpr(which, AnalyseType(qualMut.Inner).Qualified(qualMut.Location, TypeQualifiers.Mutable));
+            case SyntaxTypeBuiltIn typeBuiltin: return MaybeTypeExpr(which, typeBuiltin.Type.Qualified(typeBuiltin.Location));
+            case SyntaxTypePointer typePointer: return MaybeTypeExpr(which, AnalyseTypePointer(typePointer));
+            case SyntaxTypeBuffer typeBuffer: return MaybeTypeExpr(which, AnalyseTypeBuffer(typeBuffer));
+            case SyntaxTypeSlice typeSlice: return MaybeTypeExpr(which, AnalyseTypeSlice(typeSlice));
+            case SyntaxTypeNilable typeNilable: return MaybeTypeExpr(which, AnalyseTypeNilable(typeNilable));
+
+            case SyntaxNameref nameref: return MaybeApplyExprTypeHint(which, AnalyseNameref(nameref, which), typeHint);
+            case SyntaxIndex index: return MaybeApplyExprTypeHint(which, AnalyseIndex(index, which), typeHint);
+            case SyntaxTypeof @typeof: return AnalyseTypeof(@typeof, which);
+
+            case SyntaxExprUnaryPrefix unaryPrefix: return UnimplementedSyntax();
+            case SyntaxExprUnaryPostfix unaryPostfix: return UnimplementedSyntax();
+            case SyntaxExprBinary binary: return UnimplementedSyntax();
+            case SyntaxExprCall call: return UnimplementedSyntax();
+            case SyntaxExprCast cast: return UnimplementedSyntax();
+            case SyntaxExprField field: return UnimplementedSyntax();
+            case SyntaxExprConstructor ctor: return UnimplementedSyntax();
+            case SyntaxGrouped grouped: return AnalyseGrouped(grouped, typeHint, which);
+
+            case SyntaxExprSizeof @sizeof: return EvaluateIfPossible(AnalyseSizeof(@sizeof, which));
+            case SyntaxExprCountof @countof: return EvaluateIfPossible(AnalyseCountof(@countof, which));
+            case SyntaxExprRankof @rankof: return UnimplementedSyntax();
+            case SyntaxExprAlignof @alignof: return UnimplementedSyntax();
+            case SyntaxExprOffsetof @offsetof: return UnimplementedSyntax();
+
+            case SyntaxToken tokenInteger when tokenInteger.Kind == TokenKind.LiteralInteger: return UnimplementedSyntax();
+            case SyntaxToken tokenString when tokenString.Kind == TokenKind.LiteralString: return UnimplementedSyntax();
+            case SyntaxToken tokenTrue when tokenTrue.Kind == TokenKind.True: return UnimplementedSyntax();
+            case SyntaxToken tokenFalse when tokenFalse.Kind == TokenKind.False: return UnimplementedSyntax();
+            case SyntaxToken tokenNil when tokenNil.Kind == TokenKind.Nil: return UnimplementedSyntax();
+
+            case SyntaxToken unhandledToken: return UnimplementedSyntax();
+        }
+
+        BaseSemaNode UnimplementedSyntax()
+        {
+            Context.Todo(syntax.Location, $"New type/expr analysis does not yet implement syntax node type '{syntax.GetType().Name}'.");
+            throw new UnreachableException();
+        }
+    }
+
+    private void ErrorExpectedType(Location location)
+    {
+        Context.Diag.Error(location, "Expected a type.");
+    }
+
+    private BaseSemaNode MaybeTypeExpr(TypeOrExpr which, SemaTypeQual typeQual)
+    {
+        if (which.HasFlag(TypeOrExpr.Type)) return typeQual;
+        return new SemaExprType(typeQual);
+    }
+
+    private BaseSemaNode MaybeApplyExprTypeHint(TypeOrExpr which, BaseSemaNode node, SemaTypeQual? typeHint)
+    {
+        if (node is SemaExpr expr && which.HasFlag(TypeOrExpr.Expr) && typeHint is not null)
+            return ConvertOrError(expr, typeHint);
+
+        return node;
+    }
+
+    private SemaTypeQual AnalyseTypePointer(SyntaxTypePointer typePointer)
+    {
+        var elementType = AnalyseType(typePointer.Inner);
+        return new SemaTypePointer(Context, elementType).Qualified(typePointer.Location);
+    }
+
+    private SemaTypeQual AnalyseTypeBuffer(SyntaxTypeBuffer typeBuffer)
+    {
+        Context.Assert(typeBuffer.TerminatorExpr is null, "Buffer terminators are not supported.");
+        var elementType = AnalyseType(typeBuffer.Inner);
+        return new SemaTypeBuffer(Context, elementType).Qualified(typeBuffer.Location);
+    }
+
+    private SemaTypeQual AnalyseTypeSlice(SyntaxTypeSlice typeSlice)
+    {
+        var elementType = AnalyseType(typeSlice.Inner);
+        return new SemaTypeSlice(Context, elementType).Qualified(typeSlice.Location);
+    }
+
+    private SemaTypeQual AnalyseTypeNilable(SyntaxTypeNilable typeNilable)
+    {
+        var elementType = AnalyseType(typeNilable.Inner);
+        return new SemaTypeNilable(elementType).Qualified(typeNilable.Location);
+    }
+
+    private BaseSemaNode AnalyseNameref(SyntaxNameref nameref, TypeOrExpr which)
+    {
+        var lookupResult = LookupName(nameref, CurrentScope);
+
+        // not found, simple as
+        if (lookupResult is LookupNotFound notFound)
+        {
+            Context.Diag.Error(notFound.Location, $"The name '{notFound.Name}' does not exist in this context.");
+
+            var ambiguousType = SemaTypePoison.Instance.Qualified(nameref.Location);
+            if (which.HasFlag(TypeOrExpr.Type))
+                return ambiguousType;
+
+            return new SemaExprLookup(nameref.Location, ambiguousType, null)
+            {
+                Dependence = ExprDependence.ErrorDependent,
+            };
+        }
+
+        // get ambiguous names out of here first, they're useless to make guesses about
+        if (lookupResult is LookupAmbiguous ambiguous)
+        {
+            Context.Diag.Error(ambiguous.Location, $"The name '{ambiguous.Name}' is ambiguous in this context.");
+            Context.Diag.Note("The following conflicting declarations were found:");
+            foreach (var ambiguousDecl in ambiguous.Decls)
+                Context.Diag.Note(ambiguousDecl.Location, "");
+
+            var ambiguousType = SemaTypePoison.Instance.Qualified(nameref.Location);
+            if (which.HasFlag(TypeOrExpr.Type))
+                return ambiguousType;
+
+            return new SemaExprLookup(nameref.Location, ambiguousType, null)
+            {
+                Dependence = ExprDependence.ErrorDependent,
+            };
+        }
+
+        // (potentially also ambiguous) non-scope encountered
+        if (lookupResult is LookupNonScopeInPath nonScopeInPath)
+        {
+            Context.Diag.Error(nonScopeInPath.Location, $"The name '{nonScopeInPath.Name}' is not a namespace; cannot continue name lookup through it.");
+            if (nonScopeInPath.Decls.Length == 1)
+            {
+                var nonScopeDecl = nonScopeInPath.Decls[0];
+                Context.Diag.Note(nonScopeDecl.Location, "This non-scope declaration prevented the lookup from continuing.");
+            }
+            else
+            {
+                Context.Diag.Note("The following non-scope declarations prevented the lookup from continuing:");
+                foreach (var nonScopeDecl in nonScopeInPath.Decls)
+                    Context.Diag.Note(nonScopeDecl.Location, "");
+            }
+
+            var ambiguousType = SemaTypePoison.Instance.Qualified(nameref.Location);
+            if (which.HasFlag(TypeOrExpr.Type))
+                return ambiguousType;
+
+            return new SemaExprLookup(nameref.Location, ambiguousType, null)
+            {
+                Dependence = ExprDependence.ErrorDependent,
+            };
+        }
+
+        // treat overloading as ambiguous if we're not expecting an expression as the result of this lookup
+        if (lookupResult is LookupOverloads typeOverloads && !which.HasFlag(TypeOrExpr.Expr))
+        {
+            Context.Diag.Error(typeOverloads.Location, $"The name '{typeOverloads.Name}' is ambiguous in this context.");
+            Context.Diag.Note("The following conflicting declarations were found:");
+            foreach (var overloadDecl in typeOverloads.Decls)
+                Context.Diag.Note(overloadDecl.Location, "");
+
+            Context.Assert(which.HasFlag(TypeOrExpr.Type), typeOverloads.Location, "Must expect this to be a type here.");
+            return SemaTypePoison.Instance.Qualified(nameref.Location);
+        }
+
+        Context.Assert(lookupResult is LookupSuccess, nameref.Location, "The result of lookup should be a success at this point, all other cases should have been handled previously.");
+        
+        var success = (LookupSuccess)lookupResult;
+        var decl = success.Decl;
+
+        var valueCategory = ValueCategory.LValue;
+        SemaTypeQual? exprType;
+
+        switch (decl)
+        {
+            default:
+            {
+                Context.Diag.ICE(success.Location, "Unrecognized or unsupported declarations in lookup resolution.");
+                throw new UnreachableException();
+            }
+
+            // TODO(local): enum variants, struct/variant fields
+
+            case SemaDeclStruct declStruct: return MaybeTypeExpr(which, new SemaTypeStruct(declStruct).Qualified(success.Location));
+            case SemaDeclEnum declEnum: return MaybeTypeExpr(which, new SemaTypeEnum(declEnum).Qualified(success.Location));
+            case SemaDeclAlias declAlias: return MaybeTypeExpr(which, new SemaTypeAlias(declAlias).Qualified(success.Location));
+            case SemaDeclDelegate declDelegate: return MaybeTypeExpr(which, new SemaTypeDelegate(Context, declDelegate).Qualified(success.Location));
+
+            case SemaDeclBinding declBinding:
+            {
+                if (!which.HasFlag(TypeOrExpr.Expr))
+                    return NotATypeName();
+
+                exprType = declBinding.BindingType;
+            } break;
+
+            case SemaDeclParam declParam:
+            {
+                if (!which.HasFlag(TypeOrExpr.Expr))
+                    return NotATypeName();
+
+                exprType = declParam.ParamType;
+            } break;
+
+            case SemaDeclFunction declFunction:
+            {
+                if (!which.HasFlag(TypeOrExpr.Expr))
+                    return NotATypeName();
+
+                exprType = declFunction.FunctionType(Context).Qualified(decl.Location);
+                valueCategory = ValueCategory.RValue;
+            } break;
+
+            case SemaDeclRegister declRegister:
+            {
+                if (!which.HasFlag(TypeOrExpr.Expr))
+                    return NotATypeName();
+
+                exprType = declRegister.Type;
+                valueCategory = ValueCategory.Register;
+            } break;
+        }
+
+        Context.Assert(which.HasFlag(TypeOrExpr.Expr), nameref.Location, "Managed to return a non-type expression when an expression was not expected. figure that out please.");
+        return new SemaExprLookup(nameref.Location, exprType, success.Decl)
+        {
+            ValueCategory = valueCategory,
+        };
+
+        SemaTypeQual NotATypeName()
+        {
+            Context.Diag.Error(success.Location, $"'{success.Name}' is not a type name.");
+            Context.Diag.Note(decl.Location, "This is the non-type declaration referenced.");
+            return SemaTypePoison.Instance.Qualified(success.Location);
+        }
+    }
+
+    private BaseSemaNode AnalyseIndex(SyntaxIndex index, TypeOrExpr which)
+    {
+        var baseOperand = AnalyseTypeOrExpr(index, null, which);
+        SemaExpr[] indices;
+
+        if (baseOperand is SemaTypeQual elementType)
+        {
+            Context.Assert(which.HasFlag(TypeOrExpr.Type), index.Location, "Somehow we got a type back for the operand of an index syntax, but we didn't expect a type here.");
+
+            var indexType = Context.Types.LayeTypeInt.Qualified(Location.Nowhere);
+            indices = index.Indices.Select(expr => AnalyseExpr(expr, indexType)).ToArray();
+
+            var lengthExprs = new SemaExprEvaluatedConstant[indices.Length];
+            for (int i = 0; i < lengthExprs.Length; i++)
+            {
+                var expr = indices[i];
+                if (!TryEvaluate(expr, out var lengthConst))
+                {
+                    Context.Diag.Error(expr.Location, "Could not evaluate this expression to a constant value.");
+                    lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
+                    continue;
+                }
+
+                if (lengthConst.Kind != EvaluatedConstantKind.Integer)
+                {
+                    Context.Diag.Error(expr.Location, "The length of an array must evaluate to an integer value.");
+                    lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
+                    continue;
+                }
+
+                if (lengthConst.IntegerValue < 0 || lengthConst.IntegerValue > ulong.MaxValue)
+                {
+                    Context.Diag.Error(expr.Location, $"The length of an array must evaluate to an integer value in the rage [0, {ulong.MaxValue}].");
+                    lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
+                    continue;
+                }
+
+                lengthExprs[i] = new SemaExprEvaluatedConstant(expr, lengthConst);
+            }
+
+            // TODO(local): check if dimensions are out of bounds for the underlying index type
+
+            return new SemaTypeArray(Context, elementType, lengthExprs).Qualified(elementType.Location);
+        }
+
+        indices = index.Indices.Select(expr => AnalyseExpr(expr)).ToArray();
+
+        Context.Assert(baseOperand is SemaExpr, index.Location, "Somehow we did not get an expression when the operand was not a type.");
+        Context.Assert(which.HasFlag(TypeOrExpr.Expr), "Somehow we got an expr back for the operand of an index syntax, but we didn't expect an expr here.");
+
+        var operand = (SemaExpr)baseOperand;
+        var operandTypeCanon = operand.Type.CanonicalType.Type;
+
+        if (operandTypeCanon is SemaTypeBuffer typeBuffer)
+        {
+            operand = LValueToRValue(operand);
+
+            for (int i = 0; i < indices.Length; i++)
+                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(Location.Nowhere));
+
+            if (indices.Length != 1)
+                Context.Diag.Error(index.Location, $"Expected exactly one index to a buffer, but got {indices.Length}.");
+
+            var operandElementType = typeBuffer.ElementType;
+            return new SemaExprIndexBuffer(operandElementType, operand, indices[0])
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+        else if (operandTypeCanon is SemaTypeArray typeArray)
+        {
+            for (int i = 0; i < indices.Length; i++)
+                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(Location.Nowhere));
+
+            if (indices.Length != typeArray.Arity)
+                Context.Diag.Error(index.Location, $"Expected {typeArray.Arity} indices, but got {indices.Length}.");
+
+            var operandElementType = typeArray.ElementType;
+            return new SemaExprIndexArray(operandElementType, operand, indices)
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+        else
+        {
+            Context.Diag.Error(index.Location, $"Cannot index value of type {operand.Type.ToDebugString(Colors)}.");
+            return new SemaExprIndexInvalid(operand, indices)
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+    }
+
+    private BaseSemaNode AnalyseTypeof(SyntaxTypeof @typeof, TypeOrExpr which)
+    {
+        var operand = AnalyseTypeOrExpr(@typeof.Operand);
+        if (operand is SemaTypeQual operandAsType)
+        {
+            if (which.HasFlag(TypeOrExpr.Type))
+                return SemaTypeTypeInfo.Instance.Qualified(@typeof.Location);
+
+            Context.Assert(which.HasFlag(TypeOrExpr.Expr), @typeof.Location, "how did we get here?");
+            return new SemaExprType(operandAsType);
+        }
+        else
+        {
+            Context.Assert(operand is SemaExpr, @typeof.Location, "how did we get here?");
+            var operandAsExpr = (SemaExpr)operand;
+
+            var exprType = operandAsExpr.Type;
+            if (which.HasFlag(TypeOrExpr.Type))
+                return exprType;
+
+            Context.Assert(which.HasFlag(TypeOrExpr.Expr), @typeof.Location, "how did we get here?");
+            return new SemaExprType(exprType);
+        }
+    }
+    
+    private BaseSemaNode AnalyseGrouped(SyntaxGrouped grouped, SemaTypeQual? typeHint, TypeOrExpr which)
+    {
+        // this code doesn't care what `which` actually is, since the inner call to AnalyseTypeOrExpr will (should) handle that for us.
+
+        var inner = AnalyseTypeOrExpr(grouped.Inner, typeHint, which);
+        if (inner is SemaExpr expr)
+            return new SemaExprGrouped(grouped.Location, expr);
+
+        Context.Assert(inner is SemaTypeQual, "If it wasn't an expression, it has to be at type");
+        return inner;
+    }
+
+    private SemaExprSizeof AnalyseSizeof(SyntaxExprSizeof @sizeof, TypeOrExpr which)
+    {
+        if (!which.HasFlag(TypeOrExpr.Expr))
+            ErrorExpectedType(@sizeof.Location);
+
+        var operand = AnalyseExpr(@sizeof.Operand);
+        var sizeofType = Context.Types.LayeTypeInt.Qualified(@sizeof.Location);
+
+        if (operand is SemaExprType { TypeExpr: { } operandAsType })
+            return new SemaExprSizeof(@sizeof.Location, operandAsType, operandAsType.Size, sizeofType);
+        else return new SemaExprSizeof(@sizeof.Location, operand, operand.Type.Size, sizeofType);
+    }
+
+    private SemaExprCountof AnalyseCountof(SyntaxExprCountof @countof, TypeOrExpr which)
+    {
+        if (!which.HasFlag(TypeOrExpr.Expr))
+            ErrorExpectedType(@countof.Location);
+
+        var operand = AnalyseExpr(@countof.Operand);
+        var countofType = Context.Types.LayeTypeInt.Qualified(@countof.Location);
+
+        return new SemaExprCountof(@countof.Location, operand, countofType);
+    }
+
+    private SemaTypeQual AnalyseTypeOLD(SyntaxNode type)
+    {
+        switch (type)
+        {
+            default:
+            {
+                Context.Assert(false, $"TODO: implement {type.GetType().Name} for {nameof(AnalyseType)}");
+                throw new UnreachableException();
+            }
+
+            case SyntaxTypeof @typeof: return AnalyseExpr(@typeof.Operand).Type;
+
+            case SyntaxQualMut typeQualMut: return AnalyseType(typeQualMut.Inner).Qualified(typeQualMut.Location, TypeQualifiers.Mutable);
+            case SyntaxTypeBuiltIn typeBuiltin: return typeBuiltin.Type.Qualified(type.Location);
+
+            case SyntaxNameref typeNamed:
+            {
+                var res = LookupName(typeNamed, CurrentScope);
+                if (res is LookupSuccess success)
+                {
+                    switch (success.Decl)
+                    {
+                        default:
+                        {
+                            Context.Diag.Error(typeNamed.Location, "This is not a type name.");
+                            return SemaTypePoison.InstanceQualified;
+                        }
+
+                        case SemaDeclStruct declStruct: return new SemaTypeStruct(declStruct).Qualified(type.Location);
+                        case SemaDeclEnum declEnum: return new SemaTypeEnum(declEnum).Qualified(type.Location);
+                        case SemaDeclAlias declAlias: return new SemaTypeAlias(declAlias).Qualified(type.Location);
+                    }
+                }
+
+                Context.Diag.Error(typeNamed.Location, "This is not a type name.");
+                return SemaTypePoison.InstanceQualified;
+            }
+
+            case SyntaxIndex typeArray:
+            {
+                var elementType = AnalyseType(typeArray.Operand);
+
+                var lengthExprs = new SemaExprEvaluatedConstant[typeArray.Indices.Count];
+                for (int i = 0; i < lengthExprs.Length; i++)
+                {
+                    var expr = AnalyseExpr(typeArray.Indices[i]);
+                    if (!TryEvaluate(expr, out var lengthConst))
+                    {
+                        Context.Diag.Error(expr.Location, "Could not evaluate this expression to a constant value.");
+                        lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
+                        continue;
+                    }
+
+                    if (lengthConst.Kind != EvaluatedConstantKind.Integer)
+                    {
+                        Context.Diag.Error(expr.Location, "The length of an array must evaluate to an integer value.");
+                        lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
+                        continue;
+                    }
+
+                    if (lengthConst.IntegerValue < 0 || lengthConst.IntegerValue > ulong.MaxValue)
+                    {
+                        Context.Diag.Error(expr.Location, $"The length of an array must evaluate to an integer value in the rage [0, {ulong.MaxValue}].");
+                        lengthExprs[i] = new SemaExprEvaluatedConstant(expr, new EvaluatedConstant(0));
+                        continue;
+                    }
+
+                    lengthExprs[i] = new SemaExprEvaluatedConstant(expr, lengthConst);
+                }
+
+                // TODO(local): check if dimensions are out of bounds for the underlying index type
+
+                return new SemaTypeArray(Context, elementType, lengthExprs).Qualified(type.Location);
+            }
+
+            case SyntaxTypePointer typePointer:
+                return new SemaTypePointer(Context, AnalyseType(typePointer.Inner)).Qualified(type.Location);
+
+            case SyntaxTypeBuffer typeBuffer:
+            {
+                SemaExpr? terminator = null;
+                if (typeBuffer.TerminatorExpr is { } terminatorExpr)
+                {
+                    Context.Diag.ICE("Buffer types with terminator expressions are currently not supported.");
+
+                    terminator = AnalyseExpr(terminatorExpr);
+                    if (!TryEvaluate(terminator, out var constantValue))
+                    {
+                        Context.Diag.Error(terminatorExpr.Location, "Could not evaluate terminator expression to a constant value");
+                        goto return_the_buffer_type;
+                    }
+
+                    // TODO(local): any buffer type could syntactically have a sentinel terminator,
+                    // but only a few types can have constant values represented.
+                    // Check for numeric types as the primary (and probably only, for a long while)
+                    // supported sentinel terminator type and validate the constant value (probably through convert functions).
+                }
+
+            return_the_buffer_type:;
+                return new SemaTypeBuffer(Context, AnalyseType(typeBuffer.Inner), terminator).Qualified(type.Location);
+            }
+
+            case SyntaxTypeSlice typeSlice:
+                return new SemaTypeSlice(Context, AnalyseType(typeSlice.Inner)).Qualified(type.Location);
+
+            case SyntaxTypeNilable typeNilable:
+                return new SemaTypeNilable(AnalyseType(typeNilable.Inner)).Qualified(type.Location);
+        }
+    }
+
+    private SemaExpr AnalyseExprOLD(SyntaxNode expr, SemaTypeQual? typeHint = null)
     {
         if (expr is SyntaxTypeBuffer or SyntaxTypeBuiltIn or SyntaxTypeNilable or SyntaxTypePointer or SyntaxTypeSlice)
         {
-            Context.Assert(false, $"shouldn't ever call {nameof(AnalyseExpr)} on nodes which can only be types; those should only exist in a type context and go through {nameof(AnalyseType)}");
+            Context.Assert(false, $"shouldn't ever call {nameof(AnalyseExprOLD)} on nodes which can only be types; those should only exist in a type context and go through {nameof(AnalyseTypeOLD)}");
             throw new UnreachableException();
         }
 
@@ -949,27 +1372,27 @@ public partial class Sema
         {
             default:
             {
-                Context.Assert(false, $"TODO: implement {expr.GetType().Name} for {nameof(AnalyseExpr)}");
+                Context.Assert(false, $"TODO: implement {expr.GetType().Name} for {nameof(AnalyseExprOLD)}");
                 throw new UnreachableException();
             }
 
-            case SyntaxNameref nameref: return AnalyseLookup(nameref, CurrentScope);
-            case SyntaxExprUnaryPrefix unaryPrefix: return AnalyseUnaryPrefix(unaryPrefix, typeHint);
-            case SyntaxExprUnaryPostfix unaryPostfix: return AnalyseUnaryPostfix(unaryPostfix, typeHint);
-            case SyntaxExprBinary binary: return AnalyseBinary(binary, typeHint);
-            case SyntaxExprCall call: return AnalyseCall(call, typeHint);
-            case SyntaxExprCast cast: return AnalyseCast(cast, typeHint);
-            case SyntaxExprField field: return AnalyseField(field, typeHint);
-            case SyntaxIndex index: return AnalyseIndex(index, typeHint);
-            case SyntaxExprConstructor ctor: return AnalyseConstructor(ctor, typeHint);
-            case SyntaxGrouped grouped: return new SemaExprGrouped(grouped.Location, AnalyseExpr(grouped.Inner, typeHint));
+            case SyntaxNameref nameref: return AnalyseLookupOLD(nameref, CurrentScope);
+            case SyntaxExprUnaryPrefix unaryPrefix: return AnalyseUnaryPrefixOLD(unaryPrefix, typeHint);
+            case SyntaxExprUnaryPostfix unaryPostfix: return AnalyseUnaryPostfixOLD(unaryPostfix, typeHint);
+            case SyntaxExprBinary binary: return AnalyseBinaryOLD(binary, typeHint);
+            case SyntaxExprCall call: return AnalyseCallOLD(call, typeHint);
+            case SyntaxExprCast cast: return AnalyseCastOLD(cast, typeHint);
+            case SyntaxExprField field: return AnalyseFieldOLD(field, typeHint);
+            case SyntaxIndex index: return AnalyseIndexOLD(index, typeHint);
+            case SyntaxExprConstructor ctor: return AnalyseConstructorOLD(ctor, typeHint);
+            case SyntaxGrouped grouped: return new SemaExprGrouped(grouped.Location, AnalyseExprOLD(grouped.Inner, typeHint));
 
-            case SyntaxExprSizeof @sizeof: return AnalyseSizeof(@sizeof, typeHint);
-            case SyntaxExprCountof @countof: return AnalyseCountof(@countof, typeHint);
-            case SyntaxExprRankof @rankof: return AnalyseRankof(@rankof, typeHint);
-            case SyntaxExprAlignof @alignof: return AnalyseAlignof(@alignof, typeHint);
-            case SyntaxExprOffsetof @offsetof: return AnalyseOffsetof(@offsetof, typeHint);
-            case SyntaxTypeof @typeof: return AnalyseTypeof(@typeof, typeHint);
+            //case SyntaxExprSizeof @sizeof: return AnalyseSizeof(@sizeof, typeHint);
+            //case SyntaxExprCountof @countof: return AnalyseCountof(@countof, typeHint);
+            //case SyntaxExprRankof @rankof: return AnalyseRankof(@rankof, typeHint);
+            //case SyntaxExprAlignof @alignof: return AnalyseAlignof(@alignof, typeHint);
+            //case SyntaxExprOffsetof @offsetof: return AnalyseOffsetof(@offsetof, typeHint);
+            //case SyntaxTypeof @typeof: return AnalyseTypeof(@typeof, typeHint);
 
             case SyntaxToken tokenInteger when tokenInteger.Kind == TokenKind.LiteralInteger:
             {
@@ -993,28 +1416,7 @@ public partial class Sema
                 return new SemaExprLiteralInteger(tokenInteger.Location, intValue, intTypeUnqual.Qualified(tokenInteger.Location));
             }
 
-            case SyntaxToken tokenString when tokenString.Kind == TokenKind.LiteralString:
-            {
-                var stringElementType = Context.Types.LayeTypeIntSized(8).Qualified(tokenString.Location);
-
-                // NOTE(local): for now, we're always setting the type of a string literal to the `i8[]` type.
-                // The type conversion check is free to change the type of a constant string when it encounters them.
-#if false
-                long stringByteCount = Encoding.UTF8.GetByteCount(tokenString.TextValue);
-
-                SemaType stringType;
-                // TODO(local): tightenn up the semantics of what type a string literal is.
-                if (typeHint?.Type is SemaTypeArray typeHintArray && typeHintArray.ElementType.IsInteger && typeHintArray.ElementType.Size.Bits == 8)
-                    stringType = Context.Types.LayeTypeArray(stringElementType, stringByteCount);
-                else if (typeHint?.Type is SemaTypeBuffer typeHintBuffer && typeHintBuffer.ElementType.IsInteger && typeHintBuffer.ElementType.Size.Bits == 8)
-                    stringType = Context.Types.LayeTypeBuffer(stringElementType, stringByteCount);
-                else stringType = Context.Types.LayeTypeSlice(stringElementType);
-#endif
-
-                SemaType stringType = Context.Types.LayeTypeSlice(stringElementType);
-
-                return new SemaExprLiteralString(tokenString.Location, tokenString.TextValue, stringType.Qualified(tokenString.Location));
-            }
+            case SyntaxToken tokenString when tokenString.Kind == TokenKind.LiteralString: throw new UnreachableException();
 
             case SyntaxToken tokenTrue when tokenTrue.Kind == TokenKind.True:
             {
@@ -1039,16 +1441,45 @@ public partial class Sema
         }
     }
 
-    private abstract record class LookupResult(string Name);
-    private sealed record class LookupSuccess(string Name, SemaDeclNamed Decl) : LookupResult(Name);
-    private sealed record class LookupNotFound(string Name) : LookupResult(Name);
-    private sealed record class LookupOverloads(string Name, SemaDeclNamed[] Decls) : LookupResult(Name);
-    private sealed record class LookupAmbiguous(string Name, SemaDeclNamed[] Decls) : LookupResult(Name);
-    private sealed record class LookupNonScopeInPath(string Name, SemaDeclNamed Decl) : LookupResult(Name);
+    /// <summary>
+    /// Base type for describing the result of a lookup operation, noting the final relevant name to the process.
+    /// </summary>
+    /// <param name="Name">The name that resulted in this lookup result.</param>
+    private abstract record class LookupResult(Location Location, string Name);
+    /// <summary>
+    /// Result describing that the lookup successfully resolved to a single declaration.
+    /// </summary>
+    /// <param name="Name">The name that resulted in this lookup result.</param>
+    /// <param name="Decl">The resolved declaration.</param>
+    private sealed record class LookupSuccess(Location Location, string Name, SemaDeclNamed Decl) : LookupResult(Location, Name);
+    /// <summary>
+    /// Result describing that the lookup did not resolve to any declarations.
+    /// </summary>
+    /// <param name="Name">The name that resulted in this lookup result.</param>
+    private sealed record class LookupNotFound(Location Location, string Name) : LookupResult(Location, Name);
+    /// <summary>
+    /// Result describing that the lookup detected a valid set of overloadable declarations.
+    /// The caller which receives this result should determine if it's able to perform overload resolution, else treat this as ambiguous.
+    /// </summary>
+    /// <param name="Name">The name that resulted in this lookup result.</param>
+    /// <param name="Decls">The resolved, overloadable declarations.</param>
+    private sealed record class LookupOverloads(Location Location, string Name, SemaDeclNamed[] Decls) : LookupResult(Location, Name);
+    /// <summary>
+    /// Result describing that the lookup detected multiple possible declarations which could not be provided as a valid overload list.
+    /// </summary>
+    /// <param name="Name">The name that resulted in this lookup result.</param>
+    /// <param name="Decls">The resolved, ambiguous declarations.</param>
+    private sealed record class LookupAmbiguous(Location Location, string Name, SemaDeclNamed[] Decls) : LookupResult(Location, Name);
+    /// <summary>
+    /// Result describing a lookup which was stopped early, as part of the path was not a scope that could continue being searched.
+    /// </summary>
+    /// <param name="Name">The name that resulted in this lookup result.</param>
+    /// <param name="Decls">The, potentially many. declarations resolved which did not have scopes to continue searching.</param>
+    private sealed record class LookupNonScopeInPath(Location Location, string Name, SemaDeclNamed[] Decls) : LookupResult(Location, Name);
 
-    private LookupResult LookUpUnqualifiedName(string name, Scope scope, bool thisScopeOnly)
+    private LookupResult LookUpUnqualifiedName(Location location, string name, Scope scope, bool thisScopeOnly)
     {
-        if (name.IsNullOrEmpty()) return new LookupNotFound(name);
+        if (name.IsNullOrEmpty()) return new LookupNotFound(location, name);
 
         var overloads = new List<SemaDeclNamed>();
 
@@ -1064,7 +1495,7 @@ public partial class Sema
             }
 
             if (decls.Count == 1 && decls[0] is not SemaDeclFunction)
-                return new LookupSuccess(name, decls[0]);
+                return new LookupSuccess(location, name, decls[0]);
 
             Context.Assert(decls.All(d => d is SemaDeclFunction),
                 "At this point in unqualified name lookup, all declarations should be functions.");
@@ -1074,20 +1505,23 @@ public partial class Sema
         }
 
         if (overloads.Count == 0)
-            return new LookupNotFound(name);
+            return new LookupNotFound(location, name);
 
         if (overloads.Count == 1)
-            return new LookupSuccess(name, overloads[0]);
+            return new LookupSuccess(location, name, overloads[0]);
 
-        return new LookupOverloads(name, [.. overloads]);
+        return new LookupOverloads(location, name, [.. overloads]);
     }
 
-    private LookupResult LookUpQualifiedName(string[] names, Scope scope)
+    private LookupResult LookUpQualifiedName(string[] names, Location[] locations, Scope scope)
     {
         Context.Assert(names.Length > 1, "Should not be unqualified lookup.");
+        Context.Assert(names.Length == locations.Length, "Number of names should match number of locations exactly.");
 
         string firstName = names[0];
-        var res = LookUpUnqualifiedName(firstName, scope, false);
+        var firstLocation = locations[0];
+
+        var res = LookUpUnqualifiedName(firstLocation, firstName, scope, false);
         switch (res)
         {
             // can't do scope resolution on an ambiguous name.
@@ -1099,11 +1533,14 @@ public partial class Sema
                 throw new UnreachableException();
             }
 
+            case LookupOverloads overloads:
+                return new LookupNonScopeInPath(firstLocation, firstName, overloads.Decls);
+
             case LookupSuccess success:
             {
                 var nextScope = GetScopeFromDecl(success.Decl);
                 if (nextScope is null)
-                    return new LookupNonScopeInPath(firstName, success.Decl);
+                    return new LookupNonScopeInPath(firstLocation, firstName, [ success.Decl ]);
                 scope = nextScope;
             } break;
 
@@ -1120,22 +1557,23 @@ public partial class Sema
         for (int i = 1; i < names.Length - 1; i++)
         {
             string middleName = names[i];
+            var middleLocation = locations[i];
 
             var decls = scope.LookUp(middleName);
             if (decls.Count == 0)
-                return new LookupNotFound(middleName);
+                return new LookupNotFound(middleLocation, middleName);
 
             if (decls.Count != 1)
-                return new LookupAmbiguous(middleName, [.. decls]);
+                return new LookupAmbiguous(middleLocation, middleName, [.. decls]);
 
             var declScope = GetScopeFromDecl(decls[0]);
             if (declScope is null)
-                return new LookupNonScopeInPath(firstName, decls[0]);
+                return new LookupNonScopeInPath(middleLocation, firstName, [.. decls]);
 
             scope = declScope;
         }
 
-        return LookUpUnqualifiedName(names[^1], scope, true);
+        return LookUpUnqualifiedName(locations[^1], names[^1], scope, true);
     }
 
     private Scope? GetScopeFromDecl(SemaDeclNamed decl)
@@ -1159,13 +1597,13 @@ public partial class Sema
             }
 
             case SyntaxToken { Kind: TokenKind.Identifier } nameIdent:
-                return LookUpUnqualifiedName(nameIdent.TextValue, scope, false);
+                return LookUpUnqualifiedName(nameIdent.Location, nameIdent.TextValue, scope, false);
 
             case SyntaxNameref { NamerefKind: NamerefKind.Default, Names: [SyntaxToken { Kind: TokenKind.Identifier } nameIdent] }:
-                return LookUpUnqualifiedName(nameIdent.TextValue, scope, false);
+                return LookUpUnqualifiedName(nameIdent.Location, nameIdent.TextValue, scope, false);
 
             case SyntaxNameref { NamerefKind: NamerefKind.Default } defaultNameref when defaultNameref.Names.All(nameNode => nameNode is SyntaxToken { Kind: TokenKind.Identifier }):
-                return LookUpQualifiedName(defaultNameref.Names.Select(n => ((SyntaxToken)n).TextValue).ToArray(), scope);
+                return LookUpQualifiedName(defaultNameref.Names.Select(n => ((SyntaxToken)n).TextValue).ToArray(), defaultNameref.Names.Select(n => n.Location).ToArray(), scope);
 
             case SyntaxNameref:
             {
@@ -1175,7 +1613,7 @@ public partial class Sema
         }
     }
 
-    private SemaExpr AnalyseLookup(SyntaxNameref nameref, Scope scope)
+    private SemaExpr AnalyseLookupOLD(SyntaxNameref nameref, Scope scope)
     {
         var res = LookupName(nameref, scope);
         switch (res)
@@ -1226,7 +1664,7 @@ public partial class Sema
         }
     }
 
-    private SemaExpr AnalyseUnaryPrefix(SyntaxExprUnaryPrefix unary, SemaTypeQual? typeHint = null)
+    private SemaExpr AnalyseUnaryPrefixOLD(SyntaxExprUnaryPrefix unary, SemaTypeQual? typeHint = null)
     {
         var operand = AnalyseExpr(unary.Operand);
         switch (unary.TokenOperator.Kind)
@@ -1312,7 +1750,7 @@ public partial class Sema
         }
     }
 
-    private SemaExprUnary AnalyseUnaryPostfix(SyntaxExprUnaryPostfix unary, SemaTypeQual? typeHint = null)
+    private SemaExprUnary AnalyseUnaryPostfixOLD(SyntaxExprUnaryPostfix unary, SemaTypeQual? typeHint = null)
     {
         var operand = AnalyseExpr(unary.Operand);
         var operandType = operand.Type.CanonicalType.Type;
@@ -1391,7 +1829,7 @@ public partial class Sema
         ] }
     };
 
-    private SemaExpr AnalyseBinary(SyntaxExprBinary binary, SemaTypeQual? typeHint = null)
+    private SemaExpr AnalyseBinaryOLD(SyntaxExprBinary binary, SemaTypeQual? typeHint = null)
     {
         var left = LValueToRValue(AnalyseExpr(binary.Left));
         var right = LValueToRValue(AnalyseExpr(binary.Right));
@@ -1445,7 +1883,7 @@ public partial class Sema
         }
     }
 
-    private SemaExprCall AnalyseCall(SyntaxExprCall call, SemaTypeQual? typeHint = null)
+    private SemaExprCall AnalyseCallOLD(SyntaxExprCall call, SemaTypeQual? typeHint = null)
     {
         var callee = AnalyseExpr(call.Callee);
         var callableType = callee.Type.Type;
@@ -1540,7 +1978,7 @@ public partial class Sema
         throw new UnreachableException();
     }
 
-    private SemaExpr AnalyseCast(SyntaxExprCast cast, SemaTypeQual? typeHint = null)
+    private SemaExpr AnalyseCastOLD(SyntaxExprCast cast, SemaTypeQual? typeHint = null)
     {
         SemaTypeQual castType;
         if (cast.IsAutoCast)
@@ -1575,7 +2013,7 @@ public partial class Sema
         return new SemaExprCast(cast.Location, CastKind.Invalid, castType, expr);
     }
 
-    private SemaExpr AnalyseField(SyntaxExprField field, SemaTypeQual? typeHint = null)
+    private SemaExpr AnalyseFieldOLD(SyntaxExprField field, SemaTypeQual? typeHint = null)
     {
         string fieldName = field.FieldNameText;
         var operand = AnalyseExpr(field.Operand);
@@ -1617,7 +2055,7 @@ public partial class Sema
         }
     }
 
-    private SemaExpr AnalyseIndex(SyntaxIndex index, SemaTypeQual? typeHint = null)
+    private SemaExpr AnalyseIndexOLD(SyntaxIndex index, SemaTypeQual? typeHint = null)
     {
         var operand = AnalyseExpr(index.Operand);
         var indices = index.Indices.Select(expr => AnalyseExpr(expr)).ToArray();
@@ -1664,7 +2102,7 @@ public partial class Sema
         }
     }
 
-    public SemaExpr AnalyseConstructor(SyntaxExprConstructor ctor, SemaTypeQual? typeHint = null)
+    public SemaExpr AnalyseConstructorOLD(SyntaxExprConstructor ctor, SemaTypeQual? typeHint = null)
     {
         SemaTypeQual ctorType;
         SemaConstructorInitializer[] inits = new SemaConstructorInitializer[ctor.Inits.Count];
@@ -1826,7 +2264,7 @@ public partial class Sema
         Context.Todo($"Implement {nameof(AnalyseSizeof)}");
         throw new UnreachableException();
         //var operand = AnalyseTypeOrExpr(@sizeof.Operand);
-        //if (operand is SemaType { } operandType)
+        //if (operand is SemaTypeQual { } operandType)
         //    return EvaluateIfPossible(new SemaExprSizeofType(@sizeof.Location, operandType));
         //else return EvaluateIfPossible(new SemaExprSizeofExpr(@sizeof.Location, (SemaExpr)operand));
     }
@@ -1861,6 +2299,7 @@ public partial class Sema
         throw new UnreachableException();
     }
 
+    // TODO(local): require type information explicitly? how do we evaluate an integer literal with no type information?
     private bool TryEvaluate(SemaExpr expr, out EvaluatedConstant value)
     {
         var evaluator = new ConstantEvaluator();

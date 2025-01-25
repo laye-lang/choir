@@ -1603,6 +1603,58 @@ public partial class Parser(SourceFile sourceFile)
 
     private SyntaxNode ParsePrimaryExprContinuation(ExprParseContext parseContext, SyntaxNode primary)
     {
+        static bool CanStartExpr(TokenKind kind) => kind switch
+        {
+            TokenKind.Alignof or
+            TokenKind.Ampersand or
+            TokenKind.Bool or
+            TokenKind.BoolSized or
+            TokenKind.BuiltinFFIBool or
+            TokenKind.BuiltinFFIChar or
+            TokenKind.BuiltinFFIDouble or
+            TokenKind.BuiltinFFIFloat or
+            TokenKind.BuiltinFFIInt or
+            TokenKind.BuiltinFFILong or
+            TokenKind.BuiltinFFILongDouble or
+            TokenKind.BuiltinFFILongLong or
+            TokenKind.BuiltinFFIShort or
+            TokenKind.Cast or
+            TokenKind.ColonColon or
+            TokenKind.Countof or
+            TokenKind.Do or
+            TokenKind.Eval or
+            TokenKind.False or
+            TokenKind.FloatSized or
+            TokenKind.Global or
+            TokenKind.Identifier or
+            TokenKind.If or
+            TokenKind.Int or
+            TokenKind.IntSized or
+            TokenKind.LiteralFloat or
+            TokenKind.LiteralInteger or
+            TokenKind.LiteralRune or
+            TokenKind.LiteralString or
+            TokenKind.Minus or
+            TokenKind.MinusMinus or
+            TokenKind.Mut or
+            TokenKind.New or
+            TokenKind.Nil or
+            TokenKind.Not or
+            TokenKind.Offsetof or
+            TokenKind.OpenParen or
+            TokenKind.Plus or
+            TokenKind.Rankof or
+            TokenKind.Sizeof or
+            TokenKind.Star or
+            TokenKind.Tilde or
+            TokenKind.True or
+            TokenKind.Try or
+            TokenKind.Typeof or
+            TokenKind.Var or
+            TokenKind.Void => true,
+            _ => false,
+        };
+
         switch (CurrentToken.Kind)
         {
             default: return primary;
@@ -1610,9 +1662,13 @@ public partial class Parser(SourceFile sourceFile)
             // mut applies to any type any time
             case TokenKind.Mut when primary.CanBeType:
             // `type**`is always a pointer type
-            case TokenKind.Star when PeekAt(1, TokenKind.Star) && primary.CanBeType:
-            // `type* mut` is always a pointer type
-            case TokenKind.Star when PeekAt(1, TokenKind.Mut) && primary.CanBeType:
+            // NOTE(local): `type**` is not always a pointer type, because `foo * *bar` is a valid binary expression, multiplying `foo` by `*bar`.
+            // I don't want to be greedy about this case, but it should probably be parenthesized anyway.
+            // case TokenKind.Star when PeekAt(1, TokenKind.Star) && primary.CanBeType:
+            // `type* mut` is always a pointer type, because we're greedy
+            case TokenKind.Star when primary.CanBeType && PeekAt(1, TokenKind.Mut):
+            // `type* <non-expression-token>` should just become a type, since it can't be a valid binary operator expression anyway.
+            case TokenKind.Star when primary.CanBeType && !CanStartExpr(Peek(1).Kind):
             // `type[*]` ~~(and `type[*:`)~~ are always buffer types
             case TokenKind.OpenBracket when Peek(1).Kind == TokenKind.Star && Peek(2).Kind is TokenKind.CloseBracket /* or TokenKind.Colon */ && primary.CanBeType:
                 return ParseTypeContinuation(primary);

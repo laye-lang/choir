@@ -238,6 +238,7 @@ public sealed class SemaTypeOverloadSet
     public override bool TypeEquals(SemaTypeOverloadSet other, TypeComparison comp = TypeComparison.WithIdenticalQualifiers) => false;
 }
 
+#if false
 public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedType)
     : SemaType<SemaTypeElaborated>
 {
@@ -265,6 +266,7 @@ public sealed class SemaTypeElaborated(string[] nameParts, SemaTypeQual namedTyp
 
     public override bool TypeEquals(SemaTypeElaborated other, TypeComparison comp) => NamedType.CanonicalType.TypeEquals(other.NamedType.CanonicalType, comp);
 }
+#endif
 
 public sealed class SemaTypeTemplateParameter(string parameterName)
     : SemaType<SemaTypeTemplateParameter>

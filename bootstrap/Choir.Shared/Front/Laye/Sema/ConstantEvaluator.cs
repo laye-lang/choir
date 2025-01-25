@@ -153,6 +153,32 @@ public sealed class ConstantEvaluator
 
                 return false;
             }
+
+            case SemaExprSizeof @sizeof:
+            {
+                value = new EvaluatedConstant(@sizeof.Size.Bytes);
+                return true;
+            }
+
+            case SemaExprCountof @countof:
+            {
+                SemaType type;
+                if (@countof.Operand is SemaTypeQual typeQual)
+                    type = typeQual.CanonicalType.Type;
+                else if (@countof.Operand is SemaExprType exprType)
+                    type = exprType.TypeExpr.CanonicalType.Type;
+                else if (@countof.Operand is SemaExpr justExpr)
+                    type = justExpr.Type.CanonicalType.Type;
+                else return false;
+
+                if (type is SemaTypeArray typeArray && typeArray.Arity == 1)
+                {
+                    value = new EvaluatedConstant(typeArray.Lengths[0]);
+                    return true;
+                }
+
+                return false;
+            }
         }
     }
 }

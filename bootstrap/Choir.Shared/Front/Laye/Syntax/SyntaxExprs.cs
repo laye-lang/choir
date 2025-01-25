@@ -368,12 +368,12 @@ public sealed class SyntaxTypeNilable(SyntaxNode inner)
     public override IEnumerable<SyntaxNode> Children { get; } = [inner];
 }
 
-public sealed class SyntaxTypeof(SyntaxToken tokenTypeof, SyntaxNode expr)
+public sealed class SyntaxTypeof(SyntaxToken tokenTypeof, SyntaxNode operand)
     : SyntaxNode(tokenTypeof.Location)
 {
     public SyntaxToken TokenTypeof { get; } = tokenTypeof;
-    public SyntaxNode Expr { get; } = expr;
+    public SyntaxNode Operand { get; } = operand;
 
     public override bool CanBeType { get; } = true;
-    public override IEnumerable<SyntaxNode> Children { get; } = [tokenTypeof, expr];
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenTypeof, operand];
 }

@@ -184,20 +184,48 @@ public sealed class Lexer(SourceFile sourceFile)
                 ReadIdentifier(ref tokenInfo);
                 if (_keywordTokensKinds.TryGetValue(tokenInfo.TextValue, out var keywordKind))
                     tokenInfo.Kind = keywordKind;
-                else if (tokenInfo.TextValue[0] is 'b' or 'i' or 'f' && tokenInfo.TextValue.Length > 1 && tokenInfo.TextValue.AsSpan()[1..].All(SyntaxFacts.IsNumericLiteralDigit))
+                else if (tokenInfo.TextValue.StartsWith("int") && tokenInfo.TextValue.Length > 3 && tokenInfo.TextValue.AsSpan()[3..].All(SyntaxFacts.IsNumericLiteralDigit))
                 {
-                    tokenInfo.Kind = tokenInfo.TextValue[0] switch
-                    {
-                        'b' => TokenKind.BoolSized,
-                        'i' => TokenKind.IntSized,
-                        'f' => TokenKind.FloatSized,
-                        _ => throw new UnreachableException(),
-                    };
+                    tokenInfo.Kind = TokenKind.IntSized;
+                    CheckSizedTypeKeyword(ref tokenInfo);
+                }
+                else if (tokenInfo.TextValue.StartsWith("bool") && tokenInfo.TextValue.Length > 4 && tokenInfo.TextValue.AsSpan()[4..].All(SyntaxFacts.IsNumericLiteralDigit))
+                {
+                    tokenInfo.Kind = TokenKind.BoolSized;
+                    CheckSizedTypeKeyword(ref tokenInfo);
+                }
+                else if (tokenInfo.TextValue == "float16")
+                {
+                    tokenInfo.Kind = TokenKind.FloatSized;
+                    tokenInfo.IntegerValue = 16;
+                }
+                else if (tokenInfo.TextValue == "float32")
+                {
+                    tokenInfo.Kind = TokenKind.FloatSized;
+                    tokenInfo.IntegerValue = 32;
+                }
+                else if (tokenInfo.TextValue == "float64")
+                {
+                    tokenInfo.Kind = TokenKind.FloatSized;
+                    tokenInfo.IntegerValue = 64;
+                }
+                else if (tokenInfo.TextValue == "float80")
+                {
+                    tokenInfo.Kind = TokenKind.FloatSized;
+                    tokenInfo.IntegerValue = 80;
+                }
+                else if (tokenInfo.TextValue == "float128")
+                {
+                    tokenInfo.Kind = TokenKind.FloatSized;
+                    tokenInfo.IntegerValue = 128;
+                }
 
+                void CheckSizedTypeKeyword(ref TokenInfo tokenInfo)
+                {
                     if (tokenInfo.TextValue.Length > 6)
                     {
                         Context.Diag.Error(new Location(tokenInfo.Position, 1, SourceFile.FileId), "sized primitive bit width must be in the range [1, 65536).");
-                        break;
+                        return;
                     }
 
                     int bitWidth = int.Parse(tokenInfo.TextValue.AsSpan()[1..]);

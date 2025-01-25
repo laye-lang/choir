@@ -267,3 +267,25 @@ public sealed class SemaExprLogicalNot(SemaExpr operand)
     public SemaExpr Operand { get; } = operand;
     public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
 }
+
+public sealed class SemaExprType(SemaTypeQual typeExpr)
+    : SemaExpr(typeExpr.Location, SemaTypeTypeInfo.Instance.Qualified(typeExpr.Location))
+{
+    public SemaTypeQual TypeExpr { get; } = typeExpr;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [typeExpr];
+}
+
+public sealed class SemaExprSizeof(Location location, BaseSemaNode operand, Size size, SemaTypeQual type)
+    : SemaExpr(location, type)
+{
+    public BaseSemaNode Operand { get; } = operand;
+    public Size Size { get; } = size;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
+}
+
+public sealed class SemaExprCountof(Location location, BaseSemaNode operand, SemaTypeQual type)
+    : SemaExpr(location, type)
+{
+    public BaseSemaNode Operand { get; } = operand;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand];
+}
