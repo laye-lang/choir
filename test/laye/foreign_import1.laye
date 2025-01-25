@@ -1,5 +1,5 @@
 static if (LAYE_OS == ::windows) {
-    foreign import kernel32 "kernel32.lib";
+    foreign import kernel32 "kernel32.lib"; // dynamic "kernel32.dll";
 
     foreign(kernel32) "ExitProcess" noreturn exit_process(i32 exit_code);
 

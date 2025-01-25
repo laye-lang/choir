@@ -1,9 +1,9 @@
 module core;
 
 foreign noreturn abort();
-foreign i32 printf(i8[*] s, varargs);
+foreign int32 printf(int8[*] s, varargs);
 
-export foreign noreturn __laye_assert_handler(i8[*] message, i8[*] file_name, i64 line) {
+export foreign noreturn __laye_assert_handler(int8[*] message, int8[*] file_name, int64 line) {
     discard printf("%s:%lld: %s\n", file_name, line, message);
     abort();
 }

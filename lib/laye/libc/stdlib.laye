@@ -1,6 +1,6 @@
 module libc;
 
-export foreign callconv "c" i8 mut[*] malloc(int size);
-export foreign callconv "c" void free(i8[*] memory);
+export foreign callconv "c" int8 mut[*] malloc(int size);
+export foreign callconv "c" void free(int8[*] memory);
 
-export foreign callconv "c" void perror(i8[*] message);
+export foreign callconv "c" void perror(int8[*] message);

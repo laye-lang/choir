@@ -1,7 +1,7 @@
 module rt0;
 
 // The system's exit syscall, just in case the program needs access to it.
-export foreign noreturn exit(i32 exit_code);
+export foreign noreturn exit(int32 exit_code);
 
 // A Laye program's `main` function, hand-mangled.
 // This is expected to be provided by a "program" module, a Laye module with no `module` declaration,
@@ -10,7 +10,7 @@ foreign int _L4_mainfi();
 
 // Export libc's `main` function, then call Laye's main.
 // This is so Laye programs can interface with C by default, since libc needs to do its special initialization.
-export foreign i32 main(i32 argc, i8 mut[*] mut[*] argv)
+export foreign int32 main(int32 argc, int8 mut[*] mut[*] argv)
 {
-    return cast(i32) _L4_mainfi();
+    return cast(int32) _L4_mainfi();
 }

@@ -1,20 +1,20 @@
 int main() {
-    i8 a = 1;
-    i8 b = 2;
-    i8 c = 3;
-    i8 d = 4;
-    i8 e = 5;
-    i8 f = 6;
+    int8 a = 1;
+    int8 b = 2;
+    int8 c = 3;
+    int8 d = 4;
+    int8 e = 5;
+    int8 f = 6;
 
-    i8 g = ~a;
+    int8 g = ~a;
     assert g == 2#1111_1110;
 
-    i8 h = -f;
+    int8 h = -f;
     assert h == -6;
 
-    i8* i = &e;
+    int8* i = &e;
     e = 7;
-    i8 j = *i;
+    int8 j = *i;
     assert j == 7;
     e = 5;
 
