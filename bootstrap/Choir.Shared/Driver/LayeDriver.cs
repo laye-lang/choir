@@ -261,7 +261,8 @@ Options:
                     {
                         var header = LayeModule.DeserializeHeaderFromObject(Context, moduleOutputFile);
                         Context.Assert(header.ModuleName == header.ModuleName, "The generated module has a different name to the one we compiled.");
-                        modules[i] = new BinaryModuleInfo(moduleOutputFile, header.ModuleName, header.DependencyNames, header.LinkLibraryNames);
+                        var sourceAsBinaryModule = modules[i] = new BinaryModuleInfo(moduleOutputFile, header.ModuleName, header.DependencyNames, header.LinkLibraryNames);
+                        moduleInfosToResultFiles[sourceAsBinaryModule] = moduleOutputFile;
                     }
                 }
             }

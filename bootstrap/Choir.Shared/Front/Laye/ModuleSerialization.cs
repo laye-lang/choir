@@ -20,8 +20,10 @@ internal static class SerializerConstants
 
     public const char FunctionSigil = 'F';
     public const char StructSigil = 'S';
+    public const char VariantSigil = 'V';
     public const char EnumSigil = 'E';
     public const char AliasSigil = 'A';
+    public const char DelegateSigil = 'D';
 
     public const char DeclNameSimpleSigil = 'n';
 
@@ -74,8 +76,10 @@ public enum SerializedDeclKind : byte
     Invalid = 0,
     Function = (byte)SerializerConstants.FunctionSigil,
     Struct = (byte)SerializerConstants.StructSigil,
+    Variant = (byte)SerializerConstants.VariantSigil,
     Enum = (byte)SerializerConstants.EnumSigil,
     Alias = (byte)SerializerConstants.AliasSigil,
+    Delegate = (byte)SerializerConstants.DelegateSigil,
 }
 
 public enum SerializedTypeKind : byte
@@ -516,15 +520,15 @@ public sealed class ModuleDeserializer : IDisposable
 
         PopulateFileTable();
         PopulateAtomTable();
-        ForwardDeclareDecls();
-
-        DeserializeTypes();
-        DeserializeDecls();
 
         var module = new LayeModule(Context, _files, _dependencies)
         {
             ModuleName = header.ModuleName
         };
+
+        ForwardDeclareDecls(module);
+        DeserializeTypes(module);
+        DeserializeDecls(module);
 
         foreach (var decl in _decls)
             module.ExportScope.AddDecl(decl);
@@ -613,7 +617,7 @@ public sealed class ModuleDeserializer : IDisposable
             _atoms[i] = atomReader.ReadString();
     }
 
-    private void ForwardDeclareDecls()
+    private void ForwardDeclareDecls(LayeModule module)
     {
         if (!_chunkMemory.TryGetValue(SerializerConstants.DeclChunkName, out var declMemory))
             return;
@@ -640,6 +644,11 @@ public sealed class ModuleDeserializer : IDisposable
                 }
 
                 case SerializedDeclKind.Function: forwardDecl = new SemaDeclFunction(location, declName); break;
+                case SerializedDeclKind.Struct: forwardDecl = new SemaDeclStruct(location, declName)
+                {
+                    ParentStruct = null,
+                    Scope = new(module.ModuleScope)
+                }; break;
             }
 
             _decls[i] = forwardDecl;
@@ -651,7 +660,7 @@ public sealed class ModuleDeserializer : IDisposable
         declMemory.Position = 0;
     }
 
-    private void DeserializeTypes()
+    private void DeserializeTypes(LayeModule module)
     {
         if (!_chunkMemory.TryGetValue(SerializerConstants.TypeChunkName, out var typeMemory))
             return;
@@ -668,7 +677,7 @@ public sealed class ModuleDeserializer : IDisposable
         }
     }
 
-    private void DeserializeDecls()
+    private void DeserializeDecls(LayeModule module)
     {
         if (!_chunkMemory.TryGetValue(SerializerConstants.DeclChunkName, out var declMemory))
             return;

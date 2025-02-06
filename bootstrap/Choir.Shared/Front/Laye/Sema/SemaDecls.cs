@@ -404,6 +404,101 @@ public sealed class SemaDeclStruct(Location location, string name)
         fieldIndex = -1;
         return false;
     }
+    public override SerializedDeclKind SerializedDeclKind => IsVariant ? SerializedDeclKind.Variant : SerializedDeclKind.Struct;
+    public override void Serialize(ModuleSerializer serializer, BinaryWriter writer)
+    {
+        #region Template Parameters
+
+        if (TemplateParameters is { } templateParams)
+        {
+            serializer.Context.Todo("Serialize struct template parameters");
+            throw new UnreachableException();
+        }
+        // assume we want to write the number of template parameters as a 7-bit encoded int, so start with 0
+        else writer.Write((byte)0);
+
+        #endregion
+
+        #region Fields
+
+        writer.Write((ushort)FieldDecls.Count);
+        for (int i = 0; i < FieldDecls.Count; i++)
+        {
+            var field = FieldDecls[i];
+            serializer.Context.Assert(i == field.FieldIndex, field.Location, $"Field at index {i} in the field declaration array was not properly assigned its index (it was {field.FieldIndex} instead)");
+
+            serializer.WriteAtom(writer, field.Name);
+            serializer.WriteLocation(writer, field.Location);
+            serializer.WriteTypeQual(writer, field.FieldType);
+        }
+
+        #endregion
+
+        #region Variants
+
+        writer.Write((ushort)VariantDecls.Count);
+        for (int i = 0; i < VariantDecls.Count; i++)
+        {
+            var variant = VariantDecls[i];
+            writer.Write((byte)SerializedDeclKind.Variant);
+            writer.Write(variant.Name);
+            serializer.WriteLocation(writer, variant.Location);
+            variant.Serialize(serializer, writer);
+        }
+
+        #endregion
+    }
+
+    public override void Deserialize(ModuleDeserializer deserializer, BinaryReader reader)
+    {
+        #region Template Parameters
+
+        int templateParamCount = reader.Read7BitEncodedInt();
+        deserializer.Context.Assert(templateParamCount == 0, "Template parameters are not currently supported in the serializer");
+
+        #endregion
+
+        #region Fields
+
+        int fieldCount = reader.ReadUInt16();
+        var fieldDecls = new SemaDeclField[fieldCount];
+        for (int i = 0; i < fieldCount; i++)
+        {
+            string fieldName = deserializer.ReadAtom(reader)!;
+            var location = deserializer.ReadLocation(reader);
+            var fieldType = deserializer.ReadTypeQual(reader);
+            fieldDecls[i] = new SemaDeclField(location, fieldName, this, fieldType, i);
+            Scope.AddDecl(fieldDecls[i]);
+        }
+
+        FieldDecls = fieldDecls;
+
+        #endregion
+
+        #region Variants
+
+        int variantCount = reader.ReadUInt16();
+        var variantDecls = new SemaDeclStruct[variantCount];
+        for (int i = 0; i < variantCount; i++)
+        {
+            byte sigil = reader.ReadByte();
+            deserializer.Context.Assert(sigil == SerializerConstants.VariantSigil, "Tried to deserialize a variant, but was not at a variant sigil.");
+
+            string variantName = deserializer.ReadAtom(reader)!;
+            var location = deserializer.ReadLocation(reader);
+            var variant = new SemaDeclStruct(location, variantName)
+            {
+                ParentStruct = this,
+                Scope = new(Scope)
+            };
+
+            variant.Deserialize(deserializer, reader);
+        }
+
+        VariantDecls = variantDecls;
+
+        #endregion
+    }
 }
 
 public sealed class SemaDeclEnumVariant(Location location, string name, BigInteger value)
