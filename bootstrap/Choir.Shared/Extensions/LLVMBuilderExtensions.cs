@@ -14,6 +14,12 @@ public static class LLVMBuilderExtensions
         return builder.BuildGEP2(LLVMTypeRef.Int8, pointer, new ReadOnlySpan<LLVMValueRef>(ref offset), name);
     }
 
+    public static LLVMValueRef BuildPtrAdd(this LLVMBuilderRef builder, LLVMValueRef pointer, LLVMValueRef offset, Size stride, string name = "")
+    {
+        var offsetMul = builder.BuildMul(offset, LLVMValueRef.CreateConstInt(LLVMTypeRef.Int64, (ulong)stride.Bytes, false), $"{name}.mulstride");
+        return builder.BuildPtrAdd(pointer, offsetMul, name);
+    }
+
     public static LLVMValueRef BuildMemSet(this LLVMBuilderRef builder, LLVMValueRef storage, LLVMValueRef value, Size size, Align align)
     {
         unsafe

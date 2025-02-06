@@ -478,7 +478,15 @@ public partial class Sema
                 semaNode.ParameterDecls = [.. paramDecls];
 
                 if (declFunction.Body is SyntaxCompound bodyCompound)
-                    semaNode.Body = (SemaStmtCompound)AnalyseStmtOrDecl(bodyCompound, inheritCurrentScope: true);
+                {
+                    var body = (SemaStmtCompound)AnalyseStmtOrDecl(bodyCompound, inheritCurrentScope: true);
+                    semaNode.Body = body;
+
+                    if (body.ControlFlow < StmtControlFlow.Return && !semaNode.ReturnType.IsVoid)
+                    {
+                        Context.Diag.Error(semaNode.Location, "Not all code paths return a value");
+                    }
+                }
                 else if (declFunction.Body is not null)
                 {
                     Context.Assert(false, declFunction.Body.Location, $"unsupported syntax as function body: {declFunction.Body.GetType().Name}");
@@ -1247,7 +1255,12 @@ public partial class Sema
 
         var inner = AnalyseTypeOrExpr(grouped.Inner, typeHint, which);
         if (inner is SemaExpr expr)
-            return new SemaExprGrouped(grouped.Location, expr);
+        {
+            return new SemaExprGrouped(grouped.Location, expr)
+            {
+                ValueCategory = expr.ValueCategory,
+            };
+        }
 
         Context.Assert(inner is SemaTypeQual, "If it wasn't an expression, it has to be at type");
         return inner;
@@ -1685,7 +1698,7 @@ public partial class Sema
         }
     }
 
-    private static readonly Dictionary<BinaryOperatorKind, (TokenKind TokenKind, BinaryOperatorKind OperatorKind)[]> _builtinBinaryOperators = new()
+    private static readonly Dictionary<BinaryOperatorKind, (TokenKind TokenKind, BinaryOperatorKind OperatorKind)[]> _builtinSymmetricBinaryOperators = new()
     {
         { BinaryOperatorKind.Integer, [
             (TokenKind.Plus, BinaryOperatorKind.Add),
@@ -1714,6 +1727,8 @@ public partial class Sema
         ] },
 
         { BinaryOperatorKind.Buffer, [
+            (TokenKind.Minus, BinaryOperatorKind.Sub),
+
             (TokenKind.EqualEqual, BinaryOperatorKind.Eq),
             (TokenKind.BangEqual, BinaryOperatorKind.Neq),
             (TokenKind.Less, BinaryOperatorKind.Lt),
@@ -1746,46 +1761,112 @@ public partial class Sema
         var leftType = left.Type.CanonicalType;
         var rightType = right.Type.CanonicalType;
 
-        var operatorKind = BinaryOperatorKind.Undefined;
-        if (leftType.IsInteger && rightType.IsInteger)
-            operatorKind |= BinaryOperatorKind.Integer;
-        else if (leftType.IsBool && rightType.IsBool)
-            operatorKind |= BinaryOperatorKind.Bool;
-        else if (leftType.IsPointer && rightType.IsPointer)
-            operatorKind |= BinaryOperatorKind.Pointer;
-        else if (leftType.IsBuffer && rightType.IsBuffer)
-            operatorKind |= BinaryOperatorKind.Buffer;
-
-        if (operatorKind == BinaryOperatorKind.Undefined)
-            return UndefinedOperator();
-
-        if (!_builtinBinaryOperators.TryGetValue(operatorKind, out var availableOperators))
-            return UndefinedOperator();
-
-        var definedOperator = availableOperators
-            .Where(kv => kv.TokenKind == binary.TokenOperator.Kind)
-            .Select(kv => kv.OperatorKind).SingleOrDefault();
-        if (definedOperator == BinaryOperatorKind.Undefined) return UndefinedOperator();
-
-        operatorKind |= definedOperator;
-
-        SemaTypeQual binaryType;
-        if (!ConvertToCommonTypeOrError(ref left, ref right, typeHint))
-            binaryType = SemaTypePoison.InstanceQualified;
-        else
+        static BinaryOperatorKind ClassifyType(SemaTypeQual type)
         {
-            if (operatorKind.IsComparisonOperator())
-                binaryType = Context.Types.LayeTypeBool.Qualified(binary.Location);
-            else binaryType = left.Type;
+            if (type.IsInteger)
+                return BinaryOperatorKind.Integer;
+            else if (type.IsBool)
+                return BinaryOperatorKind.Bool;
+            else if (type.IsPointer)
+                return BinaryOperatorKind.Pointer;
+            else if (type.IsBuffer)
+                return BinaryOperatorKind.Buffer;
+            else return BinaryOperatorKind.Undefined;
         }
 
-        SemaExpr result = new SemaExprBinaryBuiltIn(operatorKind, binary.TokenOperator, binaryType, left, right);
-        if (typeHint is not null) result = ConvertOrError(result, typeHint);
-        
-        if (result is not SemaExprEvaluatedConstant && leftType.IsLiteral && rightType.IsLiteral && TryEvaluate(result, out var evalConst))
-            result = new SemaExprEvaluatedConstant(result, evalConst, typeHint);
+        var lhsClass = ClassifyType(leftType);
+        var rhsClass = ClassifyType(rightType);
 
-        return result;
+        // buffer + integer OR integer + buffer  pointer arithmetic
+        if (binary.TokenOperator.Kind == TokenKind.Plus &&
+            ((lhsClass == BinaryOperatorKind.Buffer && rhsClass == BinaryOperatorKind.Integer) || (lhsClass == BinaryOperatorKind.Integer && rhsClass == BinaryOperatorKind.Buffer)))
+        {
+            SemaTypeQual bufferType;
+            if (lhsClass == BinaryOperatorKind.Integer)
+            {
+                Context.Assert(rhsClass == BinaryOperatorKind.Buffer, right.Location, "Should be a buffer");
+                bufferType = rightType;
+
+                left = EvaluateIfPossible(left);
+                if (leftType.IsLiteral)
+                    left = ConvertOrError(left, Context.Types.LayeTypeInt.Qualified(left.Location));
+            }
+            else
+            {
+                Context.Assert(lhsClass == BinaryOperatorKind.Buffer, left.Location, "Should be a buffer");
+                bufferType = leftType;
+
+                right = EvaluateIfPossible(right);
+                if (rightType.IsLiteral)
+                    right = ConvertOrError(right, Context.Types.LayeTypeInt.Qualified(right.Location));
+            }
+
+            SemaExpr result = EvaluateIfPossible(new SemaExprBinaryBuiltIn(BinaryOperatorKind.Buffer | BinaryOperatorKind.Add, binary.TokenOperator, bufferType, left, right));
+            if (typeHint is not null) result = ConvertOrError(result, typeHint);
+
+            return result;
+        }
+
+        // buffer - integer  pointer arithmetic
+        if (binary.TokenOperator.Kind == TokenKind.Minus && lhsClass == BinaryOperatorKind.Buffer && rhsClass == BinaryOperatorKind.Integer)
+        {
+            SemaTypeQual bufferType = leftType;
+
+            right = EvaluateIfPossible(right);
+            if (rightType.IsLiteral)
+                right = ConvertOrError(right, Context.Types.LayeTypeInt.Qualified(right.Location));
+
+            SemaExpr result = EvaluateIfPossible(new SemaExprBinaryBuiltIn(BinaryOperatorKind.Buffer | BinaryOperatorKind.Sub, binary.TokenOperator, bufferType, left, right));
+            if (typeHint is not null) result = ConvertOrError(result, typeHint);
+
+            return result;
+        }
+
+        // "symmetric" built-ins handled with a lookup table
+        if (lhsClass == rhsClass)
+        {
+            var operatorKind = BinaryOperatorKind.Undefined;
+            if (leftType.IsInteger && rightType.IsInteger)
+                operatorKind |= BinaryOperatorKind.Integer;
+            else if (leftType.IsBool && rightType.IsBool)
+                operatorKind |= BinaryOperatorKind.Bool;
+            else if (leftType.IsPointer && rightType.IsPointer)
+                operatorKind |= BinaryOperatorKind.Pointer;
+            else if (leftType.IsBuffer && rightType.IsBuffer)
+                operatorKind |= BinaryOperatorKind.Buffer;
+
+            if (operatorKind == BinaryOperatorKind.Undefined)
+                return UndefinedOperator();
+
+            if (!_builtinSymmetricBinaryOperators.TryGetValue(operatorKind, out var availableOperators))
+                return UndefinedOperator();
+
+            var definedOperator = availableOperators
+                .Where(kv => kv.TokenKind == binary.TokenOperator.Kind)
+                .Select(kv => kv.OperatorKind).SingleOrDefault();
+            if (definedOperator == BinaryOperatorKind.Undefined) return UndefinedOperator();
+
+            operatorKind |= definedOperator;
+
+            SemaTypeQual binaryType;
+            if (!ConvertToCommonTypeOrError(ref left, ref right, typeHint))
+                binaryType = SemaTypePoison.InstanceQualified;
+            else
+            {
+                if (operatorKind.IsComparisonOperator())
+                    binaryType = Context.Types.LayeTypeBool.Qualified(binary.Location);
+                else if (operatorKind == (BinaryOperatorKind.Buffer | BinaryOperatorKind.Sub))
+                    binaryType = Context.Types.LayeTypeInt.Qualified(binary.Location);
+                else binaryType = left.Type;
+            }
+
+            SemaExpr result = EvaluateIfPossible(new SemaExprBinaryBuiltIn(operatorKind, binary.TokenOperator, binaryType, left, right));
+            if (typeHint is not null) result = ConvertOrError(result, typeHint);
+
+            return result;
+        }
+
+        return UndefinedOperator();
 
         SemaExprBinary UndefinedOperator()
         {

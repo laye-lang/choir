@@ -34,7 +34,7 @@ Options:
     --emit-llvm              Emit LLVM IR instead of Assembler when compiling with `--compile`.
 
     --no-corelib             Do not link against the the default Laye core libraries
-                             This also implies '--no-stdlib'
+    --no-rt0                 Do not link against the the default Laye runtime/entry library
 
     -L <lib-dir>             Adds <dir> to the library search list.
                              Directories are searched in the order they are provided, and values
@@ -145,8 +145,8 @@ Options:
                 .Distinct().ToArray();
 
         List<DirectoryInfo> additionalSourceDirs = [.. sourceModuleDirPaths.Select(path => new DirectoryInfo(path))];
-        if (Options.ModuleDirectories.Count == 0 && Options.AdditionalSourceFiles.Count != 0)
-            additionalSourceDirs.AddRange(new DirectoryInfo(".").EnumerateDirectories());
+        if (Options.ModuleDirectories.Count == 0 && Options.AdditionalSourceFiles.Count == 1 && Options.AdditionalSourceFiles[0].Directory is { } singleSourceDir)
+            additionalSourceDirs.AddRange(singleSourceDir.EnumerateDirectories());
 
         SourceModuleInfo[] fileListModules = CreateFileListModules(Options.AdditionalSourceFiles);
         var modules = ResolveModuleDependencyOrder(Options.ModuleDirectories, additionalSourceDirs, fileListModules, Options.BinaryDependencyFiles, Options.LibrarySearchPaths);
@@ -219,6 +219,7 @@ Options:
                 {
                     // layec can't link, it doesn't make sense to pass that (or let it get rendered)
                     DriverStage = (DriverStage)Math.Min((int)DriverStage.Assemble, (int)Options.DriverStage),
+                    NoCoreLibrary = Options.NoCoreLibrary,
                     OmitSourceTextInModuleBinary = Options.OmitSourceTextInModuleBinary,
                     NoLower = Options.NoLower,
                     ShowVerboseOutput = Options.ShowVerboseOutput,
@@ -294,14 +295,17 @@ Options:
 
             Context.LogVerbose("Beginning link process.");
 
-            var runtimeModule = FindBinaryModule("rt0", Options.LibrarySearchPaths);
-            if (runtimeModule is null)
+            if (!Options.NoRuntimeEntry)
             {
-                Context.Diag.Error($"Could not find Laye runtime library (rt0.mod) on the system; cannot link into an executable.");
-                return 1;
-            }
+                var runtimeModule = FindBinaryModule("rt0", Options.LibrarySearchPaths);
+                if (runtimeModule is null)
+                {
+                    Context.Diag.Error($"Could not find Laye runtime library (rt0.mod) on the system; cannot link into an executable.");
+                    return 1;
+                }
 
-            linkerInputs.Add(runtimeModule.ModuleFile);
+                linkerInputs.Add(runtimeModule.ModuleFile);
+            }
 
             string linker;
             if (Options.Linker is string linkerPath)

@@ -1173,6 +1173,13 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
                         case BinaryOperatorKind.Eq | BinaryOperatorKind.Pointer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "peq");
                         case BinaryOperatorKind.Neq | BinaryOperatorKind.Pointer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, "pne");
+                        
+                        case BinaryOperatorKind.Add | BinaryOperatorKind.Buffer:
+                        {
+                            if (binaryBuiltIn.Left.Type.CanonicalType.IsBuffer)
+                                return builder.BuildPtrAdd(left, right, ((SemaTypeBuffer)binaryBuiltIn.Left.Type.CanonicalType.Type).ElementType.CanonicalType.Size, "padd");
+                            else return builder.BuildPtrAdd(right, left, ((SemaTypeBuffer)binaryBuiltIn.Right.Type.CanonicalType.Type).ElementType.CanonicalType.Size, "padd");
+                        }
 
                         case BinaryOperatorKind.Eq | BinaryOperatorKind.Buffer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, "peq");
                         case BinaryOperatorKind.Neq | BinaryOperatorKind.Buffer: return builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, "pne");

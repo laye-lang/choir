@@ -1840,7 +1840,7 @@ public partial class Parser(SourceFile sourceFile)
                 }
 
                 Expect(TokenKind.CloseParen, "')'");
-                return new SyntaxGrouped(innerExpr);
+                return ParsePrimaryExprContinuation(parseContext, new SyntaxGrouped(innerExpr));
             }
 
             case TokenKind.Identifier when PeekAt(1, TokenKind.EqualGreater):

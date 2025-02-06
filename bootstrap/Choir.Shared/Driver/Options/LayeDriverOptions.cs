@@ -52,6 +52,12 @@ public record class LayeDriverOptions
     public bool NoCoreLibrary { get; set; }
 
     /// <summary>
+    /// The `--no-rt0` flag.
+    /// Disables linking to the Laye runtime/entry library, requiring the programmer to provide their own implementation.
+    /// </summary>
+    public bool NoRuntimeEntry { get; set; }
+
+    /// <summary>
     /// Specifies the linker to use.
     /// This should be directly executable by the process and accept arguments as expected by the common linkers supported by the driver.
     /// </summary>
@@ -110,6 +116,7 @@ public record class LayeDriverOptions
             default: base.HandleArgument(arg, diag, args, state); break;
 
             case "--no-corelib": NoCoreLibrary = true; break;
+            case "--no-rt0": NoRuntimeEntry = true; break;
 
             case "-L":
             {

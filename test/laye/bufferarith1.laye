@@ -1,0 +1,9 @@
+void shift(int8 mut[*] mut[*] mut* argv) {
+    *argv = (*argv) + 1;
+}
+
+int main() {
+    int8 mut[*] mut[*] mut argv;
+    shift(&argv);
+    return 0;
+}

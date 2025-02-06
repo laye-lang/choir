@@ -330,6 +330,7 @@ public enum StmtControlFlow
     Fallthrough,
     Jump,
     Return,
+    Noreturn,
 }
 
 public abstract class SemaStmt(Location location) : BaseSemaNode
