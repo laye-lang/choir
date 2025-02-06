@@ -1,4 +1,4 @@
-foreign i32 printf(i8[*] format, varargs);
+foreign int32 printf(int8[*] format, varargs);
 
 int main() {
     discard printf("34 + 35 = %d\n", 34 + 35);

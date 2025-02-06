@@ -149,6 +149,7 @@ public abstract class BaseSemaNode
 
 public abstract class SemaType : BaseSemaNode
 {
+    public virtual bool IsLiteral { get; } = false;
     public virtual bool IsBuiltin { get; } = false;
     public virtual bool IsPoison { get; } = false;
     public virtual bool IsNumeric { get; } = false;
@@ -260,6 +261,7 @@ public sealed class SemaTypeQual(SemaType type, Location location, TypeQualifier
     public Align Align => Type.Align;
 
     public bool IsPoison => Type.IsPoison;
+    public bool IsLiteral => Type.IsLiteral;
     public bool IsBuiltin => Type.IsBuiltin;
     public bool IsNumeric => Type.IsNumeric;
     public bool IsVoid => Type.IsVoid;

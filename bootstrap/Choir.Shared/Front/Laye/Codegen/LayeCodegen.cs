@@ -953,6 +953,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                             throw new UnreachableException();
                         }
 
+                        case EvaluatedConstantKind.Bool: return LLVMValueRef.CreateConstInt(type, constant.Value.BoolValue ? 1ul : 0ul, false);
                         case EvaluatedConstantKind.Integer: return LLVMValueRef.CreateConstInt(type, (ulong)(long)constant.Value.IntegerValue, true);
                         case EvaluatedConstantKind.String:
                         {

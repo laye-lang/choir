@@ -170,8 +170,8 @@ public sealed class SemaExprBinaryBuiltIn(BinaryOperatorKind kind, SyntaxToken o
     public BinaryOperatorKind Kind { get; } = kind;
 }
 
-public sealed class SemaExprEvaluatedConstant(SemaExpr sourceExpr, EvaluatedConstant value)
-    : SemaExpr(sourceExpr.Location, sourceExpr.Type)
+public sealed class SemaExprEvaluatedConstant(SemaExpr sourceExpr, EvaluatedConstant value, SemaTypeQual? type = null)
+    : SemaExpr(sourceExpr.Location, type ?? sourceExpr.Type)
 {
     public SemaExpr SourceExpr { get; } = sourceExpr;
     public EvaluatedConstant Value { get; } = value;

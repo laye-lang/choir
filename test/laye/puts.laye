@@ -1,6 +1,6 @@
 // R %choir %s --codegen --ir
 
-foreign i32 puts(i8[*] s);
+foreign int32 puts(int8[*] s);
 
 int main() {
     discard puts("Hello, hunter!");

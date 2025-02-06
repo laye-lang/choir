@@ -632,3 +632,66 @@ public sealed class SemaTypeAlias(SemaDeclAlias declAlias)
         throw new NotImplementedException();
     }
 }
+
+public abstract class SemaTypeLiteral<T>
+    : SemaType<T>
+    where T : SemaTypeLiteral<T>
+{
+    public override bool IsLiteral { get; } = true;
+    public override Size Size { get; } = Size.FromBits(0);
+    public override bool TypeEquals(T other, TypeComparison comp = TypeComparison.WithIdenticalQualifiers) => other.Id == Id;
+}
+
+public sealed class SemaTypeLiteralBool
+    : SemaTypeLiteral<SemaTypeLiteralBool>
+{
+    public static readonly SemaTypeLiteralBool Instance = new();
+
+    public override bool IsBool { get; } = true;
+
+    private SemaTypeLiteralBool()
+    {
+    }
+
+    public override string ToDebugString(Colors colors) => $"{colors.LayeKeyword()}<literal-bool>";
+}
+
+public sealed class SemaTypeLiteralInteger
+    : SemaTypeLiteral<SemaTypeLiteralInteger>
+{
+    public static readonly SemaTypeLiteralInteger Instance = new();
+
+    public override bool IsInteger { get; } = true;
+
+    private SemaTypeLiteralInteger()
+    {
+    }
+
+    public override string ToDebugString(Colors colors) => $"{colors.LayeKeyword()}<literal-integer>";
+}
+
+public sealed class SemaTypeLiteralFloat
+    : SemaTypeLiteral<SemaTypeLiteralFloat>
+{
+    public static readonly SemaTypeLiteralFloat Instance = new();
+
+    public override bool IsFloat { get; } = true;
+
+    private SemaTypeLiteralFloat()
+    {
+    }
+
+    public override string ToDebugString(Colors colors) => $"{colors.LayeKeyword()}<literal-float>";
+}
+
+public sealed class SemaTypeLiteralString
+    : SemaTypeLiteral<SemaTypeLiteralString>
+{
+    public static readonly SemaTypeLiteralString Instance = new();
+
+    private SemaTypeLiteralString()
+    {
+    }
+
+    public override string ToDebugString(Colors colors) => $"{colors.LayeKeyword()}<literal-string>";
+}

@@ -3,6 +3,6 @@ int foo() {
 }
 
 int main() {
-    i32 exit_code = cast(i32) foo();
+    int32 exit_code = cast(int32) foo();
     return exit_code;
 }

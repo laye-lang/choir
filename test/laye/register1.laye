@@ -1,6 +1,6 @@
-register "rbx" i64 rbx;
+register "rbx" int64 rbx;
 
-foreign i32 printf(i8[*] format, varargs);
+foreign int32 printf(int8[*] format, varargs);
 
 int main() {
     discard printf("rbx = %ld\n", rbx);

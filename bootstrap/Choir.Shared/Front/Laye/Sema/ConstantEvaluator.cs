@@ -54,6 +54,12 @@ public sealed class ConstantEvaluator
                 return true;
             }
 
+            case SemaExprLiteralBool boolLiteral:
+            {
+                value = new EvaluatedConstant(boolLiteral.LiteralValue);
+                return true;
+            }
+
             case SemaExprLiteralInteger integerLiteral:
             {
                 value = new EvaluatedConstant(integerLiteral.LiteralValue);

@@ -189,10 +189,10 @@ public sealed class TypeStorage
         return aliasType;
     }
 
-    public SemaTypeArray LayeTypeArray(SemaTypeQual elementType, long length)
-    {
-        return LayeTypeArray(elementType, new SemaExprLiteralInteger(Location.Nowhere, length, Context.Types.LayeTypeInt.Qualified(Location.Nowhere)));
-    }
+    //public SemaTypeArray LayeTypeArray(SemaTypeQual elementType, long length)
+    //{
+    //    return LayeTypeArray(elementType, new SemaExprLiteralInteger(Location.Nowhere, length, Context.Types.LayeTypeInt.Qualified(Location.Nowhere)));
+    //}
 
     public SemaTypeArray LayeTypeArray(SemaTypeQual elementType, SemaExpr length)
     {
@@ -207,12 +207,13 @@ public sealed class TypeStorage
     public SemaTypeBuffer LayeTypeBuffer(SemaTypeQual elementType, long? sentinelTerminator = null)
     {
         SemaExpr? st = null;
-        if (sentinelTerminator is not null)
-        {
-            Debug.Assert(elementType.IsInteger, "Integer sentinel terminators imply integer element types");
-            st = new SemaExprLiteralInteger(Location.Nowhere, sentinelTerminator.Value, elementType);
-        }
+        //if (sentinelTerminator is not null)
+        //{
+        //    Debug.Assert(elementType.IsInteger, "Integer sentinel terminators imply integer element types");
+        //    st = new SemaExprLiteralInteger(Location.Nowhere, sentinelTerminator.Value, elementType);
+        //}
 
+        Context.Assert(sentinelTerminator is null, "not supported");
         return new SemaTypeBuffer(Context, elementType, st);
     }
 

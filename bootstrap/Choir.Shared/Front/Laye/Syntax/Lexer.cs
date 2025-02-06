@@ -187,12 +187,12 @@ public sealed class Lexer(SourceFile sourceFile)
                 else if (tokenInfo.TextValue.StartsWith("int") && tokenInfo.TextValue.Length > 3 && tokenInfo.TextValue.AsSpan()[3..].All(SyntaxFacts.IsNumericLiteralDigit))
                 {
                     tokenInfo.Kind = TokenKind.IntSized;
-                    CheckSizedTypeKeyword(ref tokenInfo);
+                    CheckSizedTypeKeyword(ref tokenInfo, 3);
                 }
                 else if (tokenInfo.TextValue.StartsWith("bool") && tokenInfo.TextValue.Length > 4 && tokenInfo.TextValue.AsSpan()[4..].All(SyntaxFacts.IsNumericLiteralDigit))
                 {
                     tokenInfo.Kind = TokenKind.BoolSized;
-                    CheckSizedTypeKeyword(ref tokenInfo);
+                    CheckSizedTypeKeyword(ref tokenInfo, 4);
                 }
                 else if (tokenInfo.TextValue == "float16")
                 {
@@ -220,15 +220,15 @@ public sealed class Lexer(SourceFile sourceFile)
                     tokenInfo.IntegerValue = 128;
                 }
 
-                void CheckSizedTypeKeyword(ref TokenInfo tokenInfo)
+                void CheckSizedTypeKeyword(ref TokenInfo tokenInfo, int startLength)
                 {
-                    if (tokenInfo.TextValue.Length > 6)
+                    if (tokenInfo.TextValue.Length - startLength > 5)
                     {
                         Context.Diag.Error(new Location(tokenInfo.Position, 1, SourceFile.FileId), "sized primitive bit width must be in the range [1, 65536).");
                         return;
                     }
 
-                    int bitWidth = int.Parse(tokenInfo.TextValue.AsSpan()[1..]);
+                    int bitWidth = int.Parse(tokenInfo.TextValue.AsSpan()[startLength..]);
                     if (bitWidth is < 1 or >= 65536)
                         Context.Diag.Error(new Location(tokenInfo.Position, 1, SourceFile.FileId), "sized primitive bit width must be in the range [1, 65536).");
 

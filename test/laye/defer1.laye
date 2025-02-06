@@ -1,4 +1,4 @@
-foreign i32 puts(i8[*] s);
+foreign int32 puts(int8[*] s);
 
 int main() {
     defer discard puts("Puts 1");

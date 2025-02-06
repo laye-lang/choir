@@ -1,5 +1,5 @@
 int main() {
-    i32 foo = 420;
-    i8 bar = cast foo;
+    int32 foo = 420;
+    int8 bar = cast foo;
     return 0;
 }

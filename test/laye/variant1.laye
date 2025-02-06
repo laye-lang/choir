@@ -1,15 +1,15 @@
 struct foo {
-    i8 a;
+    int8 a;
 
     variant bar {
-        i16 b_0;
-        i16 b_1;
-        i16 b_2;
-        i16 b_3;
+        int16 b_0;
+        int16 b_1;
+        int16 b_2;
+        int16 b_3;
     }
 
     variant baz {
-        i32 c;
+        int32 c;
     }
 }
 

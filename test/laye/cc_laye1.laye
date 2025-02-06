@@ -1,8 +1,8 @@
 struct my_big_struct {
-    i64 foo;
-    i64 bar;
-    i64 baz;
-    i64 qux;
+    int64 foo;
+    int64 bar;
+    int64 baz;
+    int64 qux;
 }
 
 // The calling convention is "laye" by default
@@ -12,7 +12,7 @@ struct my_big_struct {
 //   - qux goes on the stack 
 // On SysV:
 //   - 
-my_big_struct get_my_big_struct(i64 foo, i64 bar, i64 baz, i64 qux) {
+my_big_struct get_my_big_struct(int64 foo, int64 bar, int64 baz, int64 qux) {
     return var { foo, bar, baz, qux };
 }
 
