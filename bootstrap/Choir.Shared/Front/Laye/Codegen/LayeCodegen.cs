@@ -510,6 +510,18 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         }
     }
 
+    private void ForwardDeclareIfAllowedOutOfOrder(SemaDeclNamed decl)
+    {
+        switch (decl)
+        {
+            case SemaDeclFunction declFunc:
+            {
+                GenerateFunctionDeclaration(declFunc);
+                GenerateFunctionDefinition(declFunc);
+            } break;
+        }
+    }
+
     private void BuildStmt(LLVMBuilderRef builder, SemaStmt stmt)
     {
         switch (stmt)
@@ -519,6 +531,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 Context.Diag.ICE(stmt.Location, $"Unimplemented Laye node in Choir builder/codegen: {stmt.GetType().FullName}");
                 throw new UnreachableException();
             }
+
+            case SemaDeclFunction declFunc:
+            {
+                Context.Assert(_declaredValues.ContainsKey(declFunc), declFunc.Location, "This function was not forward declared/defined");
+            } break;
 
             case SemaDeclBinding binding:
             {
@@ -544,6 +561,12 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
             case SemaStmtCompound compound:
             {
+                foreach (var child in compound.Statements)
+                {
+                    if (child is SemaDeclNamed decl)
+                        ForwardDeclareIfAllowedOutOfOrder(decl);
+                }
+
                 foreach (var child in compound.Statements)
                 {
                     BuildStmt(builder, child);
