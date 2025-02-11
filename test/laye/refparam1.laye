@@ -1,0 +1,9 @@
+void add1(ref int a) {
+    a = a + 1;
+}
+
+int main() {
+    int exit_code = 0;
+    add1(ref exit_code);
+    return exit_code - 1;
+}

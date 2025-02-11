@@ -84,13 +84,15 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
 
             case SemaDeclParam declParameter:
             {
+                if (declParameter.IsRefParam)
+                    Console.Write($"{C.LayeKeyword()}ref ");
                 Console.Write($"{declParameter.ParamType.ToDebugString(C)} {C[ColorName]}{declParameter.Name}");
             } break;
 
             case SemaDeclFunction declFunction:
             {
-                string parameters = string.Join(", ", declFunction.ParameterDecls.Select(d => $"{d.ParamType.ToDebugString(C)} {C[ColorName]}{d.Name}"));
-                Console.Write($"{declFunction.ReturnType.ToDebugString(C)} {C[ColorName]}{declFunction.Name}({parameters})");
+                Console.Write(declFunction.FunctionType(Context).ToDebugString(C));
+                Console.Write($" {C[ColorName]}{declFunction.Name}");
             } break;
 
             case SemaDeclField declField:

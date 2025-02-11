@@ -7,6 +7,8 @@ using System.Runtime.CompilerServices;
 using Choir.CommandLine;
 using Choir.Front.Laye.Syntax;
 
+using LLVMSharp;
+
 namespace Choir.Front.Laye.Sema;
 
 #pragma warning disable CA1822 // Mark members as static
@@ -470,10 +472,13 @@ public partial class Sema
                 foreach (var param in declFunction.Params)
                 {
                     var paramType = AnalyseType(param.ParamType);
-                    var paramDecl = new SemaDeclParam(param.Location, param.TokenName.TextValue, paramType);
+                    var paramDecl = new SemaDeclParam(param.Location, param.TokenName.TextValue, param.IsRefParam, paramType);
                     DeclareInScope(paramDecl);
                     paramDecls.Add(paramDecl);
                 }
+
+                if (declFunction.VarargsKind == VarargsKind.Laye && paramDecls.Count > 0 && paramDecls[^1].IsRefParam)
+                    Context.Diag.Error(paramDecls[^1].Location, "A variadic parameter may not be marked as 'ref'.");
 
                 semaNode.ParameterDecls = [.. paramDecls];
 
@@ -647,11 +652,11 @@ public partial class Sema
                 Context.Assert(stmtAssign.TokenAssignOp.Kind == TokenKind.Equal, stmtAssign.TokenAssignOp.Location, "Fancy assignments are not currently supported in sema.");
 
                 var target = AnalyseExpr(stmtAssign.Left);
-                if (!target.IsLValue && !target.IsRegister)
+                if (!target.IsLValue && !target.IsRegister && !target.IsReference)
                     Context.Diag.Error(target.Location, $"Cannot assign to {target.ValueCategory.ToHumanString(includeArticle: true)}.");
 
                 var value = AnalyseExpr(stmtAssign.Right, target.Type);
-                if (target.IsLValue || target.IsRegister) value = ConvertOrError(value, target.Type);
+                if (target.IsLValue || target.IsRegister || target.IsReference) value = ConvertOrError(value, target.Type);
 
                 return new SemaStmtAssign(target, value);
             }
@@ -909,6 +914,7 @@ public partial class Sema
             case SyntaxIndex index: return MaybeApplyExprTypeHint(which, AnalyseIndex(index, which), typeHint);
             case SyntaxTypeof @typeof: return AnalyseTypeof(@typeof, which);
 
+            case SyntaxExprRef @ref: return AnalyseRef(@ref);
             case SyntaxExprUnaryPrefix unaryPrefix: return MaybeApplyExprTypeHint(which, AnalyseUnaryPrefix(unaryPrefix, typeHint), typeHint);
             case SyntaxExprUnaryPostfix unaryPostfix: return MaybeApplyExprTypeHint(which, AnalyseUnaryPostfix(unaryPostfix, typeHint), typeHint);
             case SyntaxExprBinary binary: return MaybeApplyExprTypeHint(which, AnalyseBinary(binary, typeHint), typeHint);
@@ -1096,6 +1102,8 @@ public partial class Sema
                     return NotATypeName();
 
                 exprType = declParam.ParamType;
+                if (declParam.IsRefParam)
+                    valueCategory = ValueCategory.Reference;
             } break;
 
             case SemaDeclFunction declFunction:
@@ -1532,55 +1540,11 @@ public partial class Sema
         }
     }
 
-    private SemaExpr AnalyseLookupOLD(SyntaxNameref nameref, Scope scope)
+    private SemaExpr AnalyseRef(SyntaxExprRef @ref)
     {
-        var res = LookupName(nameref, scope);
-        switch (res)
-        {
-            default:
-            {
-                Context.Diag.Error(nameref.Location, $"This does not exist in this context.");
-                return new SemaExprLookup(nameref.Location, SemaTypePoison.InstanceQualified, null)
-                {
-                    Dependence = ExprDependence.ErrorDependent,
-                };
-            }
-
-            case LookupSuccess success:
-            {
-                var decl = success.Decl;
-                var valueCategory = ValueCategory.LValue;
-
-                SemaTypeQual? exprType;
-                switch (decl)
-                {
-                    default:
-                    {
-                        Context.Assert(false, nameref.Location, $"Unhandled entity declaration in lookup type resolution: {decl.GetType().FullName}.");
-                        throw new UnreachableException();
-                    }
-
-                    case SemaDeclBinding declBinding: exprType = declBinding.BindingType; break;
-                    case SemaDeclParam declParam: exprType = declParam.ParamType; break;
-                    case SemaDeclFunction declFunction:
-                    {
-                        exprType = declFunction.FunctionType(Context).Qualified(decl.Location);
-                        valueCategory = ValueCategory.RValue;
-                    } break;
-
-                    case SemaDeclRegister declRegister:
-                    {
-                        exprType = declRegister.Type;
-                        valueCategory = ValueCategory.Register;
-                    } break;
-                }
-
-                return new SemaExprLookup(nameref.Location, exprType, success.Decl)
-                {
-                    ValueCategory = valueCategory,
-                };
-            }
-        }
+        var operand = AnalyseExpr(@ref.Operand);
+        Context.Diag.Error(@ref.Location, "'ref' expressions are only allowed when passing an l-value as an argument to a function.");
+        return operand;
     }
 
     private SemaExpr AnalyseUnaryPrefix(SyntaxExprUnaryPrefix unary, SemaTypeQual? typeHint = null)
@@ -1934,21 +1898,43 @@ public partial class Sema
                         }
                     }
 
-                    var argument = AnalyseExpr(call.Args[i], argTypeHint);
-                    if (argTypeHint is not null)
-                        argument = ConvertOrError(argument, argTypeHint);
+                    if (call.Args[i] is SyntaxExprRef refArg)
+                    {
+                        var lvalueArg = AnalyseExpr(refArg.Operand);
+                        if (!lvalueArg.IsLValue)
+                            Context.Diag.Error(lvalueArg.Location, "Operand of a 'ref' expression must be an l-value.");
+
+                        if (i >= typeFunction.ParamTypes.Count)
+                        {
+                            if (typeFunction.VarargsKind != VarargsKind.None)
+                                Context.Diag.Error(lvalueArg.Location, "A 'ref' expression cannot be a variadic argument.");
+                        }
+                        else
+                        {
+                            if (!typeFunction.ParamDecls[i].IsRefParam)
+                                Context.Diag.Error(lvalueArg.Location, $"Cannot pass a value by reference to a non-'ref' parameter.");
+                        }
+
+                        arguments[i] = WrapWithCast(lvalueArg, lvalueArg.Type, CastKind.LValueToReference);
+                    }
                     else
                     {
-                        // do no real conversion if the function call is already invalid
-                        if (typeFunction.VarargsKind == VarargsKind.None)
-                            argument = LValueToRValue(argument);
-                        // otherwise, convert to a valid C varargs type
-                        else if (typeFunction.VarargsKind == VarargsKind.C)
-                            argument = ConvertToCVarargsOrError(argument);
-                        else Context.Assert(false, "Unexpected varargs kind without type hint.");
-                    }
+                        var argument = AnalyseExpr(call.Args[i], argTypeHint);
+                        if (argTypeHint is not null)
+                            argument = ConvertOrError(argument, argTypeHint);
+                        else
+                        {
+                            // do no real conversion if the function call is already invalid
+                            if (typeFunction.VarargsKind == VarargsKind.None)
+                                argument = LValueToRValue(argument);
+                            // otherwise, convert to a valid C varargs type
+                            else if (typeFunction.VarargsKind == VarargsKind.C)
+                                argument = ConvertToCVarargsOrError(argument);
+                            else Context.Assert(false, "Unexpected varargs kind without type hint.");
+                        }
 
-                    arguments[i] = argument;
+                        arguments[i] = argument;
+                    }
                 }
 
                 return new SemaExprCall(call.Location, typeFunction.ReturnType, callee, arguments)
@@ -2535,7 +2521,7 @@ public partial class Sema
             expr = new SemaExprCast(expr.Location, CastKind.PointerToLValue, typePtr.ElementType, expr)
             {
                 ValueCategory = ValueCategory.LValue,
-                IsCompilerGenerated = true
+                IsCompilerGenerated = true,
             };
         }
 
@@ -2566,6 +2552,12 @@ public partial class Sema
     private SemaExpr LValueToRValue(SemaExpr expr)
     {
         if (expr.IsErrored) return expr;
+
+        if (expr.IsReference)
+        {
+            expr = WrapWithCast(expr, expr.Type, CastKind.ReferenceToLValue);
+            expr.ValueCategory = ValueCategory.LValue;
+        }
 
         if (expr.IsLValue)
             expr = WrapWithCast(expr, expr.Type, CastKind.LValueToRValue);

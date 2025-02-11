@@ -313,6 +313,14 @@ public sealed class SyntaxExprLambda(IReadOnlyList<SyntaxDeclParam> @params, Syn
     public override IEnumerable<SyntaxNode> Children { get; } = [.. @params, tokenArrow, body];
 }
 
+public sealed class SyntaxExprRef(SyntaxToken tokenRef, SyntaxNode operand)
+    : SyntaxNode(tokenRef.Location)
+{
+    public SyntaxToken TokenRef { get; } = tokenRef;
+    public SyntaxNode Operand { get; } = operand;
+    public override IEnumerable<SyntaxNode> Children { get; } = [tokenRef, operand];
+}
+
 public sealed class SyntaxQualMut(SyntaxNode inner, SyntaxToken tokenMut)
     : SyntaxNode(inner.Location)
 {

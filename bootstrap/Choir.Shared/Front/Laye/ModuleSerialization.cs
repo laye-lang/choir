@@ -69,6 +69,8 @@ internal static class SerializerConstants
 
     public const byte Attrib2CStyleVariadicFlag = 1 << 0;
     public const byte Attrib2LayeVariadicFlag = 1 << 1;
+
+    public const byte ParamAttrib1Ref = 1 << 0;
 }
 
 public enum SerializedDeclKind : byte

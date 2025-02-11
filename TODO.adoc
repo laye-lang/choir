@@ -3,7 +3,7 @@
 == Syntax
 
 * [ ] Avoid infinite loops
-* [ ] Syntactic scopes
+* [x] Syntactic scopes
 * [x] Sized types
 * [ ] Primary Expressions
     * [x] Nameref
@@ -21,8 +21,8 @@
     * [x] Grouped Expression
     * [x] (Invalid) Empty Expression
     * [x] Cast
-    * [ ] Constructor
-        * [ ] Initializer "Target"s
+    * [x] Constructor
+        * [x] Initializer Designators
         * [x] Simple value initializers
     * [x] Unary Operator Expressions
         * [x] Negation (-)
@@ -47,7 +47,7 @@
     * [x] Element Index Acecss
     * [x] ++, --
     * [ ] (Unlikely) Ternary (?:)
-* [ ] Secondary Expressions
+* [x] Secondary Expressions
     * [x] Binary
         * [x] Actual proper ordering and precedence please
         * [x] All Possible Operators
@@ -55,14 +55,11 @@
             * [x] Fallback to Binding
             * [x] Fallback to Function (Trivial)
             * [x] Fallback to Function (Advanced)
-* [ ] Type Expressions
+* [x] Type Expressions
     * [x] Var
     * [x] Sized Primitives
-    * [ ] Additional C Primitives
-        * [ ] Float128
     * [x] Typeof
-    * [ ] (Maybe) Tuples
-* [ ] Type Expression Continuations
+* [x] Type Expression Continuations
     * [x] Slice
     * [x] Array
     * [x] Buffer
@@ -82,7 +79,7 @@
         * [ ] (Maybe) Without condition
     * [x] Do/While
     * [x] Defer
-    * [ ] Discard
+    * [x] Discard
     * [x] Break
     * [x] Continue
     * [x] Yield
@@ -116,3 +113,11 @@
 == Sema
 
 * [ ]
+
+== Codegen
+
+* Name Mangling
+    * [ ] Add 'ref' param mangling
+    * [ ] Dots in mangled names?
+* Parameters/Calling Convention
+    * [ ] Actually iron out a proper lowering/semantic meaning for ref params

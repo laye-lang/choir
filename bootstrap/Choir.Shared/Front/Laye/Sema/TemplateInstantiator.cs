@@ -82,7 +82,7 @@ public sealed class TemplateInstantiator(Sema sema, Dictionary<SemaDeclTemplateP
     public SemaDeclParam InstantiateParam(SemaDeclParam n)
     {
         var type = InstantiateType(n.ParamType);
-        var param = new SemaDeclParam(n.Location, n.Name, type);
+        var param = new SemaDeclParam(n.Location, n.Name, n.IsRefParam, type);
         // cache/store in the procedure scope
         return param;
     }

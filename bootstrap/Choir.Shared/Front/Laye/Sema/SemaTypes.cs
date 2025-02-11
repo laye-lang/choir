@@ -481,14 +481,15 @@ public sealed class SemaTypeErrorPair(SemaTypeQual resultType, SemaTypeQual erro
     public override bool TypeEquals(SemaTypeErrorPair other, TypeComparison comp) => ResultType.CanonicalType.TypeEquals(other.ResultType.CanonicalType, comp) && ErrorType.CanonicalType.TypeEquals(other.ErrorType.CanonicalType, comp);
 }
 
-public sealed class SemaTypeFunction(ChoirContext context, SemaTypeQual returnType, IReadOnlyList<SemaTypeQual> paramTypes)
+public sealed class SemaTypeFunction(ChoirContext context, SemaTypeQual returnType, IReadOnlyList<SemaDeclParam> paramDecls)
     : SemaType<SemaTypeFunction>
 {
     public override Size Size { get; } = context.Target.SizeOfPointer;
     public override Align Align { get; } = context.Target.AlignOfPointer;
 
     public SemaTypeQual ReturnType { get; } = returnType;
-    public IReadOnlyList<SemaTypeQual> ParamTypes { get; } = paramTypes;
+    public IReadOnlyList<SemaDeclParam> ParamDecls { get; } = paramDecls;
+    public IReadOnlyList<SemaTypeQual> ParamTypes { get; } = paramDecls.Select(d => d.ParamType).ToArray();
 
     public CallingConvention CallingConvention { get; init; } = CallingConvention.Laye;
     public VarargsKind VarargsKind { get; init; } = VarargsKind.None;
@@ -521,9 +522,13 @@ public sealed class SemaTypeFunction(ChoirContext context, SemaTypeQual returnTy
         for (int i = 0; i < ParamTypes.Count; i++)
         {
             if (i > 0) builder.Append(colors.Default).Append(", ");
+            if (ParamDecls[i].IsRefParam)
+                builder.Append(colors.LayeKeyword()).Append("ref ");
             if (VarargsKind == VarargsKind.Laye && i == ParamTypes.Count - 1)
                 builder.Append(colors.LayeKeyword()).Append("varargs ");
             builder.Append(ParamTypes[i].ToDebugString(colors));
+            if (!ParamDecls[i].Name.IsNullOrEmpty())
+                builder.Append(' ').Append(colors.Default).Append(ParamDecls[i].Name);
         }
 
         if (VarargsKind == VarargsKind.C)

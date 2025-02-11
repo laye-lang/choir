@@ -155,6 +155,7 @@ public enum TokenKind : ushort
     CFlags,
 
     Mut,
+    Ref,
     New,
     Delete,
     Cast,

@@ -344,17 +344,22 @@ public sealed class SyntaxDeclBinding(SyntaxNode bindingType, SyntaxToken tokenN
     }
 }
 
-public sealed class SyntaxDeclParam(SyntaxNode paramType, SyntaxToken tokenName)
+public sealed class SyntaxDeclParam(SyntaxToken? refToken, SyntaxNode paramType, SyntaxToken tokenName)
     : SyntaxNode(tokenName.Location)
 {
+    public SyntaxToken? RefToken { get; } = refToken;
     public SyntaxNode ParamType { get; } = paramType;
     public SyntaxToken TokenName { get; } = tokenName;
+
+    public bool IsRefParam { get; } = refToken is not null;
 
     public override bool IsDecl { get; } = true;
     public override IEnumerable<SyntaxNode> Children
     {
         get
         {
+            if (RefToken is not null)
+                yield return RefToken;
             yield return ParamType;
             yield return TokenName;
         }

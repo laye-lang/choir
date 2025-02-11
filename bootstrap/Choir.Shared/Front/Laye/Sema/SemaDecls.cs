@@ -29,9 +29,10 @@ public sealed class SemaDeclTemplateValueParameter(Location location, string nam
     public override IEnumerable<BaseSemaNode> Children { get; } = [paramType];
 }
 
-public sealed class SemaDeclParam(Location location, string name, SemaTypeQual paramType)
+public sealed class SemaDeclParam(Location location, string name, bool isRefParam, SemaTypeQual paramType)
     : SemaDeclNamed(location, name)
 {
+    public bool IsRefParam { get; } = isRefParam;
     public SemaTypeQual ParamType { get; } = paramType;
     // TODO(local): evaluated constant for default values, or even arbitrary semantic expressions depending
     
@@ -65,7 +66,7 @@ public sealed class SemaDeclFunction(Location location, string name)
         }
     }
 
-    public SemaTypeFunction FunctionType(ChoirContext context) => new(context, ReturnType, ParameterDecls.Select(p => p.ParamType).ToArray())
+    public SemaTypeFunction FunctionType(ChoirContext context) => new(context, ReturnType, ParameterDecls)
     {
         CallingConvention = CallingConvention,
         IsDiscardable = IsDiscardable,
@@ -77,8 +78,8 @@ public sealed class SemaDeclFunction(Location location, string name)
     {
         #region Flags
 
-        ushort flags1 = 0;
-        ushort flags2 = 0;
+        byte flags1 = 0;
+        byte flags2 = 0;
 
         switch (CallingConvention)
         {
@@ -144,6 +145,16 @@ public sealed class SemaDeclFunction(Location location, string name)
             serializer.WriteAtom(writer, param.Name);
             serializer.WriteLocation(writer, param.Location);
             serializer.WriteTypeQual(writer, param.ParamType);
+
+            flags1 = 0;
+            flags2 = 0;
+
+            if (param.IsRefParam)
+                flags1 |= SerializerConstants.ParamAttrib1Ref;
+
+            writer.Write(flags1);
+            if (flags2 != 0)
+                writer.Write(flags2);
         }
 
         #endregion
@@ -153,7 +164,7 @@ public sealed class SemaDeclFunction(Location location, string name)
     {
         #region Flags
 
-        ushort flags1 = reader.ReadUInt16();
+        byte flags1 = reader.ReadByte();
         CallingConvention = (flags1 & SerializerConstants.Attrib1CallingConventionMask) switch
         {
             SerializerConstants.Attrib1CallingConventionCDecl => CallingConvention.CDecl,
@@ -169,7 +180,7 @@ public sealed class SemaDeclFunction(Location location, string name)
 
         if (0 != (flags1 & SerializerConstants.AttribExtensionFlag))
         {
-            ushort flags2 = reader.ReadUInt16();
+            byte flags2 = reader.ReadByte();
             if (0 != (flags2 & SerializerConstants.Attrib2CStyleVariadicFlag))
                 VarargsKind = VarargsKind.C;
             if (0 != (flags2 & SerializerConstants.Attrib2LayeVariadicFlag))
@@ -207,7 +218,16 @@ public sealed class SemaDeclFunction(Location location, string name)
             string paramName = deserializer.ReadAtom(reader)!;
             var location = deserializer.ReadLocation(reader);
             var paramType = deserializer.ReadTypeQual(reader);
-            paramDecls[i] = new SemaDeclParam(location, paramName, paramType);
+
+            flags1 = reader.ReadByte();
+            bool isRefParam = 0 != (flags1 & SerializerConstants.ParamAttrib1Ref);
+
+            if (0 != (flags1 & SerializerConstants.AttribExtensionFlag))
+            {
+                byte flags2 = reader.ReadByte();
+            }
+
+            paramDecls[i] = new SemaDeclParam(location, paramName, isRefParam, paramType);
         }
 
         ParameterDecls = paramDecls;
@@ -238,7 +258,7 @@ public sealed class SemaDeclDelegate(Location location, string name)
         }
     }
 
-    public SemaTypeFunction FunctionType(ChoirContext context) => new SemaTypeFunction(context, ReturnType, ParameterDecls.Select(p => p.ParamType).ToArray())
+    public SemaTypeFunction FunctionType(ChoirContext context) => new SemaTypeFunction(context, ReturnType, ParameterDecls)
     {
         CallingConvention = CallingConvention,
         VarargsKind = VarargsKind,

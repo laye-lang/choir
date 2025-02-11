@@ -780,9 +780,10 @@ public partial class Parser(SourceFile sourceFile)
 
     private SyntaxDeclParam ParseFunctionParameter()
     {
+        TryAdvance(TokenKind.Ref, out var refToken);
         var paramType = ParseType();
         ExpectIdentifier(out var tokenName);
-        return new SyntaxDeclParam(paramType, tokenName);
+        return new SyntaxDeclParam(refToken, paramType, tokenName);
     }
 
     private SyntaxDeclFunction ParseFunctionDeclStartingAtName(SyntaxTemplateParams? templateParams, IReadOnlyList<SyntaxAttrib> attribs, SyntaxNode returnType)
@@ -863,11 +864,11 @@ public partial class Parser(SourceFile sourceFile)
         };
     }
 
-    private SyntaxDeclFunction ParseFunctionDeclStartingWithinParameters(SyntaxTemplateParams? templateParams, IReadOnlyList<SyntaxAttrib> attribs, SyntaxNode returnType, SyntaxToken tokenName, SyntaxNode firstParamType)
+    private SyntaxDeclFunction ParseFunctionDeclStartingWithinParameters(SyntaxTemplateParams? templateParams, IReadOnlyList<SyntaxAttrib> attribs, SyntaxNode returnType, SyntaxToken tokenName, SyntaxToken? refToken, SyntaxNode firstParamType)
     {
         Consume(TokenKind.Identifier, out var tokenFirstParamName);
 
-        var firstParam = new SyntaxDeclParam(firstParamType, tokenFirstParamName);
+        var firstParam = new SyntaxDeclParam(refToken, firstParamType, tokenFirstParamName);
 
         SyntaxDeclParam[] paramDecls;
         if (Consume(TokenKind.Comma))
@@ -1774,12 +1775,14 @@ public partial class Parser(SourceFile sourceFile)
                 return new SyntaxExprEmpty(tokenSemiColon);
             }
 
+#if false
             case TokenKind.EqualGreater:
             {
                 var tokenArrow = Consume();
                 var body = At(TokenKind.OpenBrace) ? ParseCompound() : ParseExpr(ExprParseContext.Default);
                 return new SyntaxExprLambda([], tokenArrow, body);
             }
+#endif
 
             case TokenKind.OpenParen when PeekAt(1, TokenKind.CloseParen) && PeekAt(2, TokenKind.EqualGreater):
             {
@@ -1795,7 +1798,7 @@ public partial class Parser(SourceFile sourceFile)
                 var @params = ParseDelimited(() =>
                 {
                     var paramName = ExpectIdentifier();
-                    return new SyntaxDeclParam(new SyntaxToken(TokenKind.Var, Location.Nowhere) { IsCompilerGenerated = true }, paramName);
+                    return new SyntaxDeclParam(null, new SyntaxToken(TokenKind.Var, Location.Nowhere) { IsCompilerGenerated = true }, paramName);
                 }, TokenKind.Comma, "identifier", false, TokenKind.CloseParen, TokenKind.EqualGreater, TokenKind.SemiColon);
                 Expect(TokenKind.CloseParen, "')'");
                 var tokenArrow = Consume();
@@ -1814,7 +1817,7 @@ public partial class Parser(SourceFile sourceFile)
                 else if (innerExpr.CanBeType && At(TokenKind.Identifier))
                 {
                     var paramName = Consume();
-                    innerExpr = new SyntaxDeclParam(innerExpr, paramName);
+                    innerExpr = new SyntaxDeclParam(null, innerExpr, paramName);
                 }
 
                 if (innerExpr.IsDecl)
@@ -1822,7 +1825,7 @@ public partial class Parser(SourceFile sourceFile)
                     //Context.Assert(innerExpr is SyntaxDeclBinding, innerExpr.Location, $"when parsing an expression within parentheses that could be a for loop initializer (because it was easier than adding a new case) to determine if this is a lambda expression with typed parameters, a non-binding declaration (of type {innerExpr.GetType().Name}) was returned instead.");
 
                     if (innerExpr is SyntaxDeclBinding binding)
-                        innerExpr = new SyntaxDeclParam(binding.BindingType, binding.TokenName);
+                        innerExpr = new SyntaxDeclParam(null, binding.BindingType, binding.TokenName);
                     else Context.Assert(innerExpr is SyntaxDeclParam, innerExpr.Location, $"when parsing what appears to be a lambda with typed parameters, the first decl was neither a binding nor a parameter, but was instead {innerExpr.GetType().Name}.");
 
                     var firstParam = (SyntaxDeclParam)innerExpr;
@@ -1846,10 +1849,17 @@ public partial class Parser(SourceFile sourceFile)
             case TokenKind.Identifier when PeekAt(1, TokenKind.EqualGreater):
             {
                 var paramName = Consume();
-                var param = new SyntaxDeclParam(new SyntaxToken(TokenKind.Var, Location.Nowhere) { IsCompilerGenerated = true }, paramName);
+                var param = new SyntaxDeclParam(null, new SyntaxToken(TokenKind.Var, Location.Nowhere) { IsCompilerGenerated = true }, paramName);
                 var tokenArrow = Consume();
                 var body = At(TokenKind.OpenBrace) ? ParseCompound() : ParseExpr(ExprParseContext.Default);
                 return new SyntaxExprLambda([param], tokenArrow, body);
+            }
+
+            case TokenKind.Ref:
+            {
+                var tokenRef = Consume();
+                var operand = ParsePrimaryExpr(ExprParseContext.Default);
+                return new SyntaxExprRef(tokenRef, operand);
             }
 
             case TokenKind.Global:
@@ -2099,10 +2109,11 @@ public partial class Parser(SourceFile sourceFile)
                         return ParseFunctionDeclStartingAtName(null, [], returnType);
                     }
 
-                    if (IsDefinitelyTypeStart(Peek(2).Kind))
+                    if (IsDefinitelyTypeStart(Peek(2).Kind) || (PeekAt(2, TokenKind.Ref) && IsDefinitelyTypeStart(Peek(3).Kind)))
                     {
                         // this is a function declaration/definition, since the next token
-                        // within the open paren *must* start a type.
+                        // within the open paren *must* start a type (or is ref and the token
+                        // after *must* start a type.)
                         SyntaxNode returnType = CreateTypeNodeFromOperator(lhs, tokenOperator);
                         return ParseFunctionDeclStartingAtName(null, [], returnType);
                     }
@@ -2110,12 +2121,14 @@ public partial class Parser(SourceFile sourceFile)
                     Consume(TokenKind.Identifier, out var tokenIdent);
                     Consume(TokenKind.OpenParen, out var tokenOpenParen);
 
+                    // TODO(local): do a better check for ref params here.
+
                     var firstParamOrArg = ParseExpr(ExprParseContext.Default);
                     if (firstParamOrArg.CanBeType && At(TokenKind.Identifier))
                     {
                         // this should be a parameter declaration
                         SyntaxNode returnType = CreateTypeNodeFromOperator(lhs, tokenOperator);
-                        return ParseFunctionDeclStartingWithinParameters(null, [], returnType, tokenIdent, firstParamOrArg);
+                        return ParseFunctionDeclStartingWithinParameters(null, [], returnType, tokenIdent, null, firstParamOrArg);
                     }
 
                     // otherwise we give up, it's an invocation on the RHS

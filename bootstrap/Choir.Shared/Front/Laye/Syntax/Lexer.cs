@@ -60,6 +60,7 @@ public sealed class Lexer(SourceFile sourceFile)
         {"export", TokenKind.Export},
         {"operator", TokenKind.Operator},
         {"mut", TokenKind.Mut},
+        {"ref", TokenKind.Ref},
         {"new", TokenKind.New},
         {"delete", TokenKind.Delete},
         {"cast", TokenKind.Cast},

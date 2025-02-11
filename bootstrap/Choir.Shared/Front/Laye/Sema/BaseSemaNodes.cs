@@ -32,6 +32,7 @@ public enum ValueCategory
     RValue,
     LValue,
     Register,
+    Reference,
 }
 
 public static class ValueCategoryExtensions
@@ -44,6 +45,7 @@ public static class ValueCategoryExtensions
             case ValueCategory.LValue: return includeArticle ? "an l-value" : "l-value";
             case ValueCategory.RValue: return includeArticle ? "an r-value" : "r-value";
             case ValueCategory.Register: return includeArticle ? "a register" : "register";
+            case ValueCategory.Reference: return includeArticle ? "a reference" : "reference";
         }
     }
 }
@@ -374,6 +376,7 @@ public abstract class SemaExpr(Location location, SemaTypeQual type) : BaseSemaN
     public ValueCategory ValueCategory { get; set; } = ValueCategory.RValue;
     public bool IsLValue => ValueCategory == ValueCategory.LValue;
     public bool IsRegister => ValueCategory == ValueCategory.Register;
+    public bool IsReference => ValueCategory == ValueCategory.Reference;
     public bool IsDiscardable { get; set; } = false;
 }
 

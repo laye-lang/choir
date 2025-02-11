@@ -371,10 +371,18 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
             var paramDecl = function.ParameterDecls[i];
             var paramInfo = functionInfo.ParameterInfos[i] = new()
             {
-                Class = Classify(paramDecl.ParamType),
+                Class = paramDecl.IsRefParam ? (ValueClass.Integer, ValueClass.NoClass) : Classify(paramDecl.ParamType),
             };
 
-            if (paramInfo.Class.Lo == ValueClass.Memory)
+            if (paramDecl.IsRefParam)
+            {
+                paramInfo.Semantics = ParameterSemantics.Value;
+                //if (cc == CallingConvention.Laye && !paramDecl.ParamType.IsMutable)
+                //    paramInfo.Semantics = ParameterSemantics.ConstReference;
+                //else if (Context.Abi.PassMemoryValuesByAddress)
+                //    paramInfo.Semantics = ParameterSemantics.Reference;
+            }
+            else if (paramInfo.Class.Lo == ValueClass.Memory)
             {
                 if (cc == CallingConvention.Laye && !paramDecl.ParamType.IsMutable)
                     paramInfo.Semantics = ParameterSemantics.ConstReference;
@@ -383,7 +391,9 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
             }
 
             LLVMTypeRef paramType;
-            if (paramInfo.Semantics is ParameterSemantics.Reference or ParameterSemantics.ConstReference)
+            if (paramDecl.IsRefParam)
+                paramType = LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
+            else if (paramInfo.Semantics is ParameterSemantics.Reference or ParameterSemantics.ConstReference)
                 paramType = LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
             else paramType = GenerateType(paramDecl.ParamType);
             parameterTypes.Add(paramType);
@@ -435,9 +445,19 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         for (int i = 0; i < function.ParameterDecls.Count; i++)
         {
             var paramType = f.Params[i].TypeOf;
-            var paramLocal = builder.BuildAlloca(paramType, "param");
-            builder.BuildStore(f.GetParam((uint)i + paramOffset), paramLocal);
-            _declaredValues[function.ParameterDecls[i]] = paramLocal;
+            if (function.ParameterDecls[i].IsRefParam)
+            {
+                _declaredValues[function.ParameterDecls[i]] = f.GetParam((uint)i + paramOffset);
+                //var paramLocal = builder.BuildAlloca(paramType, "ref.param");
+                //builder.BuildStore(f.GetParam((uint)i + paramOffset), paramLocal);
+                //_declaredValues[function.ParameterDecls[i]] = paramLocal;
+            }
+            else
+            {
+                var paramLocal = builder.BuildAlloca(paramType, "param");
+                builder.BuildStore(f.GetParam((uint)i + paramOffset), paramLocal);
+                _declaredValues[function.ParameterDecls[i]] = paramLocal;
+            }
         }
 
         BuildStmt(builder, function.Body);
@@ -736,8 +756,9 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     break;
                 }
 
+                // LValue and Reference LHS targets will both be the same pointer, they're just semantically different in the source language.
                 var target = BuildExpr(builder, assign.Target);
-                Context.Assert(target.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Can't assign to non-pointer target.");
+                Context.Assert(target.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, assign.Target.Location, "Can't assign to non-pointer target.");
                 BuildExprIntoMemory(builder, assign.Value, target);
             } break;
 
@@ -1223,6 +1244,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                         }
 
                         case CastKind.ReferenceToLValue: return BuildExpr(builder, cast.Operand);
+                        //case CastKind.ReferenceToLValue: return builder.BuildLoad2(LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0), BuildExpr(builder, cast.Operand), "ref2lval");
                         case CastKind.LValueToReference: return BuildExpr(builder, cast.Operand);
                         case CastKind.PointerToLValue: return BuildExpr(builder, cast.Operand);
                         case CastKind.Implicit: return BuildExpr(builder, cast.Operand);
