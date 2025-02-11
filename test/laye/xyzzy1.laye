@@ -1,4 +1,4 @@
 int main() {
-    xyzzy;
+    xyzzy; // Nothing happens.
     return 0;
 }
