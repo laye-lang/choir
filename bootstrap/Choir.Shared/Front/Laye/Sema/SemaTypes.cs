@@ -666,6 +666,7 @@ public sealed class SemaTypeLiteralInteger
 {
     public static readonly SemaTypeLiteralInteger Instance = new();
 
+    public override bool IsNumeric { get; } = true;
     public override bool IsInteger { get; } = true;
 
     private SemaTypeLiteralInteger()
@@ -680,6 +681,7 @@ public sealed class SemaTypeLiteralFloat
 {
     public static readonly SemaTypeLiteralFloat Instance = new();
 
+    public override bool IsNumeric { get; } = true;
     public override bool IsFloat { get; } = true;
 
     private SemaTypeLiteralFloat()

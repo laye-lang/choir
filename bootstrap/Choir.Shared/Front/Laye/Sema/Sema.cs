@@ -1564,6 +1564,9 @@ public partial class Sema
                 if (!operand.Type.CanonicalType.IsNumeric)
                     return UndefinedOperator();
 
+                if (typeHint is not null)
+                    operand = ConvertOrError(operand, typeHint);
+
                 return new SemaExprNegate(operand);
             }
 
@@ -1573,6 +1576,9 @@ public partial class Sema
                 if (!operand.Type.CanonicalType.IsNumeric)
                     return UndefinedOperator();
 
+                if (typeHint is not null)
+                    operand = ConvertOrError(operand, typeHint);
+
                 return operand;
             }
 
@@ -1581,6 +1587,9 @@ public partial class Sema
                 operand = LValueToRValue(operand);
                 if (!operand.Type.CanonicalType.IsInteger)
                     return UndefinedOperator();
+
+                if (typeHint is not null)
+                    operand = ConvertOrError(operand, typeHint);
 
                 return new SemaExprComplement(operand);
             }
@@ -1620,7 +1629,13 @@ public partial class Sema
             {
                 operand = LValueToRValue(operand);
                 if (operand.Type.IsBool)
+                {
+                    if (typeHint is not null)
+                        operand = ConvertOrError(operand, typeHint);
+
                     return new SemaExprLogicalNot(operand);
+                }
+
                 return UndefinedOperator();
             }
         }
