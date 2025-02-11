@@ -172,7 +172,7 @@ public record class BaseLayeDriverOptions<TSelf, TArgParseState>
         }
 
         if (state.OutputColoring == Driver.OutputColoring.Auto)
-            state.OutputColoring = Console.IsErrorRedirected ? Driver.OutputColoring.Never : Driver.OutputColoring.Always;
+            state.OutputColoring = (Console.IsOutputRedirected || Console.IsErrorRedirected) ? Driver.OutputColoring.Never : Driver.OutputColoring.Always;
         options.OutputColoring = state.OutputColoring == Driver.OutputColoring.Always;
 
         return options;
