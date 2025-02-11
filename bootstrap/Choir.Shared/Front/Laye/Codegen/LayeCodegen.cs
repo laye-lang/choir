@@ -119,6 +119,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
     private readonly Dictionary<SemaStmt, LLVMBasicBlockRef> _continueTargets = [];
 
     private LLVMValueRef _assertHandlerFunction = default;
+    private LLVMValueRef _doNothingFunction = default;
 
     private SemaDeclFunction? CurrentFunction { get; set; }
     private LLVMValueRef CurrentFunctionValue => CurrentFunction is null ? default : _declaredValues[CurrentFunction];
@@ -500,6 +501,19 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         return _assertHandlerFunction;
     }
 
+    private LLVMValueRef GetDoNothingFunction()
+    {
+        if (_doNothingFunction.Handle != IntPtr.Zero)
+            return _doNothingFunction;
+
+        var doNothingType = LLVMTypeRef.CreateFunction(LLVMTypeRef.Void, [], false);
+        _doNothingFunction = LlvmModule.AddFunction("llvm.donothing", doNothingType);
+        _doNothingFunction.AddNoUnwindAttributeAtIndex(LlvmContext, LLVMAttributeIndex.LLVMAttributeFunctionIndex);
+        _doNothingFunction.AddReadNoneAttributeAtIndex(LlvmContext, LLVMAttributeIndex.LLVMAttributeFunctionIndex);
+
+        return _doNothingFunction;
+    }
+
     private void GenerateDefers(LLVMBuilderRef builder, SemaDeferStackNode? current, SemaDeferStackNode? last)
     {
         while (current != last)
@@ -551,7 +565,13 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
             case SemaStmtXyzzy:
             {
-                // Nothing happens.
+                var doNothing = GetDoNothingFunction();
+
+                unsafe
+                {
+                    // Nothing happens.
+                    builder.BuildCall2(LLVM.GlobalGetValueType(doNothing), doNothing, []);
+                }
             } break;
 
             case SemaStmtDefer:

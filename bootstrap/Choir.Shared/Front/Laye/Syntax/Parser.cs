@@ -929,6 +929,7 @@ public partial class Parser(SourceFile sourceFile)
 
         switch (CurrentToken.Kind)
         {
+            case TokenKind.SemiColon:
             case TokenKind.OpenBrace:
             case TokenKind.Assert:
             case TokenKind.Break:
@@ -974,6 +975,14 @@ public partial class Parser(SourceFile sourceFile)
     {
         switch (CurrentToken.Kind)
         {
+            case TokenKind.SemiColon:
+            {
+                var tokenSemiColon = Consume();
+                Context.Diag.Error(tokenSemiColon.Location, "Empty statements are not allowed.");
+                Context.Diag.Note($"Did you mean to use the {Colors.LayeKeyword()}xyzzy{Colors.Default} statement?");
+                return new SyntaxStmtExpr(new SyntaxExprEmpty(tokenSemiColon), tokenSemiColon);
+            }
+
             case TokenKind.OpenBrace: return ParseCompound();
 
             case TokenKind.Assert:
@@ -1767,12 +1776,6 @@ public partial class Parser(SourceFile sourceFile)
             {
                 Context.Diag.ICE($"a token which definitely starts a type (kind {CurrentToken.Kind}) made it to the primary expression parser");
                 throw new UnreachableException();
-            }
-
-            case TokenKind.SemiColon:
-            {
-                var tokenSemiColon = Consume();
-                return new SyntaxExprEmpty(tokenSemiColon);
             }
 
 #if false
