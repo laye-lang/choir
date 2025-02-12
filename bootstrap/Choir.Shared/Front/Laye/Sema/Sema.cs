@@ -1065,6 +1065,14 @@ public partial class Sema
             return SemaTypePoison.Instance.Qualified(nameref.Location);
         }
 
+        if (lookupResult is LookupOverloads exprOverloads)
+        {
+            return new SemaExprOverloadSet(nameref.Location, exprOverloads.Decls)
+            {
+                ValueCategory = ValueCategory.RValue,
+            };
+        }
+
         Context.Assert(lookupResult is LookupSuccess, nameref.Location, "The result of lookup should be a success at this point, all other cases should have been handled previously.");
         
         var success = (LookupSuccess)lookupResult;
