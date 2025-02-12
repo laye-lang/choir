@@ -70,12 +70,15 @@ public partial class Sema
                     declFunction.ReturnType.CanonicalType.Type == context.Types.LayeTypeInt &&
                     declFunction.ParameterDecls.Count == 0 &&
                     declFunction.Body is not null &&
+                    !declFunction.IsForeign &&
                     module.ModuleName == LayeConstants.ProgramModuleName)
                 {
                     if (declFunction.Linkage is not Linkage.Internal and not Linkage.Exported)
-                        module.Context.Diag.Error("The 'main' function must either be defined with no linkage or as 'export'.");
+                        module.Context.Diag.Error("The Laye 'main' function must either be defined with no linkage or as 'export'.");
 
                     declFunction.Linkage = Linkage.Exported;
+                    declFunction.ForeignSymbolName = LayeConstants.EntryFunctionName;
+                    declFunction.IsForeign = true;
                 }
 
                 if (decl is SemaDeclNamed declNamed)

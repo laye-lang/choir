@@ -2,6 +2,8 @@
 
 public static class LayeConstants
 {
+    public const string EntryFunctionName = "__laye_main";
+
     public const string ProgramModuleName = ".program";
 
     public const string OperatorNamePrefix = ".__laye_operator";

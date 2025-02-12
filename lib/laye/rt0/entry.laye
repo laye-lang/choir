@@ -6,11 +6,11 @@ export foreign noreturn exit(int32 exit_code);
 // A Laye program's `main` function, hand-mangled.
 // This is expected to be provided by a "program" module, a Laye module with no `module` declaration,
 // so its mangling is predictable without special rules.
-foreign int _L4_mainfi();
+foreign int __laye_main();
 
 // Export libc's `main` function, then call Laye's main.
 // This is so Laye programs can interface with C by default, since libc needs to do its special initialization.
 export foreign int32 main(int32 argc, int8 mut[*] mut[*] argv)
 {
-    return cast(int32) _L4_mainfi();
+    return cast(int32) __laye_main();
 }
