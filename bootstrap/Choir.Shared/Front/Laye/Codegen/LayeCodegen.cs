@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.Text;
 
 using Choir.CommandLine;
@@ -332,6 +333,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
 
             case SemaTypePointer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
             case SemaTypeBuffer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
+
+            case SemaTypeRange typeRange:
+            {
+                return LLVMTypeRef.CreateArray(LLVMTypeRef.Int8, (uint)type.Size.Bytes);
+            }
         }
     }
 
@@ -912,6 +918,29 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     }
                 } break;
 
+                case SemaExprRange range:
+                {
+                    var rangeType = (SemaTypeRange)range.Type.CanonicalType.Type;
+
+                    var leftAddr = tempAddr;
+                    BuildExprIntoMemory(builder, range.Left, leftAddr);
+
+                    var rightAddr = builder.BuildPtrAdd(tempAddr, rangeType.ElementType.Size.AlignedTo(rangeType.ElementType.Align), "range.end");
+                    BuildExprIntoMemory(builder, range.Right, rightAddr);
+                } break;
+
+                case SemaExprEvaluatedConstant { Value: { Kind: EvaluatedConstantKind.Range, RangeValue: { } rangeValue } }:
+                {
+                    var rangeType = (SemaTypeRange)expr.Type.CanonicalType.Type;
+                    var rangeElementType = GenerateType(rangeType.ElementType);
+
+                    var leftAddr = tempAddr;
+                    builder.BuildStore(LLVMValueRef.CreateConstInt(rangeElementType, (ulong)rangeValue.Begin, true), leftAddr).SetAlignment((uint)rangeType.ElementType.Align.Bytes);
+
+                    var rightAddr = builder.BuildPtrAdd(tempAddr, rangeType.ElementType.Size.AlignedTo(rangeType.ElementType.Align), "range.end");
+                    builder.BuildStore(LLVMValueRef.CreateConstInt(rangeElementType, (ulong)rangeValue.End, true), rightAddr).SetAlignment((uint)rangeType.ElementType.Align.Bytes);
+                } break;
+
                 case SemaExprCall call:
                 {
                     Context.Assert(call.Callee.Type.CanonicalType.Type is SemaTypeFunction, "The call expression only works on functions");
@@ -1040,6 +1069,24 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     var ptradd = builder.BuildPtrAdd(lvalue, structField.FieldOffset, "field.ptradd");
                     ptradd.Alignment = (uint)structField.Type.Align.Bytes;
                     return ptradd;
+                }
+
+                case SemaExprFieldRange rangeField:
+                {
+                    var rangeElementType = rangeField.Type;
+
+                    var lvalue = BuildExpr(builder, rangeField.Operand);
+                    Context.Assert(lvalue.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Range field lookup requires an lvalue, which will be of type `ptr`.");
+
+                    var fieldPtr = rangeField.RangeField switch
+                    {
+                        RangeField.Begin => lvalue,
+                        RangeField.End => builder.BuildPtrAdd(lvalue, rangeElementType.Size.AlignedTo(rangeElementType.Align), "range.end.ptradd"),
+                        _ => throw new UnreachableException(),
+                    };
+
+                    fieldPtr.Alignment = (uint)rangeElementType.Align.Bytes;
+                    return fieldPtr;
                 }
 
                 case SemaExprIndexBuffer bufferIndex:
