@@ -1,0 +1,4 @@
+int main() {
+    int.. r = 1 + 2 .. 5;
+    return r.end - r.begin - 2;
+}
