@@ -48,13 +48,6 @@ public partial class Parser(SourceFile sourceFile)
         TokenKind.Var when !PeekAt(1, TokenKind.OpenBrace) => true,
         _ => false,
     };
-
-    private bool IsDefinitelyExprStart(TokenKind kind) => kind switch
-    {
-        TokenKind.LiteralFloat or TokenKind.LiteralInteger or
-        TokenKind.LiteralRune or TokenKind.LiteralString => true,
-        _ => false,
-    };
     
     public SourceFile SourceFile { get; } = sourceFile;
     public ChoirContext Context { get; } = sourceFile.Context;
@@ -953,13 +946,13 @@ public partial class Parser(SourceFile sourceFile)
             {
                 var location = CurrentLocation;
                 var syntax = ParseExpr(ExprParseContext.CheckForDeclarations);
-                if (syntax is SyntaxExprEmpty syntaxEmpty) return new SyntaxStmtExpr(syntax, syntaxEmpty.TokenSemiColon);
+                //if (syntax is SyntaxExprEmpty syntaxEmpty) return new SyntaxStmtExpr(syntax, syntaxEmpty.Location);
                 if (location.Offset == CurrentLocation.Offset)
                 {
                     Context.Diag.Error(CurrentLocation, "expected an expression");
                     var token = CurrentToken;
                     SyncThrough(TokenKind.SemiColon, TokenKind.CloseBrace);
-                    return new SyntaxExprEmpty(token);
+                    return new SyntaxExprEmpty(token.Location);
                 }
 
                 if (syntax.IsDecl) return syntax;
@@ -980,7 +973,7 @@ public partial class Parser(SourceFile sourceFile)
                 var tokenSemiColon = Consume();
                 Context.Diag.Error(tokenSemiColon.Location, "Empty statements are not allowed.");
                 Context.Diag.Note($"Did you mean to use the {Colors.LayeKeyword()}xyzzy{Colors.Default} statement?");
-                return new SyntaxStmtExpr(new SyntaxExprEmpty(tokenSemiColon), tokenSemiColon);
+                return new SyntaxStmtExpr(new SyntaxExprEmpty(tokenSemiColon.Location), tokenSemiColon);
             }
 
             case TokenKind.OpenBrace: return ParseCompound();
@@ -1569,7 +1562,7 @@ public partial class Parser(SourceFile sourceFile)
             
             SyntaxNode initializer;
             if (At(TokenKind.Comma, TokenKind.CloseBrace, TokenKind.SemiColon))
-                initializer = new SyntaxExprEmpty(new SyntaxToken(TokenKind.Missing, new Location(CurrentLocation.Offset, 0, SourceFile.FileId)));
+                initializer = new SyntaxExprEmpty(new Location(CurrentLocation.Offset, 0, SourceFile.FileId));
             else initializer = ParseExpr(ExprParseContext.Default);
 
             return new SyntaxConstructorInitDesignated(location, designators, initializer);
@@ -1602,7 +1595,7 @@ public partial class Parser(SourceFile sourceFile)
             
             SyntaxNode initializer;
             if (At(TokenKind.Comma, TokenKind.CloseBrace, TokenKind.SemiColon))
-                initializer = new SyntaxExprEmpty(new SyntaxToken(TokenKind.Missing, new Location(CurrentLocation.Offset, 0, SourceFile.FileId)));
+                initializer = new SyntaxExprEmpty(new Location(CurrentLocation.Offset, 0, SourceFile.FileId));
             else initializer = ParseExpr(ExprParseContext.Default);
 
             return new SyntaxConstructorInitDesignated(designator.Location, [designator], initializer);
@@ -1611,60 +1604,60 @@ public partial class Parser(SourceFile sourceFile)
         return new SyntaxConstructorInit(exprValue.Location, exprValue);
     }
 
+    private static bool CanStartExpr(TokenKind kind) => kind switch
+    {
+        TokenKind.Alignof or
+        TokenKind.Ampersand or
+        TokenKind.Bool or
+        TokenKind.BoolSized or
+        TokenKind.BuiltinFFIBool or
+        TokenKind.BuiltinFFIChar or
+        TokenKind.BuiltinFFIDouble or
+        TokenKind.BuiltinFFIFloat or
+        TokenKind.BuiltinFFIInt or
+        TokenKind.BuiltinFFILong or
+        TokenKind.BuiltinFFILongDouble or
+        TokenKind.BuiltinFFILongLong or
+        TokenKind.BuiltinFFIShort or
+        TokenKind.Cast or
+        TokenKind.ColonColon or
+        TokenKind.Countof or
+        TokenKind.Do or
+        TokenKind.Eval or
+        TokenKind.False or
+        TokenKind.FloatSized or
+        TokenKind.Global or
+        TokenKind.Identifier or
+        TokenKind.If or
+        TokenKind.Int or
+        TokenKind.IntSized or
+        TokenKind.LiteralFloat or
+        TokenKind.LiteralInteger or
+        TokenKind.LiteralRune or
+        TokenKind.LiteralString or
+        TokenKind.Minus or
+        TokenKind.MinusMinus or
+        TokenKind.Mut or
+        TokenKind.New or
+        TokenKind.Nil or
+        TokenKind.Not or
+        TokenKind.Offsetof or
+        TokenKind.OpenParen or
+        TokenKind.Plus or
+        TokenKind.Rankof or
+        TokenKind.Sizeof or
+        TokenKind.Star or
+        TokenKind.Tilde or
+        TokenKind.True or
+        TokenKind.Try or
+        TokenKind.Typeof or
+        TokenKind.Var or
+        TokenKind.Void => true,
+        _ => false,
+    };
+
     private SyntaxNode ParsePrimaryExprContinuation(ExprParseContext parseContext, SyntaxNode primary)
     {
-        static bool CanStartExpr(TokenKind kind) => kind switch
-        {
-            TokenKind.Alignof or
-            TokenKind.Ampersand or
-            TokenKind.Bool or
-            TokenKind.BoolSized or
-            TokenKind.BuiltinFFIBool or
-            TokenKind.BuiltinFFIChar or
-            TokenKind.BuiltinFFIDouble or
-            TokenKind.BuiltinFFIFloat or
-            TokenKind.BuiltinFFIInt or
-            TokenKind.BuiltinFFILong or
-            TokenKind.BuiltinFFILongDouble or
-            TokenKind.BuiltinFFILongLong or
-            TokenKind.BuiltinFFIShort or
-            TokenKind.Cast or
-            TokenKind.ColonColon or
-            TokenKind.Countof or
-            TokenKind.Do or
-            TokenKind.Eval or
-            TokenKind.False or
-            TokenKind.FloatSized or
-            TokenKind.Global or
-            TokenKind.Identifier or
-            TokenKind.If or
-            TokenKind.Int or
-            TokenKind.IntSized or
-            TokenKind.LiteralFloat or
-            TokenKind.LiteralInteger or
-            TokenKind.LiteralRune or
-            TokenKind.LiteralString or
-            TokenKind.Minus or
-            TokenKind.MinusMinus or
-            TokenKind.Mut or
-            TokenKind.New or
-            TokenKind.Nil or
-            TokenKind.Not or
-            TokenKind.Offsetof or
-            TokenKind.OpenParen or
-            TokenKind.Plus or
-            TokenKind.Rankof or
-            TokenKind.Sizeof or
-            TokenKind.Star or
-            TokenKind.Tilde or
-            TokenKind.True or
-            TokenKind.Try or
-            TokenKind.Typeof or
-            TokenKind.Var or
-            TokenKind.Void => true,
-            _ => false,
-        };
-
         switch (CurrentToken.Kind)
         {
             default: return primary;
@@ -2055,6 +2048,13 @@ public partial class Parser(SourceFile sourceFile)
                 return new SyntaxExprUnaryPrefix(tokenOperator, expr);
             }
 
+            case TokenKind.DotDot:
+            case TokenKind.DotDotEqual:
+            {
+                var lhs = new SyntaxExprEmpty(CurrentLocation);
+                return ParseBinaryExpr(ExprParseContext.Default, lhs);
+            }
+
             case TokenKind.If:
             {
                 var exprIf = ParseIf();
@@ -2090,6 +2090,12 @@ public partial class Parser(SourceFile sourceFile)
             Advance();
 
             SyntaxNode? rhs = null;
+            if (tokenOperator.Kind is TokenKind.DotDot or TokenKind.DotDotEqual && !CanStartExpr(CurrentToken.Kind))
+            {
+                lhs = new SyntaxExprBinary(lhs, new SyntaxExprEmpty(CurrentLocation), tokenOperator);
+                continue;
+            }
+
             if ((parseContext == ExprParseContext.CheckForDeclarations || parseContext == ExprParseContext.ForLoopInitializer) &&
                 tokenOperator.Kind is TokenKind.Star &&
                 At(TokenKind.Identifier, TokenKind.Operator) &&

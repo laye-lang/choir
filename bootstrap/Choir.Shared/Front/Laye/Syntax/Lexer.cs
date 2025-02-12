@@ -282,7 +282,15 @@ public sealed class Lexer(SourceFile sourceFile)
             case '}': Advance(); tokenInfo.Kind = TokenKind.CloseBrace; break;
             case ';': Advance(); tokenInfo.Kind = TokenKind.SemiColon; break;
             case ',': Advance(); tokenInfo.Kind = TokenKind.Comma; break;
-            case '.': Advance(); tokenInfo.Kind = TokenKind.Dot; break;
+            
+            case '.':
+            {
+                Advance();
+                tokenInfo.Kind
+                        = TryAdvance('.')
+                        ? TryAdvance('=') ? TokenKind.DotDotEqual : TokenKind.DotDot
+                        : TokenKind.Dot;
+            } break;
 
             case '~':
             {

@@ -9,9 +9,9 @@ public enum NamerefKind
     Implicit,
 }
 
-public sealed class SyntaxExprEmpty(SyntaxToken tokenSemiColon) : SyntaxNode(tokenSemiColon.Location)
+public sealed class SyntaxExprEmpty(Location location)
+    : SyntaxNode(location)
 {
-    public SyntaxToken TokenSemiColon { get; } = tokenSemiColon;
 }
 
 public sealed class SyntaxTemplateArguments(IReadOnlyList<SyntaxNode> templateArguments)

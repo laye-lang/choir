@@ -83,6 +83,8 @@ public enum TokenKind : ushort
     GreaterGreaterEqual,
     GreaterGreaterGreater,
     GreaterGreaterGreaterEqual,
+    DotDot,
+    DotDotEqual,
     SlashEqual,
     SlashColon,
     SlashColonEqual,
@@ -199,6 +201,8 @@ public static class TokenKindExtensions
         TokenKind.Greater or TokenKind.GreaterEqual or
         TokenKind.LessColon or TokenKind.LessEqualColon or
         TokenKind.ColonGreater or TokenKind.ColonGreaterEqual => 20,
+
+        TokenKind.DotDot or TokenKind.DotDotEqual => 25,
 
         TokenKind.Ampersand or TokenKind.Pipe or TokenKind.Tilde or
         TokenKind.LessLess or TokenKind.GreaterGreater or
