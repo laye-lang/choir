@@ -444,6 +444,8 @@ public partial class Sema
                                 typeWhereMessage = $"Specify a type here, such as {Context.Types.LayeTypeFloatSized(64).ToDebugString(Colors)}{Colors.White}, instead of {Colors.LayeKeyword()}var{Colors.White} to fix this error.";
                             else if (evalConst.Value.Kind == EvaluatedConstantKind.String)
                                 typeWhereMessage = $"Specify a type here, such as {Context.Types.LayeTypeI8Slice.ToDebugString(Colors)}{Colors.White}, instead of {Colors.LayeKeyword()}var{Colors.White} to fix this error.";
+                            else if (evalConst.Value.Kind == EvaluatedConstantKind.Range)
+                                typeWhereMessage = $"Specify a type here, such as {Context.Types.LayeTypeInt.ToDebugString(Colors)}{Colors.White}.., instead of {Colors.LayeKeyword()}var{Colors.White} to fix this error.";
                             else typeWhereMessage = $"Specify a type here instead of {Colors.LayeKeyword()}var{Colors.White} to fix this error.";
 
                             Context.Diag.Note(declBinding.BindingType.Location, typeWhereMessage);
@@ -912,6 +914,7 @@ public partial class Sema
             case SyntaxTypeBuffer typeBuffer: return MaybeTypeExpr(which, AnalyseTypeBuffer(typeBuffer));
             case SyntaxTypeSlice typeSlice: return MaybeTypeExpr(which, AnalyseTypeSlice(typeSlice));
             case SyntaxTypeNilable typeNilable: return MaybeTypeExpr(which, AnalyseTypeNilable(typeNilable));
+            case SyntaxTypeRange typeRange: return MaybeTypeExpr(which, AnalyseTypeRange(typeRange));
 
             case SyntaxNameref nameref: return MaybeApplyExprTypeHint(which, AnalyseNameref(nameref, which), typeHint);
             case SyntaxIndex index: return MaybeApplyExprTypeHint(which, AnalyseIndex(index, which), typeHint);
@@ -991,6 +994,12 @@ public partial class Sema
     {
         var elementType = AnalyseType(typeNilable.Inner);
         return new SemaTypeNilable(elementType).Qualified(typeNilable.Location);
+    }
+
+    private SemaTypeQual AnalyseTypeRange(SyntaxTypeRange typeRange)
+    {
+        var elementType = AnalyseType(typeRange.Inner);
+        return new SemaTypeRange(elementType).Qualified(typeRange.Location);
     }
 
     private BaseSemaNode AnalyseNameref(SyntaxNameref nameref, TypeOrExpr which)
@@ -1742,11 +1751,32 @@ public partial class Sema
 
     private SemaExpr AnalyseBinary(SyntaxExprBinary binary, SemaTypeQual? typeHint = null)
     {
-        var left = LValueToRValue(AnalyseExpr(binary.Left));
-        var right = LValueToRValue(AnalyseExpr(binary.Right));
+        SemaExpr left, right;
+
+        if (binary.TokenOperator.Kind is TokenKind.DotDot or TokenKind.DotDotEqual)
+        {
+            if (binary.Left is SyntaxExprEmpty)
+            {
+                Context.Diag.Error(binary.Left.Location, "There is not enough context to deduce the begin value of this range.");
+                left = new SemaExprLiteralInteger(binary.Left.Location, 0, SemaTypePoison.Instance.Qualified(binary.Left.Location));
+            }
+            else left = LValueToRValue(AnalyseExpr(binary.Left));
+
+            if (binary.Right is SyntaxExprEmpty)
+            {
+                Context.Diag.Error(binary.Right.Location, "There is not enough context to deduce the end value of this range.");
+                right = new SemaExprLiteralInteger(binary.Right.Location, 0, SemaTypePoison.Instance.Qualified(binary.Right.Location));
+            }
+            else right = LValueToRValue(AnalyseExpr(binary.Right));
+        }
+        else
+        {
+            left = LValueToRValue(AnalyseExpr(binary.Left));
+            right = LValueToRValue(AnalyseExpr(binary.Right));
+        }
 
         if (left.Type.IsPoison || right.Type.IsPoison)
-            return new SemaExprBinaryBuiltIn(BinaryOperatorKind.Undefined, binary.TokenOperator, SemaTypePoison.InstanceQualified, left, right);
+            return new SemaExprBinaryBuiltIn(BinaryOperatorKind.Undefined, binary.TokenOperator, SemaTypePoison.Instance.Qualified(binary.Location), left, right);
 
         var leftType = left.Type.CanonicalType;
         var rightType = right.Type.CanonicalType;
@@ -1766,6 +1796,21 @@ public partial class Sema
 
         var lhsClass = ClassifyType(leftType);
         var rhsClass = ClassifyType(rightType);
+
+        // integer .. integer OR integer ..= integer
+        if (binary.TokenOperator.Kind is TokenKind.DotDot or TokenKind.DotDotEqual &&
+            lhsClass == BinaryOperatorKind.Integer && rhsClass == BinaryOperatorKind.Integer)
+        {
+            left = EvaluateIfPossible(left);
+            right = EvaluateIfPossible(right);
+
+            SemaTypeQual rangeType;
+            if (!ConvertToCommonTypeOrError(ref left, ref right, typeHint is { Type: SemaTypeRange typeHintRange } ? typeHintRange.ElementType : null))
+                rangeType = SemaTypePoison.Instance.Qualified(binary.Location);
+            else rangeType = new SemaTypeRange(left.Type).Qualified(binary.Location);
+
+            return new SemaExprRange(binary.TokenOperator, rangeType, left, right);
+        }
 
         // buffer + integer OR integer + buffer  pointer arithmetic
         if (binary.TokenOperator.Kind == TokenKind.Plus &&
@@ -2022,6 +2067,9 @@ public partial class Sema
         string fieldName = field.FieldNameText;
         var operand = AnalyseExpr(field.Operand);
 
+        if (operand.Type.IsPoison)
+            return new SemaExprFieldBadIndex(field.Location, operand, fieldName);
+
         switch (operand.Type.CanonicalType.Type)
         {
             default:
@@ -2052,6 +2100,30 @@ public partial class Sema
                 }
 
                 return new SemaExprFieldStructIndex(field.Location, operand, declField, declField.Offset)
+                {
+                    ValueCategory = ValueCategory.LValue,
+                };
+            }
+
+            case SemaTypeRange typeRange:
+            {
+                if (!operand.IsLValue)
+                {
+                    // TODO(local): figure out a better way to say this.
+                    Context.Diag.Error(field.Operand.Location, "Cannot index a non-lvalue.");
+                }
+
+                var rangeField = fieldName switch
+                {
+                    "begin" => RangeField.Begin,
+                    "end" => RangeField.End,
+                    _ => RangeField.Invalid,
+                };
+
+                if (rangeField == RangeField.Invalid)
+                    Context.Diag.Error(field.Operand.Location, $"Value of type {typeRange} does not have a field '{fieldName}'.");
+
+                return new SemaExprFieldRange(field.Location, operand, rangeField, fieldName, typeRange.ElementType)
                 {
                     ValueCategory = ValueCategory.LValue,
                 };

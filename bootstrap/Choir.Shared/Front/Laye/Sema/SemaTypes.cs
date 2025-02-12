@@ -307,6 +307,9 @@ public abstract class SemaContainerType<T>(SemaTypeQual elementType)
     where T : SemaContainerType<T>
 {
     public SemaTypeQual ElementType { get; } = elementType;
+    public override Align Align { get; } = elementType.Align;
+
+    public override bool IsLiteral => ElementType.IsLiteral;
 
     public override IEnumerable<BaseSemaNode> Children { get; } = [elementType];
 
@@ -462,6 +465,13 @@ public sealed class SemaTypeArray(ChoirContext context, SemaTypeQual elementType
     }
 
     public override bool TypeEquals(SemaTypeArray other, TypeComparison comp) => base.TypeEquals(other, comp) && Lengths.SequenceEqual(other.Lengths);
+}
+
+public sealed class SemaTypeRange(SemaTypeQual elementType)
+    : SemaContainerType<SemaTypeRange>(elementType)
+{
+    public override Size Size { get; } = elementType.Size * 2;
+    public override string ToDebugString(Colors colors) => $"{ElementType.ToDebugString(colors)}{colors.Default}..";
 }
 
 public sealed class SemaTypeErrorPair(SemaTypeQual resultType, SemaTypeQual errorType) 

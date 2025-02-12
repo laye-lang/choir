@@ -154,6 +154,12 @@ public class SemaPrinter : BaseTreePrinter<BaseSemaNode>
                 Console.Write(binaryBuiltIn.Kind);
                 Console.Write(")");
             } break;
+
+            case SemaExprField field:
+            {
+                Console.Write(C.LayeName());
+                Console.Write(field.FieldText);
+            } break;
         }
         
         Console.WriteLine(C.Default);

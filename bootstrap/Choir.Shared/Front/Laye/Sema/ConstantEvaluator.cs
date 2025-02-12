@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Numerics;
+﻿using System.Numerics;
 
 namespace Choir.Front.Laye.Sema;
 
@@ -9,14 +8,19 @@ public enum EvaluatedConstantKind
     Integer,
     Float,
     String,
+    Range,
 }
+
+public readonly record struct ConstRange(BigInteger Begin, BigInteger End);
 
 public readonly struct EvaluatedConstant
 {
     public readonly EvaluatedConstantKind Kind;
+
     public readonly bool BoolValue;
     public readonly BigInteger IntegerValue;
     public readonly string StringValue;
+    public readonly ConstRange RangeValue;
 
     public EvaluatedConstant(bool boolValue)
     {
@@ -37,6 +41,13 @@ public readonly struct EvaluatedConstant
         Kind = EvaluatedConstantKind.String;
         StringValue = stringValue;
     }
+
+    public EvaluatedConstant(ConstRange rangeValue)
+    {
+        Kind = EvaluatedConstantKind.Range;
+        RangeValue = rangeValue;
+        StringValue = "";
+    }
 }
 
 public sealed class ConstantEvaluator
@@ -44,6 +55,8 @@ public sealed class ConstantEvaluator
     public bool TryEvaluate(SemaExpr expr, out EvaluatedConstant value)
     {
         value = default;
+        if (expr.Type.IsPoison) return false;
+
         switch (expr)
         {
             default: return false;
@@ -84,6 +97,18 @@ public sealed class ConstantEvaluator
                 }
 
                 return false;
+            }
+
+            case SemaExprRange range:
+            {
+                if (!TryEvaluate(range.Left, out var leftConst))
+                    return false;
+
+                if (!TryEvaluate(range.Right, out var rightConst))
+                    return false;
+
+                value = new EvaluatedConstant(new ConstRange(leftConst.IntegerValue, rightConst.IntegerValue));
+                return true;
             }
 
             case SemaExprBinaryBuiltIn binaryBuiltIn:

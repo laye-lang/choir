@@ -26,6 +26,19 @@ public enum CastKind
     NoOp,
 }
 
+public enum RangeStyle
+{
+    Exclusive,
+    Inclusive,
+}
+
+public enum RangeField
+{
+    Invalid,
+    Begin,
+    End,
+}
+
 [Flags]
 public enum BinaryOperatorKind : long
 {
@@ -102,7 +115,7 @@ public abstract class SemaExprField(Location location, SemaExpr operand, string 
 }
 
 public sealed class SemaExprFieldBadIndex(Location location, SemaExpr operand, string fieldName)
-    : SemaExprField(location, operand, fieldName, SemaTypePoison.InstanceQualified)
+    : SemaExprField(location, operand, fieldName, SemaTypePoison.Instance.Qualified(location))
 {
 }
 
@@ -111,6 +124,12 @@ public sealed class SemaExprFieldStructIndex(Location location, SemaExpr structO
 {
     public Size FieldOffset { get; } = fieldOffset;
     public Align FieldAlign { get; } = field.FieldType.Align;
+}
+
+public sealed class SemaExprFieldRange(Location location, SemaExpr rangeOperand, RangeField rangeField, string fieldName, SemaTypeQual elementType)
+    : SemaExprField(location, rangeOperand, fieldName, elementType)
+{
+    public RangeField RangeField { get; } = rangeField;
 }
 
 public abstract class SemaExprIndex(Location location, SemaTypeQual type)
@@ -168,6 +187,12 @@ public sealed class SemaExprBinaryBuiltIn(BinaryOperatorKind kind, SyntaxToken o
     : SemaExprBinary(operatorToken, type, left, right)
 {
     public BinaryOperatorKind Kind { get; } = kind;
+}
+
+public sealed class SemaExprRange(SyntaxToken operatorToken, SemaTypeQual type, SemaExpr left, SemaExpr right)
+    : SemaExprBinary(operatorToken, type, left, right)
+{
+    public RangeStyle Style { get; } = operatorToken.Kind == TokenKind.DotDot ? RangeStyle.Exclusive : RangeStyle.Inclusive;
 }
 
 public sealed class SemaExprEvaluatedConstant(SemaExpr sourceExpr, EvaluatedConstant value, SemaTypeQual? type = null)
