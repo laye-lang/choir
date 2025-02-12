@@ -102,6 +102,7 @@ public sealed class SyntaxExprBinary(SyntaxNode lhs, SyntaxNode rhs, SyntaxToken
     public SyntaxNode Right { get; } = rhs;
     public SyntaxToken TokenOperator { get; } = tokenOperator;
 
+    public override bool CanBeType => TokenOperator.Kind == TokenKind.DotDot && Right is SyntaxExprEmpty && Left.CanBeType;
     public override IEnumerable<SyntaxNode> Children { get; } = [lhs, tokenOperator, rhs];
 }
 
@@ -372,6 +373,15 @@ public sealed class SyntaxTypeNilable(SyntaxNode inner)
 {
     public SyntaxNode Inner { get; } = inner;
     
+    public override bool CanBeType { get; } = true;
+    public override IEnumerable<SyntaxNode> Children { get; } = [inner];
+}
+
+public sealed class SyntaxTypeRange(SyntaxNode inner)
+    : SyntaxNode(inner.Location)
+{
+    public SyntaxNode Inner { get; } = inner;
+
     public override bool CanBeType { get; } = true;
     public override IEnumerable<SyntaxNode> Children { get; } = [inner];
 }

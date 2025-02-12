@@ -1812,7 +1812,7 @@ public partial class Sema
             return result;
         }
 
-        // "symmetric" built-ins handled with a lookup table
+        // any other "symmetric" built-ins handled with a lookup table
         if (lhsClass == rhsClass)
         {
             var operatorKind = BinaryOperatorKind.Undefined;

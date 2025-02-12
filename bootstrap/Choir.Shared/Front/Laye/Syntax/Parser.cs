@@ -1440,6 +1440,12 @@ public partial class Parser(SourceFile sourceFile)
                 Advance();
                 typeNode = new SyntaxTypeNilable(typeNode);
             } break;
+
+            case TokenKind.DotDot:
+            {
+                Advance();
+                typeNode = new SyntaxTypeRange(typeNode);
+            } break;
         }
 
         if (TryAdvance(TokenKind.Mut, out var tokenMut))
@@ -2048,6 +2054,7 @@ public partial class Parser(SourceFile sourceFile)
                 return new SyntaxExprUnaryPrefix(tokenOperator, expr);
             }
 
+            // TODO(local): I don't actually think this is the appropriate place to put this, but. it is what it is for now.
             case TokenKind.DotDot:
             case TokenKind.DotDotEqual:
             {
@@ -2097,7 +2104,7 @@ public partial class Parser(SourceFile sourceFile)
             }
 
             if ((parseContext == ExprParseContext.CheckForDeclarations || parseContext == ExprParseContext.ForLoopInitializer) &&
-                tokenOperator.Kind is TokenKind.Star &&
+                tokenOperator.Kind is TokenKind.Star or TokenKind.DotDot &&
                 At(TokenKind.Identifier, TokenKind.Operator) &&
                 lhs.CanBeType)
             {
@@ -2174,6 +2181,8 @@ public partial class Parser(SourceFile sourceFile)
         {
             if (tokenOperator.Kind == TokenKind.Star)
                 return new SyntaxTypePointer(inner);
+            else if (tokenOperator.Kind == TokenKind.DotDot)
+                return new SyntaxTypeRange(inner);
             else throw new UnreachableException();
         }
     }
