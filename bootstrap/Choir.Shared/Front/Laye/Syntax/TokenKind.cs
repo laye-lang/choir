@@ -29,7 +29,6 @@ public enum TokenKind : ushort
     Dot = '.',
     Slash = '/',
     Question = '?',
-    Caret = '^',
     
     __PrintableTokenEnd__ = 128,
     
@@ -82,7 +81,6 @@ public enum TokenKind : ushort
     SlashEqual,
     QuestionQuestion,
     QuestionQuestionEqual,
-    //CaretEqual,
 
     Var,
     Void,
@@ -204,8 +202,6 @@ public static class TokenKindExtensions
 
         TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 50,
 
-        //TokenKind.Caret => 60,
-
         _ => -1,
     };
 
@@ -222,13 +218,12 @@ public static class TokenKindExtensions
         TokenKind.PlusPipe or TokenKind.MinusPipe or
         TokenKind.PlusPercent or TokenKind.MinusPercent or
         TokenKind.Star or TokenKind.Slash or TokenKind.Percent or
-        //TokenKind.Caret => true,
         _ => false,
     };
 
     public static bool IsRightAssociativeBinaryOperator(this TokenKind kind) => kind switch
     {
-        TokenKind.QuestionQuestion or TokenKind.Caret => true,
+        TokenKind.QuestionQuestion => true,
         _ => false,
     };
 
@@ -250,8 +245,7 @@ public static class TokenKindExtensions
         TokenKind.GreaterGreaterEqual or
         TokenKind.GreaterGreaterGreaterEqual or
         TokenKind.SlashEqual or
-        TokenKind.QuestionQuestionEqual // or
-        //TokenKind.CaretEqual
+        TokenKind.QuestionQuestionEqual
             => true,
         _ => false,
     };
@@ -275,7 +269,6 @@ public static class TokenKindExtensions
         TokenKind.GreaterGreaterGreaterEqual => TokenKind.GreaterGreaterGreater,
         TokenKind.SlashEqual => TokenKind.Slash,
         TokenKind.QuestionQuestionEqual => TokenKind.QuestionQuestion,
-        //TokenKind.CaretEqual => TokenKind.Caret,
         _ => kind,
     };
 
@@ -304,7 +297,6 @@ public static class TokenKindExtensions
         TokenKind.Dot => ".",
         TokenKind.Slash => "/",
         TokenKind.Question => "?",
-        //TokenKind.Caret => "^",
 
         TokenKind.TildeEqual => "~=",
         TokenKind.BangEqual => "!=",
@@ -340,7 +332,6 @@ public static class TokenKindExtensions
         TokenKind.SlashEqual => "/=",
         TokenKind.QuestionQuestion => "??",
         TokenKind.QuestionQuestionEqual => "??=",
-        //TokenKind.CaretEqual => "^=",
 
         _ => "",
     };

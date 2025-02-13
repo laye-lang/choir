@@ -413,15 +413,6 @@ public sealed class Lexer(SourceFile sourceFile)
                     : TokenKind.Question;
             } break;
 
-#if false
-            case '^':
-            {
-                Advance();
-                tokenInfo.Kind = TokenKind.Caret;
-                //tokenInfo.Kind = TryAdvance('=') ? TokenKind.CaretEqual : TokenKind.Caret;
-            } break;
-#endif
-
             default:
             {
                 Context.Assert(!IsAtEnd, CurrentLocation, "the lexer reached the end of file in an unexpected place");
