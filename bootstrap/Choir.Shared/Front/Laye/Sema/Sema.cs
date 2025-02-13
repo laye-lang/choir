@@ -916,18 +916,18 @@ public partial class Sema
             case SyntaxTypeNilable typeNilable: return MaybeTypeExpr(which, AnalyseTypeNilable(typeNilable));
             case SyntaxTypeRange typeRange: return MaybeTypeExpr(which, AnalyseTypeRange(typeRange));
 
-            case SyntaxNameref nameref: return MaybeApplyExprTypeHint(which, AnalyseNameref(nameref, which), typeHint);
-            case SyntaxIndex index: return MaybeApplyExprTypeHint(which, AnalyseIndex(index, which), typeHint);
+            case SyntaxNameref nameref: return AnalyseNameref(nameref, which);
+            case SyntaxIndex index: return AnalyseIndex(index, which);
             case SyntaxTypeof @typeof: return AnalyseTypeof(@typeof, which);
 
             case SyntaxExprRef @ref: return AnalyseRef(@ref);
-            case SyntaxExprUnaryPrefix unaryPrefix: return MaybeApplyExprTypeHint(which, AnalyseUnaryPrefix(unaryPrefix, typeHint), typeHint);
-            case SyntaxExprUnaryPostfix unaryPostfix: return MaybeApplyExprTypeHint(which, AnalyseUnaryPostfix(unaryPostfix, typeHint), typeHint);
-            case SyntaxExprBinary binary: return MaybeApplyExprTypeHint(which, AnalyseBinary(binary, typeHint), typeHint);
-            case SyntaxExprCall call: return MaybeApplyExprTypeHint(which, AnalyseCall(call, typeHint), typeHint);
-            case SyntaxExprCast cast: return MaybeApplyExprTypeHint(which, AnalyseCast(cast, typeHint), typeHint);
-            case SyntaxExprField field: return MaybeApplyExprTypeHint(which, AnalyseField(field, typeHint), typeHint);
-            case SyntaxExprConstructor ctor: return MaybeApplyExprTypeHint(which, AnalyseConstructor(ctor, typeHint), typeHint);
+            case SyntaxExprUnaryPrefix unaryPrefix: return AnalyseUnaryPrefix(unaryPrefix, typeHint);
+            case SyntaxExprUnaryPostfix unaryPostfix: return AnalyseUnaryPostfix(unaryPostfix, typeHint);
+            case SyntaxExprBinary binary: return AnalyseBinary(binary, typeHint);
+            case SyntaxExprCall call: return AnalyseCall(call, typeHint);
+            case SyntaxExprCast cast: return AnalyseCast(cast, typeHint);
+            case SyntaxExprField field: return AnalyseField(field, typeHint);
+            case SyntaxExprConstructor ctor: return AnalyseConstructor(ctor, typeHint);
             case SyntaxGrouped grouped: return AnalyseGrouped(grouped, typeHint, which);
 
             case SyntaxExprSizeof @sizeof: return EvaluateIfPossible(AnalyseSizeof(@sizeof, which));
@@ -961,14 +961,6 @@ public partial class Sema
     {
         if (which.HasFlag(TypeOrExpr.Type)) return typeQual;
         return new SemaExprType(typeQual);
-    }
-
-    private BaseSemaNode MaybeApplyExprTypeHint(TypeOrExpr which, BaseSemaNode node, SemaTypeQual? typeHint)
-    {
-        if (node is SemaExpr expr && which.HasFlag(TypeOrExpr.Expr) && typeHint is not null)
-            return ConvertOrError(expr, typeHint);
-
-        return node;
     }
 
     private SemaTypeQual AnalyseTypePointer(SyntaxTypePointer typePointer)
@@ -1204,7 +1196,7 @@ public partial class Sema
             return new SemaTypeArray(Context, elementType, lengthExprs).Qualified(elementType.Location);
         }
 
-        indices = index.Indices.Select(expr => AnalyseExpr(expr)).ToArray();
+        indices = index.Indices.Select(expr => AnalyseExpr(expr, Context.Types.LayeTypeInt.Qualified(index.Location))).ToArray();
 
         Context.Assert(baseOperand is SemaExpr, index.Location, "Somehow we did not get an expression when the operand was not a type.");
         Context.Assert(which.HasFlag(TypeOrExpr.Expr), "Somehow we got an expr back for the operand of an index syntax, but we didn't expect an expr here.");
@@ -1216,8 +1208,11 @@ public partial class Sema
         {
             operand = LValueToRValue(operand);
 
+            if (indices.Length == 1 && indices[0].Type.IsRange)
+                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeBuffer.ElementType));
+
             for (int i = 0; i < indices.Length; i++)
-                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(Location.Nowhere));
+                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
 
             if (indices.Length != 1)
                 Context.Diag.Error(index.Location, $"Expected exactly one index to a buffer, but got {indices.Length}.");
@@ -1230,14 +1225,34 @@ public partial class Sema
         }
         else if (operandTypeCanon is SemaTypeArray typeArray)
         {
+            if (indices.Length == 1 && indices[0].Type.IsRange)
+                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeArray.ElementType));
+
             for (int i = 0; i < indices.Length; i++)
-                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(Location.Nowhere));
+                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
 
             if (indices.Length != typeArray.Arity)
                 Context.Diag.Error(index.Location, $"Expected {typeArray.Arity} indices, but got {indices.Length}.");
 
             var operandElementType = typeArray.ElementType;
             return new SemaExprIndexArray(operandElementType, operand, indices)
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+        else if (operandTypeCanon is SemaTypeSlice typeSlice)
+        {
+            if (indices.Length == 1 && indices[0].Type.IsRange)
+                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeSlice.ElementType));
+
+            for (int i = 0; i < indices.Length; i++)
+                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
+
+            if (indices.Length != 1)
+                Context.Diag.Error(index.Location, $"Expected exactly one index to a slice, but got {indices.Length}.");
+
+            var operandElementType = typeSlice.ElementType;
+            return new SemaExprIndexSlice(operandElementType, operand, indices[0])
             {
                 ValueCategory = ValueCategory.LValue
             };
@@ -1312,10 +1327,47 @@ public partial class Sema
         if (!which.HasFlag(TypeOrExpr.Expr))
             return ErrorExpectedType(@countof.Location);
 
-        var operand = AnalyseExpr(@countof.Operand);
-        var countofType = Context.Types.LayeTypeInt.Qualified(@countof.Location);
+        var typeInt = Context.Types.LayeTypeInt.Qualified(@countof.Location);
+        
+        SemaTypeQual? typeHint = null;
+        // NOTE(local): Hinting a binary `..` expression with the `int` type allows constant ranges to be well-typed.
+        if (countof.Operand is SyntaxExprBinary { TokenOperator: { Kind: TokenKind.DotDot or TokenKind.DotDotEqual } })
+            typeHint = typeInt.Qualified(countof.Location);
 
-        return new SemaExprCountof(@countof.Location, operand, countofType);
+        var operand = AnalyseTypeOrExpr(@countof.Operand, typeHint);
+        operand = EvaluateIfPossible(operand);
+
+        if (operand is SemaTypeQual { Type: { } operandType } operandTypeQual)
+        {
+            switch (operandType.CanonicalType)
+            {
+                case SemaTypeArray:
+                    break;
+
+                default:
+                {
+                    Context.Diag.Error(countof.Operand.Location, $"Cannot get the count of type {operandType.ToDebugString(Colors)}{Colors.Default}.");
+                } break;
+            }
+        }
+        else
+        {
+            var operandExpr = (SemaExpr)operand;
+            switch (operandExpr.Type.CanonicalType.Type)
+            {
+                case SemaTypeArray:
+                case SemaTypeSlice:
+                case SemaTypeRange:
+                    break;
+
+                default:
+                {
+                    Context.Diag.Error(operandExpr.Location, $"Cannot get the count of an expression of type {operandExpr.Type.ToDebugString(Colors)}{Colors.Default}.");
+                } break;
+            }
+        }
+
+        return new SemaExprCountof(@countof.Location, operand, typeInt);
     }
 
     private BaseSemaNode AnalyseLiteralBool(SyntaxToken literalBool, TypeOrExpr which, SemaTypeQual? typeHint)
@@ -1335,7 +1387,7 @@ public partial class Sema
         else if (typeHint.IsPoison)
             return literalExpr;
 
-        return MaybeApplyExprTypeHint(which, literalExpr, typeHint);
+        return literalExpr;
     }
 
     private BaseSemaNode AnalyseLiteralInteger(SyntaxToken literalInteger, TypeOrExpr which, SemaTypeQual? typeHint)
@@ -1353,7 +1405,7 @@ public partial class Sema
         if (typeHint is null || typeHint.IsPoison)
             return literalExpr;
 
-        return MaybeApplyExprTypeHint(which, literalExpr, typeHint);
+        return literalExpr;
     }
 
     private BaseSemaNode AnalyseLiteralString(SyntaxToken literalString, TypeOrExpr which, SemaTypeQual? typeHint)
@@ -1377,7 +1429,7 @@ public partial class Sema
         if (typeHint is null || typeHint.IsPoison)
             return literalExpr;
 
-        return MaybeApplyExprTypeHint(which, literalExpr, typeHint);
+        return literalExpr;
     }
 
     private BaseSemaNode AnalyseLiteralNil(SyntaxToken literalNil, TypeOrExpr which, SemaTypeQual? typeHint)
@@ -1805,7 +1857,7 @@ public partial class Sema
             right = EvaluateIfPossible(right);
 
             SemaTypeQual rangeType;
-            if (!ConvertToCommonTypeOrError(ref left, ref right, typeHint is { Type: SemaTypeRange typeHintRange } ? typeHintRange.ElementType : null))
+            if (!ConvertToCommonTypeOrError(ref left, ref right, typeHint is { Type: SemaTypeRange typeHintRange } ? typeHintRange.ElementType : typeHint))
                 rangeType = SemaTypePoison.Instance.Qualified(binary.Location);
             else rangeType = new SemaTypeRange(left.Type).Qualified(binary.Location);
 
@@ -1836,10 +1888,7 @@ public partial class Sema
                     right = ConvertOrError(right, Context.Types.LayeTypeInt.Qualified(right.Location));
             }
 
-            SemaExpr result = EvaluateIfPossible(new SemaExprBinaryBuiltIn(BinaryOperatorKind.Buffer | BinaryOperatorKind.Add, binary.TokenOperator, bufferType, left, right));
-            if (typeHint is not null) result = ConvertOrError(result, typeHint);
-
-            return result;
+            return EvaluateIfPossible(new SemaExprBinaryBuiltIn(BinaryOperatorKind.Buffer | BinaryOperatorKind.Add, binary.TokenOperator, bufferType, left, right));
         }
 
         // buffer - integer  pointer arithmetic
@@ -1851,10 +1900,7 @@ public partial class Sema
             if (rightType.IsLiteral)
                 right = ConvertOrError(right, Context.Types.LayeTypeInt.Qualified(right.Location));
 
-            SemaExpr result = EvaluateIfPossible(new SemaExprBinaryBuiltIn(BinaryOperatorKind.Buffer | BinaryOperatorKind.Sub, binary.TokenOperator, bufferType, left, right));
-            if (typeHint is not null) result = ConvertOrError(result, typeHint);
-
-            return result;
+            return EvaluateIfPossible(new SemaExprBinaryBuiltIn(BinaryOperatorKind.Buffer | BinaryOperatorKind.Sub, binary.TokenOperator, bufferType, left, right));
         }
 
         // any other "symmetric" built-ins handled with a lookup table
@@ -1895,10 +1941,7 @@ public partial class Sema
                 else binaryType = left.Type;
             }
 
-            SemaExpr result = EvaluateIfPossible(new SemaExprBinaryBuiltIn(operatorKind, binary.TokenOperator, binaryType, left, right));
-            if (typeHint is not null) result = ConvertOrError(result, typeHint);
-
-            return result;
+            return EvaluateIfPossible(new SemaExprBinaryBuiltIn(operatorKind, binary.TokenOperator, binaryType, left, right));
         }
 
         return UndefinedOperator();
@@ -2128,53 +2171,6 @@ public partial class Sema
                     ValueCategory = ValueCategory.LValue,
                 };
             }
-        }
-    }
-
-    private SemaExpr AnalyseIndexOLD(SyntaxIndex index, SemaTypeQual? typeHint = null)
-    {
-        var operand = AnalyseExpr(index.Operand);
-        var indices = index.Indices.Select(expr => AnalyseExpr(expr)).ToArray();
-
-        var operandTypeCanon = operand.Type.CanonicalType.Type;
-
-        if (operandTypeCanon is SemaTypeBuffer typeBuffer)
-        {
-            operand = LValueToRValue(operand);
-
-            for (int i = 0; i < indices.Length; i++)
-                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(Location.Nowhere));
-
-            if (indices.Length != 1)
-                Context.Diag.Error(index.Location, $"Expected exactly one index to a buffer, but got {indices.Length}.");
-
-            var elementType = typeBuffer.ElementType;
-            return new SemaExprIndexBuffer(elementType, operand, indices[0])
-            {
-                ValueCategory = ValueCategory.LValue
-            };
-        }
-        else if (operandTypeCanon is SemaTypeArray typeArray)
-        {
-            for (int i = 0; i < indices.Length; i++)
-                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(Location.Nowhere));
-
-            if (indices.Length != typeArray.Arity)
-                Context.Diag.Error(index.Location, $"Expected {typeArray.Arity} indices, but got {indices.Length}.");
-
-            var elementType = typeArray.ElementType;
-            return new SemaExprIndexArray(elementType, operand, indices)
-            {
-                ValueCategory = ValueCategory.LValue
-            };
-        }
-        else
-        {
-            Context.Diag.Error(index.Location, $"Cannot index value of type {operand.Type.ToDebugString(Colors)}.");
-            return new SemaExprIndexInvalid(operand, indices)
-            {
-                ValueCategory = ValueCategory.LValue
-            };
         }
     }
 

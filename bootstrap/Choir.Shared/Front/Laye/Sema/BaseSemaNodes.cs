@@ -165,6 +165,7 @@ public abstract class SemaType : BaseSemaNode
     public virtual bool IsArray { get; } = false;
     public virtual bool IsSlice { get; } = false;
     public virtual bool IsNilable { get; } = false;
+    public virtual bool IsRange { get; } = false;
 
     public abstract Size Size { get; }
     public virtual Align Align => Align.ForBytes(Size.Bytes);
@@ -276,6 +277,7 @@ public sealed class SemaTypeQual(SemaType type, Location location, TypeQualifier
     public bool IsArray => Type.IsArray;
     public bool IsSlice => Type.IsSlice;
     public bool IsNilable => Type.IsNilable;
+    public bool IsRange => Type.IsRange;
 
     public bool IsQualified => Qualifiers != TypeQualifiers.None;
     public bool IsMutable => Qualifiers.HasFlag(TypeQualifiers.Mutable);

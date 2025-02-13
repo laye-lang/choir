@@ -470,6 +470,7 @@ public sealed class SemaTypeArray(ChoirContext context, SemaTypeQual elementType
 public sealed class SemaTypeRange(SemaTypeQual elementType)
     : SemaContainerType<SemaTypeRange>(elementType)
 {
+    public override bool IsRange { get; } = true;
     public override Size Size { get; } = elementType.Size.AlignedTo(elementType.Align) * 2;
     public override string ToDebugString(Colors colors) => $"{ElementType.ToDebugString(colors)}{colors.Default}..";
 }

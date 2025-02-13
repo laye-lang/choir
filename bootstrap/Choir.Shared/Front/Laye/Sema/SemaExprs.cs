@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 
 using Choir.Front.Laye.Syntax;
@@ -153,12 +154,28 @@ public sealed class SemaExprIndexArray(SemaTypeQual type, SemaExpr operand, IRea
     public override IEnumerable<BaseSemaNode> Children { get; } = [operand, ..indices];
 }
 
+public sealed class SemaExprIndexSlice(SemaTypeQual type, SemaExpr operand, SemaExpr index)
+    : SemaExprIndex(operand.Location, type)
+{
+    public SemaExpr Operand { get; } = operand;
+    public SemaExpr Index { get; } = index;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand, index];
+}
+
 public sealed class SemaExprIndexInvalid(SemaExpr operand, IReadOnlyList<SemaExpr> indices)
     : SemaExprIndex(operand.Location, SemaTypePoison.InstanceQualified)
 {
     public SemaExpr Operand { get; } = operand;
     public IReadOnlyList<SemaExpr> Indices { get; } = indices;
     public override IEnumerable<BaseSemaNode> Children { get; } = [operand, ..indices];
+}
+
+public sealed class SemaExprSlice(Location location, SemaExpr operand, SemaExpr range, SemaTypeSlice sliceType)
+    : SemaExpr(location, sliceType.Qualified(location))
+{
+    public SemaExpr Operand { get; } = operand;
+    public SemaExpr Range { get; } = range;
+    public override IEnumerable<BaseSemaNode> Children { get; } = [operand, range];
 }
 
 public abstract class SemaExprUnary(SyntaxToken operatorToken, SemaTypeQual type, SemaExpr operand)

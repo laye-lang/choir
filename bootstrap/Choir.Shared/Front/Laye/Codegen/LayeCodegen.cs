@@ -334,6 +334,11 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
             case SemaTypePointer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
             case SemaTypeBuffer: return LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0);
 
+            case SemaTypeSlice typeSlice:
+            {
+                return LLVMTypeRef.CreateArray(LLVMTypeRef.Int8, (uint)(Context.Target.SizeOfPointer.Bytes + Context.Types.LayeTypeInt.Size.AlignedTo(Context.Target.AlignOfPointer).Bytes));
+            }
+
             case SemaTypeRange typeRange:
             {
                 return LLVMTypeRef.CreateArray(LLVMTypeRef.Int8, (uint)type.Size.Bytes);
@@ -901,6 +906,82 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "API Consistency")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "API Consistency")]
+    private LLVMValueRef GetRangeBeginFieldAddr(LLVMBuilderRef builder, LLVMValueRef rangeAddr, SemaTypeRange rangeType)
+    {
+        return rangeAddr;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "API Consistency")]
+    private LLVMValueRef GetRangeEndFieldAddr(LLVMBuilderRef builder, LLVMValueRef rangeAddr, SemaTypeRange rangeType)
+    {
+        var fieldOffset = rangeType.ElementType.Size.AlignedTo(rangeType.ElementType.Align);
+        return builder.BuildPtrAdd(rangeAddr, fieldOffset, "range.end");
+    }
+
+    private LLVMValueRef LoadRangeBeginField(LLVMBuilderRef builder, LLVMValueRef rangeAddr, SemaTypeRange rangeType)
+    {
+        var fieldAddr = GetRangeBeginFieldAddr(builder, rangeAddr, rangeType);
+        var load = builder.BuildLoad2(GenerateType(rangeType.ElementType), fieldAddr, "range.begin");
+        load.SetAlignment((uint)rangeType.ElementType.Align.Bytes);
+        return load;
+    }
+
+    private LLVMValueRef LoadRangeEndField(LLVMBuilderRef builder, LLVMValueRef rangeAddr, SemaTypeRange rangeType)
+    {
+        var fieldAddr = GetRangeEndFieldAddr(builder, rangeAddr, rangeType);
+        var load = builder.BuildLoad2(GenerateType(rangeType.ElementType), fieldAddr, "range.end");
+        load.SetAlignment((uint)rangeType.ElementType.Align.Bytes);
+        return load;
+    }
+
+    private LLVMValueRef CalculateRangeCount(LLVMBuilderRef builder, LLVMValueRef rangeAddr, SemaTypeRange rangeType, SemaTypeQual? destType = null)
+    {
+        var rangeBeginValue = LoadRangeBeginField(builder, rangeAddr, rangeType);
+        var rangeEndValue = LoadRangeEndField(builder, rangeAddr, rangeType);
+        var rangeCount = builder.BuildSub(rangeEndValue, rangeBeginValue, "range.count");
+
+        if (destType is not null && !destType.TypeEquals(rangeType.ElementType, TypeComparison.TypeOnly))
+        {
+            if (rangeType.ElementType.Size.Bits < Context.Types.LayeTypeInt.Size.Bits)
+                rangeCount = builder.BuildSExt(rangeCount, GenerateType(Context.Types.LayeTypeInt));
+            else rangeCount = builder.BuildTrunc(rangeCount, GenerateType(Context.Types.LayeTypeInt));
+        }
+
+        return rangeCount;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "API Consistency")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "API Consistency")]
+    private LLVMValueRef GetSlicePointerFieldAddr(LLVMBuilderRef builder, LLVMValueRef sliceAddr, SemaTypeSlice sliceType)
+    {
+        return sliceAddr;
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "API Consistency")]
+    private LLVMValueRef GetSliceCountFieldAddr(LLVMBuilderRef builder, LLVMValueRef sliceAddr, SemaTypeSlice sliceType)
+    {
+        var fieldOffset = Context.Types.LayeTypeInt.Size.AlignedTo(Context.Target.AlignOfPointer);
+        return builder.BuildPtrAdd(sliceAddr, fieldOffset, "slice.count");
+    }
+
+    private LLVMValueRef LoadSlicePointerField(LLVMBuilderRef builder, LLVMValueRef sliceAddr, SemaTypeSlice sliceType)
+    {
+        var fieldAddr = GetSlicePointerFieldAddr(builder, sliceAddr, sliceType);
+        var load = builder.BuildLoad2(LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0), fieldAddr, "slice.ptr");
+        load.SetAlignment((uint)Context.Target.AlignOfPointer.Bytes);
+        return load;
+    }
+
+    private LLVMValueRef LoadSliceCountField(LLVMBuilderRef builder, LLVMValueRef sliceAddr, SemaTypeSlice sliceType)
+    {
+        var fieldAddr = GetSliceCountFieldAddr(builder, sliceAddr, sliceType);
+        var load = builder.BuildLoad2(GenerateType(Context.Types.LayeTypeInt), fieldAddr, "slice.count");
+        load.SetAlignment((uint)Context.Types.LayeTypeInt.Align.Bytes);
+        return load;
+    }
+
     private void BuildExprIntoMemory(LLVMBuilderRef builder, SemaExpr expr, LLVMValueRef tempAddr)
     {
         unsafe
@@ -921,12 +1002,8 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 case SemaExprRange range:
                 {
                     var rangeType = (SemaTypeRange)range.Type.CanonicalType.Type;
-
-                    var leftAddr = tempAddr;
-                    BuildExprIntoMemory(builder, range.Left, leftAddr);
-
-                    var rightAddr = builder.BuildPtrAdd(tempAddr, rangeType.ElementType.Size.AlignedTo(rangeType.ElementType.Align), "range.end");
-                    BuildExprIntoMemory(builder, range.Right, rightAddr);
+                    BuildExprIntoMemory(builder, range.Left, GetRangeBeginFieldAddr(builder, tempAddr, rangeType));
+                    BuildExprIntoMemory(builder, range.Right, GetRangeEndFieldAddr(builder, tempAddr, rangeType));
                 } break;
 
                 case SemaExprEvaluatedConstant { Value: { Kind: EvaluatedConstantKind.Range, RangeValue: { } rangeValue } }:
@@ -934,11 +1011,52 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     var rangeType = (SemaTypeRange)expr.Type.CanonicalType.Type;
                     var rangeElementType = GenerateType(rangeType.ElementType);
 
-                    var leftAddr = tempAddr;
-                    builder.BuildStore(LLVMValueRef.CreateConstInt(rangeElementType, (ulong)rangeValue.Begin, true), leftAddr).SetAlignment((uint)rangeType.ElementType.Align.Bytes);
+                    var leftAddr = GetRangeBeginFieldAddr(builder, tempAddr, rangeType);
+                    builder.BuildStore(LLVMValueRef.CreateConstInt(rangeElementType, (ulong)rangeValue.Begin, true), leftAddr)
+                        .SetAlignment((uint)rangeType.ElementType.Align.Bytes);
 
-                    var rightAddr = builder.BuildPtrAdd(tempAddr, rangeType.ElementType.Size.AlignedTo(rangeType.ElementType.Align), "range.end");
-                    builder.BuildStore(LLVMValueRef.CreateConstInt(rangeElementType, (ulong)rangeValue.End, true), rightAddr).SetAlignment((uint)rangeType.ElementType.Align.Bytes);
+                    var rightAddr = GetRangeEndFieldAddr(builder, tempAddr, rangeType);
+                    builder.BuildStore(LLVMValueRef.CreateConstInt(rangeElementType, (ulong)rangeValue.End, true), rightAddr)
+                        .SetAlignment((uint)rangeType.ElementType.Align.Bytes);
+                } break;
+
+                case SemaExprSlice slice:
+                {
+                    Context.Assert(slice.Operand.IsLValue, slice.Location, "Slice operand must be an l-value.");
+
+                    var sliceType = (SemaTypeSlice)slice.Type.CanonicalType.Type;
+                    var rangeType = (SemaTypeRange)slice.Range.Type.CanonicalType.Type;
+
+                    var operandType = slice.Operand.Type.CanonicalType.Type;
+                    var operand = BuildExpr(builder, slice.Operand);
+
+                    // the range value is an rvalue semantically, so build it into a temporary so we can do lvalue math on it.
+                    var rangeAlloca = builder.BuildAlloca(GenerateType(slice.Range.Type), "slice.range.temp.storage");
+                    BuildExprIntoMemory(builder, slice.Range, rangeAlloca);
+
+                    var rangeBeginValue = LoadRangeBeginField(builder, rangeAlloca, rangeType);
+                    var rangeCount = CalculateRangeCount(builder, rangeAlloca, rangeType, Context.Types.LayeTypeInt.Qualified(Location.Nowhere));
+
+                    var ptrAddr = GetSlicePointerFieldAddr(builder, tempAddr, sliceType);
+                    switch (operandType)
+                    {
+                        default:
+                        {
+                            Context.Todo(slice.Operand.Location, $"Unimplemented slice operand type `{operandType.ToDebugString(Colors)}{Colors.Default}`.");
+                            throw new UnreachableException();
+                        }
+
+                        case SemaTypeArray typeArray:
+                        {
+                            var elementSize = typeArray.ElementType.Size;
+                            var pointerOffset = builder.BuildMul(rangeBeginValue, LLVMValueRef.CreateConstInt(GenerateType(Context.Types.LayeTypeInt), (ulong)elementSize.Bytes), "array.slice.offset");
+                            var slicePointer = builder.BuildPtrAdd(operand, pointerOffset, "array.slice.addr");
+                            builder.BuildStore(slicePointer, ptrAddr).SetAlignment((uint)Context.Target.AlignOfPointer.Bytes);
+                        } break;
+                    }
+
+                    var countAddr = GetSliceCountFieldAddr(builder, tempAddr, sliceType);
+                    builder.BuildStore(rangeCount, countAddr).SetAlignment(rangeCount.Alignment);
                 } break;
 
                 case SemaExprCall call:
@@ -1102,7 +1220,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     var elementSize = typeBuffer.ElementType.Size;
                     var totalOffset = builder.BuildMul(LLVMValueRef.CreateConstInt(typeInt, (ulong)elementSize.Bytes), indexValue);
 
-                    var ptradd = builder.BuildPtrAdd(lvalue, totalOffset, "buffidx.ptradd");
+                    var ptradd = builder.BuildPtrAdd(lvalue, totalOffset, "buff.idx.ptradd");
                     ptradd.Alignment = (uint)bufferIndex.Type.Align.Bytes;
                     return ptradd;
                 }
@@ -1157,9 +1275,84 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                     var elementSize = typeArray.ElementType.Size;
                     totalOffset = builder.BuildMul(LLVMValueRef.CreateConstInt(typeInt, (ulong)elementSize.Bytes), totalOffset);
 
-                    var ptradd = builder.BuildPtrAdd(lvalue, totalOffset, "arrayidx.ptradd");
+                    var ptradd = builder.BuildPtrAdd(lvalue, totalOffset, "array.idx.ptradd");
                     ptradd.Alignment = (uint)arrayIndex.Type.Align.Bytes;
                     return ptradd;
+                }
+
+                case SemaExprIndexSlice sliceIndex:
+                {
+                    var typeSlice = (SemaTypeSlice)sliceIndex.Operand.Type.CanonicalType.Type;
+
+                    var lvalue = BuildExpr(builder, sliceIndex.Operand);
+                    Context.Assert(lvalue.TypeOf.Kind == LLVMTypeKind.LLVMPointerTypeKind, "Slice index lookup requires a value of type `ptr`.");
+                    lvalue = LoadSlicePointerField(builder, lvalue, typeSlice);
+
+                    var typeInt = GenerateType(Context.Types.LayeTypeInt);
+                    var indexValue = BuildExpr(builder, sliceIndex.Index);
+
+                    var elementSize = typeSlice.ElementType.Size;
+                    var totalOffset = builder.BuildMul(LLVMValueRef.CreateConstInt(typeInt, (ulong)elementSize.Bytes), indexValue);
+
+                    var ptradd = builder.BuildPtrAdd(lvalue, totalOffset, "slice.idx.ptradd");
+                    ptradd.Alignment = (uint)sliceIndex.Type.Align.Bytes;
+                    return ptradd;
+                }
+
+                case SemaExprCountof countof:
+                {
+                    var resultType = GenerateType(countof.Type);
+                    if (countof.Operand is SemaTypeQual { Type: { } typeOperand } typeOperandQual)
+                    {
+                        switch (typeOperand.CanonicalType)
+                        {
+                            default:
+                            {
+                                Context.Todo(typeOperandQual.Location, $"Unimplemented type {typeOperandQual.ToDebugString(Colors)}{Colors.Default} in countof.");
+                                throw new UnreachableException();
+                            }
+
+                            case SemaTypeArray typeArray:
+                            {
+                                Context.Assert(typeArray.Arity == 1, "Should only be taking the count of a 1-dimensional array type.");
+                                return LLVMValueRef.CreateConstInt(resultType, (ulong)typeArray.FlatLength);
+                            }
+                        }
+                    }
+                    else if (countof.Operand is SemaExpr exprOperand)
+                    {
+                        var operandType = exprOperand.Type.CanonicalType.Type;
+                        switch (operandType)
+                        {
+                            default:
+                            {
+                                Context.Todo(exprOperand.Location, $"Unimplemented expression of type {exprOperand.Type.ToDebugString(Colors)}{Colors.Default} in countof.");
+                                throw new UnreachableException();
+                            }
+
+                            case SemaTypeArray typeArray:
+                            {
+                                Context.Assert(typeArray.Arity == 1, "Should only be taking the count of a 1-dimensional array type.");
+                                return LLVMValueRef.CreateConstInt(resultType, (ulong)typeArray.FlatLength);
+                            }
+
+                            case SemaTypeSlice typeSlice:
+                            {
+                                var sliceAddr = BuildExpr(builder, exprOperand);
+                                return LoadSliceCountField(builder, sliceAddr, typeSlice);
+                            }
+
+                            case SemaTypeRange typeRange:
+                            {
+                                var rangeAlloca = builder.BuildAlloca(GenerateType(typeRange), "countof.range.temp.storage");
+                                BuildExprIntoMemory(builder, exprOperand, rangeAlloca);
+                                return CalculateRangeCount(builder, rangeAlloca, typeRange, countof.Type);
+                            }
+                        }
+                    }
+
+                    Context.Todo(countof.Location, $"Unimplemented sema node of .NET type {countof.Operand.GetType().FullName} in countof.");
+                    throw new UnreachableException();
                 }
 
                 case SemaExprNegate negate:

@@ -1,0 +1,4 @@
+int main() {
+    assert countof(3 .. 10) == 7;
+    return 0;
+}

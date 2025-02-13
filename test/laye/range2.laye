@@ -1,0 +1,11 @@
+int main() {
+    int[10] arr = var { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    int[] slice = arr[3 .. 7];
+
+    assert slice[0] == 3;
+    assert slice[1] == 4;
+    assert countof(slice) == 4;
+    assert slice[countof(slice) - 1] == 6;
+
+    return 0;
+}
