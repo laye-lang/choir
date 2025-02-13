@@ -309,8 +309,6 @@ public sealed class Lexer(SourceFile sourceFile)
                 Advance();
                 tokenInfo.Kind
                     = TryAdvance('=') ? TokenKind.PercentEqual
-                    : TryAdvance(':')
-                        ? TryAdvance('=') ? TokenKind.PercentColonEqual : TokenKind.PercentColon
                     : TokenKind.Percent;
             } break;
 
@@ -370,8 +368,6 @@ public sealed class Lexer(SourceFile sourceFile)
                 Advance();
                 tokenInfo.Kind
                     = TryAdvance(':') ? TokenKind.ColonColon
-                    : TryAdvance('>')
-                        ? TryAdvance('=') ? TokenKind.ColonGreaterEqual : TokenKind.ColonGreater
                     : TokenKind.Colon;
             } break;
 
@@ -379,14 +375,12 @@ public sealed class Lexer(SourceFile sourceFile)
             {
                 Advance();
                 tokenInfo.Kind
-                    = TryAdvance(':') ? TokenKind.LessColon
-                    : TryAdvance('<')
+                    = TryAdvance('<')
                         ? TryAdvance('=')
                             ? TryAdvance('>') ? TokenKind.LessEqualGreater
                             : TokenKind.LessLessEqual
                         : TokenKind.LessLess
-                    : TryAdvance('=')
-                        ? TryAdvance(':') ? TokenKind.LessEqualColon : TokenKind.LessEqual
+                    : TryAdvance('=') ? TokenKind.LessEqual
                     : TokenKind.Less;
             } break;
 
@@ -407,8 +401,6 @@ public sealed class Lexer(SourceFile sourceFile)
                 Advance();
                 tokenInfo.Kind
                     = TryAdvance('=') ? TokenKind.SlashEqual
-                    : TryAdvance(':')
-                        ? TryAdvance('=') ? TokenKind.SlashColonEqual : TokenKind.SlashColon
                     : TokenKind.Slash;
             } break;
 

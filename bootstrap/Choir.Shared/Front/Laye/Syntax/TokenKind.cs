@@ -49,8 +49,6 @@ public enum TokenKind : ushort
     TildeEqual,
     BangEqual,
     PercentEqual,
-    PercentColon,
-    PercentColonEqual,
     AmpersandEqual,
     StarEqual,
     MinusEqual,
@@ -69,15 +67,11 @@ public enum TokenKind : ushort
     PlusPipeEqual,
     PipeEqual,
     ColonColon,
-    ColonGreater,
-    ColonGreaterEqual,
     LessEqual,
     LessEqualGreater,
     LessLess,
     LessLessEqual,
     LessMinus,
-    LessColon,
-    LessEqualColon,
     GreaterEqual,
     GreaterGreater,
     GreaterGreaterEqual,
@@ -86,8 +80,6 @@ public enum TokenKind : ushort
     DotDot,
     DotDotEqual,
     SlashEqual,
-    SlashColon,
-    SlashColonEqual,
     QuestionQuestion,
     QuestionQuestionEqual,
     //CaretEqual,
@@ -198,9 +190,7 @@ public static class TokenKindExtensions
         TokenKind.EqualEqual or TokenKind.BangEqual => 10,
 
         TokenKind.Less or TokenKind.LessEqual or
-        TokenKind.Greater or TokenKind.GreaterEqual or
-        TokenKind.LessColon or TokenKind.LessEqualColon or
-        TokenKind.ColonGreater or TokenKind.ColonGreaterEqual => 20,
+        TokenKind.Greater or TokenKind.GreaterEqual => 20,
 
         TokenKind.DotDot or TokenKind.DotDotEqual => 25,
 
@@ -212,8 +202,7 @@ public static class TokenKindExtensions
         TokenKind.PlusPipe or TokenKind.MinusPipe or
         TokenKind.PlusPercent or TokenKind.MinusPercent => 40,
 
-        TokenKind.Star or TokenKind.Slash or TokenKind.Percent or
-        TokenKind.SlashColon or TokenKind.PercentColon => 50,
+        TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 50,
 
         //TokenKind.Caret => 60,
 
@@ -226,8 +215,6 @@ public static class TokenKindExtensions
         TokenKind.EqualEqual or TokenKind.BangEqual or
         TokenKind.Less or TokenKind.LessEqual or
         TokenKind.Greater or TokenKind.GreaterEqual or
-        TokenKind.LessColon or TokenKind.LessEqualColon or
-        TokenKind.ColonGreater or TokenKind.ColonGreaterEqual or
         TokenKind.Ampersand or TokenKind.Pipe or TokenKind.Tilde or
         TokenKind.LessLess or TokenKind.GreaterGreater or
         TokenKind.GreaterGreaterGreater or
@@ -235,7 +222,6 @@ public static class TokenKindExtensions
         TokenKind.PlusPipe or TokenKind.MinusPipe or
         TokenKind.PlusPercent or TokenKind.MinusPercent or
         TokenKind.Star or TokenKind.Slash or TokenKind.Percent or
-        TokenKind.SlashColon or TokenKind.PercentColon or
         //TokenKind.Caret => true,
         _ => false,
     };
@@ -251,7 +237,6 @@ public static class TokenKindExtensions
         TokenKind.Equal or
         TokenKind.TildeEqual or
         TokenKind.PercentEqual or
-        TokenKind.PercentColonEqual or
         TokenKind.AmpersandEqual or
         TokenKind.StarEqual or
         TokenKind.MinusEqual or
@@ -261,12 +246,10 @@ public static class TokenKindExtensions
         TokenKind.PlusPercentEqual or
         TokenKind.PlusPipeEqual or
         TokenKind.PipeEqual or
-        TokenKind.ColonGreaterEqual or
         TokenKind.LessLessEqual or
         TokenKind.GreaterGreaterEqual or
         TokenKind.GreaterGreaterGreaterEqual or
         TokenKind.SlashEqual or
-        TokenKind.SlashColonEqual or
         TokenKind.QuestionQuestionEqual // or
         //TokenKind.CaretEqual
             => true,
@@ -278,7 +261,6 @@ public static class TokenKindExtensions
         TokenKind.TildeEqual => TokenKind.Tilde,
         TokenKind.BangEqual => TokenKind.Bang,
         TokenKind.PercentEqual => TokenKind.Percent,
-        TokenKind.PercentColonEqual => TokenKind.PercentColon,
         TokenKind.AmpersandEqual => TokenKind.Ampersand,
         TokenKind.StarEqual => TokenKind.Star,
         TokenKind.MinusEqual => TokenKind.Minus,
@@ -288,12 +270,10 @@ public static class TokenKindExtensions
         TokenKind.PlusPercentEqual => TokenKind.PlusPercent,
         TokenKind.PlusPipeEqual => TokenKind.PlusPipe,
         TokenKind.PipeEqual => TokenKind.Pipe,
-        TokenKind.ColonGreaterEqual => TokenKind.ColonGreater,
         TokenKind.LessLessEqual => TokenKind.LessLess,
         TokenKind.GreaterGreaterEqual => TokenKind.GreaterGreater,
         TokenKind.GreaterGreaterGreaterEqual => TokenKind.GreaterGreaterGreater,
         TokenKind.SlashEqual => TokenKind.Slash,
-        TokenKind.SlashColonEqual => TokenKind.SlashColon,
         TokenKind.QuestionQuestionEqual => TokenKind.QuestionQuestion,
         //TokenKind.CaretEqual => TokenKind.Caret,
         _ => kind,
@@ -329,8 +309,6 @@ public static class TokenKindExtensions
         TokenKind.TildeEqual => "~=",
         TokenKind.BangEqual => "!=",
         TokenKind.PercentEqual => "%=",
-        TokenKind.PercentColon => "%:",
-        TokenKind.PercentColonEqual => "%:=",
         TokenKind.AmpersandEqual => "%=",
         TokenKind.StarEqual => "*=",
         TokenKind.MinusEqual => "-=",
@@ -349,23 +327,17 @@ public static class TokenKindExtensions
         TokenKind.PlusPipeEqual => "+|=",
         TokenKind.PipeEqual => "|=",
         TokenKind.ColonColon => "::",
-        TokenKind.ColonGreater => ":>",
-        TokenKind.ColonGreaterEqual => ":>=",
         TokenKind.LessEqual => "<=",
         TokenKind.LessEqualGreater => "<=>",
         TokenKind.LessLess => "<<",
         TokenKind.LessLessEqual => "<<=",
         TokenKind.LessMinus => "<-",
-        TokenKind.LessColon => "<:",
-        TokenKind.LessEqualColon => "<=:",
         TokenKind.GreaterEqual => ">=",
         TokenKind.GreaterGreater => ">>",
         TokenKind.GreaterGreaterEqual => ">>=",
         TokenKind.GreaterGreaterGreater => ">>>",
         TokenKind.GreaterGreaterGreaterEqual => ">>>=",
         TokenKind.SlashEqual => "/=",
-        TokenKind.SlashColon => "/:",
-        TokenKind.SlashColonEqual => "/:=",
         TokenKind.QuestionQuestion => "??",
         TokenKind.QuestionQuestionEqual => "??=",
         //TokenKind.CaretEqual => "^=",
