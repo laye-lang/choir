@@ -1,0 +1,17 @@
+int main() {
+    int[5] arr = var { 0, 1, 2, 3, 4 };
+
+    int[] a = arr[0 .. 5];
+    assert countof(a) == 5;
+
+    int[] b = arr[..];
+    assert countof(b) == 5;
+
+    int[] c = arr[1 ..];
+    assert countof(c) == 4;
+
+    int[] d = arr[.. 4];
+    assert countof(d) == 4;
+
+    return 0;
+}

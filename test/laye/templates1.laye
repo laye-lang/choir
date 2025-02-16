@@ -1,0 +1,14 @@
+template<T>
+struct foo {
+    T value;
+}
+
+template<T>
+T get_value(foo<T> f) {
+    return f.value;
+}
+
+int main() {
+    var f = foo<int> { 10 };
+    return get_value<int>(f) - 10;
+}
