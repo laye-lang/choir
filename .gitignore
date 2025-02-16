@@ -1,7 +1,14 @@
 # Dotfiles
 .vs/
 .vscode/
-src/bootstrap
+
+/out
+/build
+
+/config
+/config.exe
+/config.old
+/config.exe.old
 
 # Build system binaries
 nob

@@ -1,6 +1,7 @@
--std=c99
+-Iinclude
+-std=c23
+-Wall
+-Werror
+-Werror=return-type
 -pedantic
 -pedantic-errors
--Werror=return-type
--D__USE_POSIX
--D_XOPEN_SOURCE=600
