@@ -65,6 +65,8 @@ static void* ch_gpa_alloc(void* selfv, int64 size) {
 }
 
 static void* ch_gpa_realloc(void* selfv, void* memory, int64 size) {
+    if (memory == NULL) return ch_gpa_alloc(selfv, size);
+
     struct allocs* allocs = selfv;
 
     int64 memory_index;
@@ -82,6 +84,8 @@ static void* ch_gpa_realloc(void* selfv, void* memory, int64 size) {
 }
 
 static void ch_gpa_dealloc(void* selfv, void* memory) {
+    if (memory == NULL) return;
+
     struct allocs* allocs = selfv;
 
     int64 memory_index;

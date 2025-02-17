@@ -38,8 +38,8 @@ static source_paths libchoir_files[] = {
 };
 
 static source_paths liblaye_files[] = {
-    {"lib/laye/eval.c", ODIR "/laye-eval.o"},
     {"lib/laye/token.c", ODIR "/laye-token.o"},
+    {"lib/laye/lex.c", ODIR "/laye-lex.o"},
     {0},
 };
 

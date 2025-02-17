@@ -22,6 +22,7 @@ CHOIR_API const char* ly_token_kind_name_get(ly_token_kind kind);
 
 /// @brief
 typedef struct ly_token {
+    struct ly_token* next;
     /// @brief The beginning of this token's text, its "lexeme", in the Laye source.
     /// @details This is a pointer within the loaded source text of the file, wherever that may have come from.
     /// This means that the lifetime of source text is expected to be as long as the lifetime of tokens.
@@ -39,6 +40,14 @@ typedef struct ly_token {
     ly_token_kind kind;
     /// @brief Where this token came from in the source text.
     ch_location location;
+
+    struct ly_token* leading_trivia;
+    struct ly_token* trailing_trivia;
+
+    union {
+        const char* string_value;
+        int64 integer_value;
+    };
 } ly_token;
 
 typedef enum ly_syntax_kind {
@@ -62,6 +71,13 @@ typedef struct ly_ast {
 typedef struct ly_module {
     ch_sources sources;
 } ly_module;
+
+typedef enum ly_lex_flag {
+    LY_LEX_NONE = 0,
+    LY_LEX_PRESERVE_TRIVIA = 1 << 0,
+} ly_lex_flag;
+
+CHOIR_API ly_token* ly_lex(ch_source* source, ch_allocator token_allocator, ch_string_store* string_store, ly_lex_flag flags);
 
 #if defined(__cplusplus)
 }

@@ -101,8 +101,15 @@ typedef struct ch_location {
     int64 length;
 } ch_location;
 
+typedef struct ch_string_store {
+    ch_allocator allocator;
+    const char** items;
+    int64_t count, capacity;
+} ch_string_store;
+
 typedef struct ch_context {
     ch_target* target;
+    ch_string_store string_store;
 } ch_context;
 
 #if defined(__cplusplus)
