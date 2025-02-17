@@ -2,6 +2,7 @@
 #define CHOIR_MACROS_H_
 
 #define cast(T) (T)
+#define discard (void)
 
 #define return_defer(value) \
     do {                    \

@@ -9,6 +9,7 @@ extern "C" {
 #include <choir/macros.h>
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -44,14 +45,17 @@ typedef struct ch_allocator_vtable {
     ch_allocator_deinit_fn deinit;
 } ch_allocator_vtable;
 
-typedef struct ch_allocator ch_allocator;
+typedef struct ch_allocator {
+    ch_allocator_vtable vtable;
+    void* userdata;
+} ch_allocator;
 
-CHOIR_API void* ch_alloc(ch_allocator* allocator, int64 size);
-CHOIR_API void* ch_realloc(ch_allocator* allocator, void* memory, int64 size);
-CHOIR_API void ch_dealloc(ch_allocator* allocator, void* memory);
-CHOIR_API void ch_allocator_deinit(ch_allocator* allocator);
+CHOIR_API void* ch_alloc(ch_allocator allocator, int64 size);
+CHOIR_API void* ch_realloc(ch_allocator allocator, void* memory, int64 size);
+CHOIR_API void ch_dealloc(ch_allocator allocator, void* memory);
+CHOIR_API void ch_allocator_deinit(ch_allocator allocator);
 
-CHOIR_API ch_allocator* ch_general_purpose_allocator();
+CHOIR_API ch_allocator ch_general_purpose_allocator();
 
 typedef struct ch_arena_block {
     void* memory;
@@ -59,19 +63,21 @@ typedef struct ch_arena_block {
 } ch_arena_block;
 
 typedef struct ch_arena_blocks {
+    ch_allocator allocator;
     ch_arena_block* items;
     int64 count, capacity;
 } ch_arena_blocks;
 
 typedef struct ch_arena {
-    ch_allocator* allocator;
+    ch_allocator allocator;
     ch_arena_blocks blocks;
     int64 block_size;
 } ch_arena;
 
-CHOIR_API void ch_arena_init(ch_arena* arena, int64 block_size);
+CHOIR_API void ch_arena_init(ch_arena* arena, ch_allocator allocator, int64 block_size);
 CHOIR_API void* ch_arena_alloc(ch_arena* arena, int64 size);
 CHOIR_API void ch_arena_deinit(ch_arena* arena);
+CHOIR_API ch_allocator ch_arena_allocator(ch_arena* arena);
 
 typedef struct ch_target {
     ch_size size_of_pointer;
@@ -82,6 +88,12 @@ typedef struct ch_source {
     const char* text;
     int64 length;
 } ch_source;
+
+typedef struct ch_sources {
+    ch_allocator allocator;
+    ch_source* items;
+    int64_t count, capacity;
+} ch_sources;
 
 typedef struct ch_location {
     ch_source* source;

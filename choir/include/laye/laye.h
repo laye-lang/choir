@@ -59,6 +59,10 @@ typedef struct ly_ast {
     int dummy;
 } ly_ast;
 
+typedef struct ly_module {
+    ch_sources sources;
+} ly_module;
+
 #if defined(__cplusplus)
 }
 #endif // defined(__cplusplus)

@@ -11,14 +11,12 @@ static const char* help_text =
 int main(int argc, char** argv) {
     int result = 0;
 
-    ch_allocator* gpa = ch_general_purpose_allocator();
+    ch_allocator gpa = ch_general_purpose_allocator();
 
     const char* program_name = argv[0];
     fprintf(stderr, help_text, BUILD_VERSION);
 
-    void* test = ch_alloc(gpa, 10);
-    void* foo = malloc(10);
-
 defer:
+    ch_allocator_deinit(gpa);
     return result;
 }
