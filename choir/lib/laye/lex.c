@@ -2,8 +2,8 @@
 #include <string.h>
 
 struct lexer {
+    ch_context* context;
     ch_source* source;
-    ch_string_store* string_store;
     ch_allocator token_allocator;
     
     bool preserve_trivia : 1;
@@ -13,10 +13,10 @@ struct lexer {
 
 static ly_token* ly_read_token(struct lexer* l);
 
-CHOIR_API ly_token* ly_lex(ch_source* source, ch_allocator token_allocator, ch_string_store* string_store, ly_lex_flag flags) {
+CHOIR_API ly_token* ly_lex(ch_context* context, ch_source* source, ch_allocator token_allocator, ly_lex_flag flags) {
     struct lexer lexer = {
+        .context = context,
         .source = source,
-        .string_store = string_store,
         .token_allocator = token_allocator,
     };
 
@@ -176,6 +176,6 @@ static ly_token* ly_read_token(struct lexer* l) {
     if (token->kind != LY_TK_EOF) {
         ly_read_trivia(l, &token->trailing_trivia, true);
     }
-    
+
     return token;
 }

@@ -79,12 +79,19 @@ CHOIR_API void* ch_arena_alloc(ch_arena* arena, int64 size);
 CHOIR_API void ch_arena_deinit(ch_arena* arena);
 CHOIR_API ch_allocator ch_arena_allocator(ch_arena* arena);
 
+typedef struct ch_string {
+    ch_allocator allocator;
+    char* items;
+    int64 count, capacity;
+} ch_string;
+
 typedef struct ch_target {
     ch_size size_of_pointer;
     ch_align align_of_pointer;
 } ch_target;
 
 typedef struct ch_source {
+    const char* name;
     const char* text;
     int64 length;
 } ch_source;
@@ -107,10 +114,39 @@ typedef struct ch_string_store {
     int64_t count, capacity;
 } ch_string_store;
 
+typedef enum ch_diagnostic_kind {
+    CH_DIAG_NOTE,
+    CH_DIAG_WARN,
+    CH_DIAG_ERROR,
+    CH_DIAG_ICE,
+} ch_diagnostic_kind;
+
+typedef struct ch_diagnostic {
+    ch_diagnostic_kind kind;
+    ch_location location;
+    const char* message;
+} ch_diagnostic;
+
+typedef struct ch_diagnostics {
+    ch_allocator allocator;
+    ch_diagnostic* items;
+    int64 count, capacity;
+} ch_diagnostics;
+
 typedef struct ch_context {
+    ch_allocator allocator;
     ch_target* target;
     ch_string_store string_store;
+
+    bool has_issued_diagnostics;
+    ch_diagnostics queued_diagnostics;
 } ch_context;
+
+CHOIR_API void ch_context_init(ch_context* context, ch_allocator allocator);
+CHOIR_API void ch_context_deinit(ch_context* context);
+
+CHOIR_API void ch_diag_flush(ch_context* context);
+CHOIR_API void ch_diag(ch_context* context, ch_diagnostic_kind kind, ch_location location, const char* format, ...);
 
 #if defined(__cplusplus)
 }

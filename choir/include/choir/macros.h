@@ -45,4 +45,16 @@
         (da)->count += (new_items_count);                                                                  \
     } while (0)
 
+#define ch_assert(Context, Condition, Location, Message)                                             \
+    do {                                                                                             \
+        if (!(Condition)) ch_diag((Context), CH_DIAG_ICE, (Location), "Assertion failed: " Message); \
+    } while (0)
+
+#define ch_assertf(Context, Condition, Location, Message, ...)                                                    \
+    do {                                                                                                          \
+        if (!(Condition)) ch_diag((Context), CH_DIAG_ICE, (Location), "Assertion failed: " Message, __VA_ARGS__); \
+    } while (0)
+
+#define CH_NOLOC ((ch_location){0})
+
 #endif // CHOIR_MACROS_H_

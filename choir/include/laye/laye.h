@@ -77,7 +77,7 @@ typedef enum ly_lex_flag {
     LY_LEX_PRESERVE_TRIVIA = 1 << 0,
 } ly_lex_flag;
 
-CHOIR_API ly_token* ly_lex(ch_source* source, ch_allocator token_allocator, ch_string_store* string_store, ly_lex_flag flags);
+CHOIR_API ly_token* ly_lex(ch_context* context, ch_source* source, ch_allocator token_allocator, ly_lex_flag flags);
 
 #if defined(__cplusplus)
 }

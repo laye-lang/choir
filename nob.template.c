@@ -33,6 +33,8 @@ typedef struct {
 static source_paths libchoir_files[] = {
     {"lib/choir/alloc.c", ODIR "/choir-alloc.o"},
     {"lib/choir/arena.c", ODIR "/choir-arena.o"},
+    {"lib/choir/context.c", ODIR "/choir-context.o"},
+    {"lib/choir/diag.c", ODIR "/choir-diag.o"},
     {"lib/choir/gpalloc.c", ODIR "/choir-gpalloc.o"},
     {0},
 };
@@ -53,11 +55,29 @@ static source_paths laye_files[] = {
     {0},
 };
 
+static const char* all_headers[] = {
+    "include/choir/choir.h",
+    "include/choir/config.h",
+    "include/choir/macros.h",
+
+    "include/laye/laye.h",
+    "include/laye/macros.h",
+    "include/laye/tokens.inc",
+
+    NULL,
+};
+
 static bool compile_object(const char* source_path, const char* object_path, const char* source_root) {
     bool result = true;
 
+    Nob_File_Paths header_paths = {0};
+    for (size_t i = 0; all_headers[i] != NULL; i++) {
+        const char* header_path = nob_temp_sprintf("%s/%s", source_root, all_headers[i]);
+        nob_da_append(&header_paths, header_path);
+    }
+
     Nob_Cmd cmd = {0};
-    if (0 == nob_needs_rebuild1(object_path, source_path)) {
+    if (0 == nob_needs_rebuild1(object_path, source_path) && 0 == nob_needs_rebuild(object_path, header_paths.items, header_paths.count)) {
         nob_return_defer(true);
     }
 
@@ -79,6 +99,7 @@ static bool compile_object(const char* source_path, const char* object_path, con
     }
 
 defer:;
+    nob_da_free(header_paths);
     nob_cmd_free(cmd);
     return result;
 }
@@ -198,7 +219,7 @@ int main(int argc, char** argv) {
     }
 
     source_root = nob_temp_sprintf("%s/choir", source_root);
-    nob_log(NOB_INFO, "source_root = %s\n", source_root);
+    nob_log(NOB_INFO, "source_root = %s", source_root);
 
     Nob_File_Paths libchoir_object_paths = {0};
     if (!build_object_files(source_root, libchoir_files, &libchoir_object_paths)) {

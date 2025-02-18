@@ -9,11 +9,38 @@ CHOIR_API void ch_arena_init(ch_arena* arena, ch_allocator allocator, int64 bloc
 }
 
 CHOIR_API void* ch_arena_alloc(ch_arena* arena, int64 size) {
-    return NULL;
+    assert(size <= arena->block_size && "can't allocate something that big in this arena dummy");
+
+    ch_arena_block* alloc_block = NULL;
+    for (int64 i = 0; i < arena->blocks.count && alloc_block == NULL; i++) {
+        if (arena->block_size - arena->blocks.items[i].consumed <= size) {
+            alloc_block = &arena->blocks.items[i];
+        }
+    }
+    
+    if (alloc_block == NULL) {
+        ch_arena_block block = {
+            .memory = ch_alloc(arena->allocator, arena->block_size),
+        };
+        da_push(&arena->blocks, block);
+        alloc_block = &arena->blocks.items[arena->blocks.count - 1];
+    }
+
+    assert(alloc_block != NULL && "where did it go");
+    
+    void* memory = (cast(char*) alloc_block->memory) + alloc_block->consumed;
+    alloc_block->consumed += size;
+
+    return memory;
 }
 
 CHOIR_API void ch_arena_deinit(ch_arena* arena) {
     ch_allocator allocator = arena->allocator;
+
+    for (int64 i = 0; i < arena->blocks.count; i++) {
+        ch_dealloc(allocator, arena->blocks.items[i].memory);
+    }
+
     da_free(&arena->blocks);
 }
 
