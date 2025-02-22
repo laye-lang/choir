@@ -9,14 +9,17 @@
 
 #if defined(_WIN32)
 #    define LIBCHOIR_STATIC_LIBRARY_FILE "libchoir"
+#    define LIBPINK_STATIC_LIBRARY_FILE  "libpink"
 #    define LIBLAYE_STATIC_LIBRARY_FILE  "liblaye"
 #else
 #    define LIBCHOIR_STATIC_LIBRARY_FILE "choir"
+#    define LIBPINK_STATIC_LIBRARY_FILE  "pink"
 #    define LIBLAYE_STATIC_LIBRARY_FILE  "laye"
 #endif
 
 #define LAYE_EXECUTABLE_FILE  "laye"
 #define LAYEC_EXECUTABLE_FILE "layec"
+#define PINK_EXECUTABLE_FILE "pink"
 
 #if defined(NOBCONFIG_MISSING)
 #    error No nob configuration has been specified. Please copy the relevant config file from the config directory for your platform and toolchain into the appropriate 'nob_config.<PLATFORM>.h' file.
@@ -45,6 +48,13 @@ static source_paths liblaye_files[] = {
     {0},
 };
 
+static source_paths libpink_files[] = {
+    {"lib/cc/std.c", ODIR "/cc-std.o"},
+    {"lib/cc/token.c", ODIR "/cc-token.o"},
+    {"lib/cc/lex.c", ODIR "/cc-lex.o"},
+    {0},
+};
+
 static source_paths layec_files[] = {
     {"src/layec.c", ODIR "/layec.o"},
     {0},
@@ -55,10 +65,19 @@ static source_paths laye_files[] = {
     {0},
 };
 
+static source_paths pink_files[] = {
+    {"src/pink.c", ODIR "/pink.o"},
+    {0},
+};
+
 static const char* all_headers[] = {
     "include/choir/choir.h",
     "include/choir/config.h",
     "include/choir/macros.h",
+
+    "include/cc/cc.h",
+    "include/cc/std.h",
+    "include/cc/tokens.h",
 
     "include/laye/laye.h",
     "include/laye/macros.h",
@@ -231,6 +250,16 @@ int main(int argc, char** argv) {
         nob_return_defer(1);
     }
 
+    Nob_File_Paths libpink_object_paths = {0};
+    if (!build_object_files(source_root, libpink_files, &libpink_object_paths)) {
+        nob_return_defer(1);
+    }
+
+    const char* libpink_file = ODIR "/" LIB_PREFIX LIBPINK_STATIC_LIBRARY_FILE LIB_EXT;
+    if (!package_library(libpink_object_paths, libpink_file)) {
+        nob_return_defer(1);
+    }
+
     Nob_File_Paths liblaye_object_paths = {0};
     if (!build_object_files(source_root, liblaye_files, &liblaye_object_paths)) {
         nob_return_defer(1);
@@ -241,12 +270,24 @@ int main(int argc, char** argv) {
         nob_return_defer(1);
     }
 
+    Nob_File_Paths pink_input_paths = {0};
+    if (!build_object_files(source_root, pink_files, &pink_input_paths)) {
+        nob_return_defer(1);
+    }
+
+    nob_da_append(&pink_input_paths, libchoir_file);
+    const char* pinkfile = ODIR "/" PINK_EXECUTABLE_FILE EXE_EXT;
+    if (!link_executable(pink_input_paths, pinkfile)) {
+        nob_return_defer(1);
+    }
+
     Nob_File_Paths layec_input_paths = {0};
     if (!build_object_files(source_root, layec_files, &layec_input_paths)) {
         nob_return_defer(1);
     }
 
     nob_da_append(&layec_input_paths, libchoir_file);
+    nob_da_append(&layec_input_paths, libpink_file);
     nob_da_append(&layec_input_paths, liblaye_file);
     const char* layecfile = ODIR "/" LAYEC_EXECUTABLE_FILE EXE_EXT;
     if (!link_executable(layec_input_paths, layecfile)) {
@@ -258,10 +299,15 @@ int main(int argc, char** argv) {
         nob_return_defer(1);
     }
 
-    nob_da_append(&layec_input_paths, libchoir_file);
-    nob_da_append(&layec_input_paths, liblaye_file);
+    nob_da_append(&laye_input_paths, libchoir_file);
+    nob_da_append(&laye_input_paths, libpink_file);
+    nob_da_append(&laye_input_paths, liblaye_file);
     const char* layefile = ODIR "/" LAYE_EXECUTABLE_FILE EXE_EXT;
     if (!link_executable(laye_input_paths, layefile)) {
+        nob_return_defer(1);
+    }
+
+    if (!nob_copy_file(pinkfile, PINK_EXECUTABLE_FILE EXE_EXT)) {
         nob_return_defer(1);
     }
 
