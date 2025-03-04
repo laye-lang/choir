@@ -20,6 +20,7 @@ nob.exe.old
 bin/
 obj/
 out/
+choir
 lyirc
 *.exe
 *.pdb

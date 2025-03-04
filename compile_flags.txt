@@ -1,5 +1,4 @@
--Iinclude
--std=c23
+-std=c99
 -Wall
 -Werror
 -Werror=return-type
