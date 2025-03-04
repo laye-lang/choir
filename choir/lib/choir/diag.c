@@ -67,6 +67,7 @@ CHOIR_API void ch_diag(ch_context* context, ch_diagnostic_kind kind, ch_location
 
     if (kind == CH_DIAG_ICE) {
         ch_diag_flush(context);
-        abort();
+        //abort();
+        CHOIR_TRAP();
     }
 }

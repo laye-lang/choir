@@ -61,15 +61,17 @@ static bool clean_config_dir(const char* config_root, bool is_out_of_source) {
     remove_if_exists(nob_temp_sprintf("%s/nob.exe.old", config_root));
     remove_if_exists(nob_temp_sprintf("%s/nob.c", config_root));
 
-    if (!nob_read_entire_dir(nob_temp_sprintf("%s/out", config_root), &out_files)) {
-        nob_return_defer(1);
+    if (nob_file_exists(nob_temp_sprintf("%s/out", config_root))) {
+        if (!nob_read_entire_dir(nob_temp_sprintf("%s/out", config_root), &out_files)) {
+            nob_return_defer(false);
+        }
+    
+        for (size_t i = 2; i < out_files.count; i++) {
+            remove(nob_temp_sprintf("%s/out/%s", config_root, out_files.items[i]));
+        }
+    
+        remove(nob_temp_sprintf("%s/out", config_root));
     }
-
-    for (size_t i = 2; i < out_files.count; i++) {
-        remove(nob_temp_sprintf("%s/out/%s", config_root, out_files.items[i]));
-    }
-
-    remove(nob_temp_sprintf("%s/out", config_root));
 
     if (is_out_of_source) {
         remove_if_exists(nob_temp_sprintf("%s/nob.h", config_root));

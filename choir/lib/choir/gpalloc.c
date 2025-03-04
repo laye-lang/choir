@@ -18,7 +18,7 @@ struct allocs {
     int64 count, capacity;
 };
 
-CHOIR_API ch_allocator ch_general_purpose_allocator() {
+CHOIR_API ch_allocator ch_general_purpose_allocator(void) {
     struct allocs* allocs = malloc(sizeof *allocs);
     *allocs = (struct allocs){
         .allocator = (ch_allocator){

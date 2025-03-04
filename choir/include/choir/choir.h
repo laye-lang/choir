@@ -5,14 +5,112 @@
 extern "C" {
 #endif // defined(__cplusplus)
 
-#include <choir/config.h>
-#include <choir/macros.h>
-
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+
+/*
+@@ CHOIR_USE_C11 controlls the use of non-C11 features.
+** Define it if you want Choir to avoid the use of C23 features,
+** or Windows-specific features on Windows.
+*/
+/* #define CHOIR_USE_C11 */
+
+#if !defined(CHOIR_USE_C11) && defined(_WIN32)
+#    define CHOIR_USE_WINDOWS
+#endif
+
+#if defined(CHOIR_USE_WINDOWS)
+#    define CHOIR_USE_DLL
+#    if defined(_MSC_VER)
+#        define CHOIR_USE_C11
+#    endif
+#endif
+
+#if defined(__linux__)
+#    define CHOIR_USE_LINUX
+#endif
+
+#if defined(CHOIR_USE_LINUX)
+#    define CHOIR_USE_POSIX
+#    define CHOIR_USE_DLOPEN
+#endif
+
+#if defined(CHOIR_BUILD_AS_DLL)
+#    if defined(CHOIR_LIB)
+#        define CHOIR_API __declspec(dllexport)
+#    else
+#        define CHOIR_API __declspec(dllimport)
+#    endif
+#else /* CHOIR_BUILD_AS_DLL */
+#    define CHOIR_API extern
+#endif
+
+#define cast(T) (T)
+#define discard (void)
+
+#if defined(__clang__)
+#    define CHOIR_TRAP() \
+        do { [[clang::nomerge]] __builtin_trap(); } while (0)
+#else
+#    define CHOIR_TRAP() \
+        do { __builtin_trap(); } while (0)
+#endif
+
+#define return_defer(value) \
+    do {                    \
+        result = (value);   \
+        goto defer;         \
+    } while (0)
+
+// Initial capacity of a dynamic array
+#ifndef DA_INIT_CAP
+#    define DA_INIT_CAP 256
+#endif
+
+// Push an item to a dynamic array
+#define da_push(da, item)                                                                                  \
+    do {                                                                                                   \
+        if ((da)->count >= (da)->capacity) {                                                               \
+            (da)->capacity = (da)->capacity == 0 ? DA_INIT_CAP : (da)->capacity * 2;                       \
+            (da)->items = ch_realloc((da)->allocator, (da)->items, (da)->capacity * sizeof(*(da)->items)); \
+            assert((da)->items != NULL && "Buy more RAM lol");                                             \
+        }                                                                                                  \
+        (da)->items[(da)->count++] = (item);                                                               \
+    } while (0)
+
+#define da_free(da) ch_dealloc((da)->allocator, (da)->items)
+
+// Push several items to a dynamic array
+#define da_push_many(da, new_items, new_items_count)                                                       \
+    do {                                                                                                   \
+        if ((da)->count + (new_items_count) > (da)->capacity) {                                            \
+            if ((da)->capacity == 0) {                                                                     \
+                (da)->capacity = DA_INIT_CAP;                                                              \
+            }                                                                                              \
+            while ((da)->count + (new_items_count) > (da)->capacity) {                                     \
+                (da)->capacity *= 2;                                                                       \
+            }                                                                                              \
+            (da)->items = ch_realloc((da)->allocator, (da)->items, (da)->capacity * sizeof(*(da)->items)); \
+            assert((da)->items != NULL && "Buy more RAM lol");                                             \
+        }                                                                                                  \
+        memcpy((da)->items + (da)->count, (new_items), (new_items_count) * sizeof(*(da)->items));          \
+        (da)->count += (new_items_count);                                                                  \
+    } while (0)
+
+#define ch_assert(Context, Condition, Location, Message)                                             \
+    do {                                                                                             \
+        if (!(Condition)) ch_diag((Context), CH_DIAG_ICE, (Location), "Assertion failed: " Message); \
+    } while (0)
+
+#define ch_assertf(Context, Condition, Location, Message, ...)                                                    \
+    do {                                                                                                          \
+        if (!(Condition)) ch_diag((Context), CH_DIAG_ICE, (Location), "Assertion failed: " Message, __VA_ARGS__); \
+    } while (0)
+
+#define CH_NOLOC ((ch_location){0})
 
 typedef int8_t int8;
 typedef int16_t int16;
@@ -55,11 +153,11 @@ CHOIR_API void* ch_realloc(ch_allocator allocator, void* memory, int64 size);
 CHOIR_API void ch_dealloc(ch_allocator allocator, void* memory);
 CHOIR_API void ch_allocator_deinit(ch_allocator allocator);
 
-CHOIR_API ch_allocator ch_general_purpose_allocator();
+CHOIR_API ch_allocator ch_general_purpose_allocator(void);
 
 typedef struct ch_arena_block {
     void* memory;
-    int64_t consumed;
+    int64 consumed;
 } ch_arena_block;
 
 typedef struct ch_arena_blocks {
@@ -142,11 +240,22 @@ typedef struct ch_context {
     ch_diagnostics queued_diagnostics;
 } ch_context;
 
+typedef enum ch_exit_code {
+    CH_EXIT_OK = 0,
+} ch_exit_code;
+
+typedef struct ch_args {
+    int dummy;
+} ch_args;
+
 CHOIR_API void ch_context_init(ch_context* context, ch_allocator allocator);
 CHOIR_API void ch_context_deinit(ch_context* context);
 
 CHOIR_API void ch_diag_flush(ch_context* context);
 CHOIR_API void ch_diag(ch_context* context, ch_diagnostic_kind kind, ch_location location, const char* format, ...);
+
+CHOIR_API int choir_main(int argc, char** argv);
+CHOIR_API ch_exit_code choir_driver(ch_args args);
 
 #if defined(__cplusplus)
 }
