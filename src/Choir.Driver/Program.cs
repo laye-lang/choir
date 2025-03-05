@@ -1,2 +1,10 @@
-﻿// See https://aka.ms/new-console-template for more information
-Console.WriteLine("Hello, World!");
+﻿namespace Choir.Driver;
+
+public static class Program
+{
+    public static int Main(string[] args)
+    {
+        var driver = ChoirDriver.Create();
+        return driver.Execute();
+    }
+}
