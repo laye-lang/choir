@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <LangVersion>12.0</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <PublishAot>true</PublishAot>
+        <IsAotCompatible>true</IsAotCompatible>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Folder Include="Instructions\" />
+        <Folder Include="Declarations\" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Choir.LLVM\Choir.LLVM.csproj" />
+    </ItemGroup>
+
+</Project>
