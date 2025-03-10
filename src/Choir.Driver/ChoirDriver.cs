@@ -1,3 +1,5 @@
+using Choir.LLVM;
+
 namespace Choir.Driver;
 
 public sealed class ChoirDriver : ICompilerDriver
@@ -14,8 +16,10 @@ public sealed class ChoirDriver : ICompilerDriver
     public int Execute()
     {
         Console.WriteLine("Hello, Choir!");
-        IntPtr module = LLVM.Interop.LLVM.ModuleCreateWithName("ChoirModule");
-        Console.WriteLine(module);
+        using var llvmContext = LLVMContext.Create();
+        using var llvmModule = llvmContext.CreateModule("choir");
+        Console.WriteLine(llvmContext.Handle.Handle);
+        Console.WriteLine(llvmModule.Handle.Handle);
         return 0;
     }
 }
