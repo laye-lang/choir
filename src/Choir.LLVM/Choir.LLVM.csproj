@@ -21,4 +21,38 @@
         <SelfContained>true</SelfContained>
     </PropertyGroup>
 
+	<ItemGroup Condition="$(RuntimeIdentifier.StartsWith('win'))">
+		<DirectPInvoke Include="LLVM-C" />
+		<NativeLibrary Include="LLVM-C.lib" />
+
+		<DirectPInvoke Include="LLVMCore" />
+		<NativeLibrary Include="LLVMCore.lib" />
+
+		<DirectPInvoke Include="LLVMSupport" />
+		<NativeLibrary Include="LLVMSupport.lib" />
+
+		<LinkerArg Include="/DEPENDENTLOADFLAG:0x800" />
+		<LinkerArg Include="/LIBPATH:$(ProjectDir)third-party/llvm/windows" />
+	</ItemGroup>
+
+	<ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux'))">
+		<DirectPInvoke Include="LLVMCore" />
+		<NativeLibrary Include="$(ProjectDir)third-party/llvm/linux/libLLVMCore.a" />
+
+		<DirectPInvoke Include="LLVMSupport" />
+		<NativeLibrary Include="$(ProjectDir)third-party/llvm/linux/libLLVMSupport.a" />
+
+		<DirectPInvoke Include="LLVMBinaryFormat" />
+		<NativeLibrary Include="$(ProjectDir)third-party/llvm/linux/libLLVMBinaryFormat.a" />
+
+		<DirectPInvoke Include="LLVMTarget" />
+		<NativeLibrary Include="$(ProjectDir)third-party/llvm/linux/libLLVMTarget.a" />
+
+		<DirectPInvoke Include="LLVMTargetParser" />
+		<NativeLibrary Include="$(ProjectDir)third-party/llvm/linux/libLLVMTargetParser.a" />
+
+		<LinkerArg Include="-lstdc++" />
+		<LinkerArg Include="-Wl,-rpath,'/bin/'" />
+	</ItemGroup>
+
 </Project>
