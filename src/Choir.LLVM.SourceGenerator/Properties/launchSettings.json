@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Choir.LLVM.SourceGenerator": {
+      "commandName": "Project",
+      "commandLineArgs": "\"\\\\wsl.localhost\\Debian\\home\\nashiora\\dev\\llvm-project\\llvm\\include\\llvm-c\" \"C:\\Users\\Nashiora\\dev\\choir\\src\\LLVMSourceGenTest\""
+    }
+  }
+}

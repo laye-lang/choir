@@ -1,4 +1,4 @@
-﻿namespace Choir.LLVM.Interop;
+﻿namespace Choir.LibLLVM.Interop;
 
 public readonly struct LLVMContextRef(IntPtr handle)
     : IDisposable

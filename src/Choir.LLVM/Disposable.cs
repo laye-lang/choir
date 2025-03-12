@@ -1,4 +1,4 @@
-﻿namespace Choir.LLVM;
+﻿namespace Choir.LibLLVM;
 
 public abstract class Disposable
     : IDisposable

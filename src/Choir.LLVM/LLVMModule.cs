@@ -1,6 +1,6 @@
-﻿using Choir.LLVM.Interop;
+﻿using Choir.LibLLVM.Interop;
 
-namespace Choir.LLVM;
+namespace Choir.LibLLVM;
 
 /// <summary>
 /// Modules represent the top-level structure in an LLVM program.
@@ -48,4 +48,9 @@ public sealed class LLVMModule
     /// </summary>
     public LLVMModule Clone() => new(Handle.Clone());
     object ICloneable.Clone() => Clone();
+
+    public void Dump()
+    {
+        Handle.DumpModule();
+    }
 }

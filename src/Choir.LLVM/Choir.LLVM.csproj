@@ -7,9 +7,10 @@
 		<PublishAot>true</PublishAot>
 		<IsAotCompatible>true</IsAotCompatible>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<RootNamespace>Choir.LibLLVM</RootNamespace>
 	</PropertyGroup>
 	
-    <!-- Use this proerty group to get a smaller executable -->
+    <!-- Use this property group to get a smaller executable -->
     <PropertyGroup>
         <DebugType>none</DebugType>
         <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>

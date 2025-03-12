@@ -37,24 +37,24 @@
 		<NativeLibrary Include="LLVMSupport.lib" />
 
 		<LinkerArg Include="/DEPENDENTLOADFLAG:0x800" />
-		<LinkerArg Include="/LIBPATH:$(ProjectDir)../Choir.LLVM/third-party/llvm/windows" />
+		<LinkerArg Include="/LIBPATH:$(ProjectDir)../Choir.LLVM/vendor/llvm/windows" />
 	</ItemGroup>
 
 	<ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux'))">
 		<DirectPInvoke Include="LLVMCore" />
-		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/third-party/llvm/linux/libLLVMCore.a" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMCore.a" />
 
 		<DirectPInvoke Include="LLVMSupport" />
-		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/third-party/llvm/linux/libLLVMSupport.a" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMSupport.a" />
 
 		<DirectPInvoke Include="LLVMBinaryFormat" />
-		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/third-party/llvm/linux/libLLVMBinaryFormat.a" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMBinaryFormat.a" />
 
 		<DirectPInvoke Include="LLVMTarget" />
-		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/third-party/llvm/linux/libLLVMTarget.a" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMTarget.a" />
 
 		<DirectPInvoke Include="LLVMTargetParser" />
-		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/third-party/llvm/linux/libLLVMTargetParser.a" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMTargetParser.a" />
 
 		<LinkerArg Include="-lstdc++" />
 		<LinkerArg Include="-Wl,-rpath,'/bin/'" />

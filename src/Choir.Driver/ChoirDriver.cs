@@ -1,8 +1,9 @@
-using Choir.LLVM;
+using Choir.LibLLVM;
 
 namespace Choir.Driver;
 
-public sealed class ChoirDriver : ICompilerDriver
+public sealed class ChoirDriver
+    : ICompilerDriver
 {
     public static ChoirDriver Create()
     {

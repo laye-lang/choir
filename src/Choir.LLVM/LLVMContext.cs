@@ -1,6 +1,6 @@
-﻿using Choir.LLVM.Interop;
+﻿using Choir.LibLLVM.Interop;
 
-namespace Choir.LLVM;
+namespace Choir.LibLLVM;
 
 /// <summary>
 /// Contexts are execution states for the core LLVM IR system.
