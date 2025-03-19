@@ -23,9 +23,21 @@ public sealed class FormattedDiagnosticWriter
         _diagnosticGroup.Add(diag);
     }
 
+    public void Dispose()
+    {
+        Flush();
+    }
+
     public void Flush()
     {
         if (_diagnosticGroup.Count == 0)
             return;
+
+        foreach (var diag in _diagnosticGroup)
+        {
+            Writer.WriteLine(diag.Message);
+        }
+
+        _diagnosticGroup.Clear();
     }
 }

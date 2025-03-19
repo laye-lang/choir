@@ -6,6 +6,7 @@ using Choir.Source;
 namespace Choir.Diagnostics;
 
 public sealed class DiagnosticEngine
+    : IDisposable
 {
     public IDiagnosticConsumer Consumer { get; }
 
@@ -24,6 +25,17 @@ public sealed class DiagnosticEngine
     private void OnDiagnosticEmit()
     {
         _ignoreFollowingNotes = false;
+    }
+
+    public void Dispose()
+    {
+        Flush();
+        Consumer.Dispose();
+    }
+
+    public void Flush()
+    {
+        Consumer.Flush();
     }
 
     public Diagnostic Emit(Diagnostic diagnostic)
@@ -53,6 +65,12 @@ public sealed class DiagnosticEngine
         }
 
         return diagnostic;
+    }
+
+    public Diagnostic Emit(DiagnosticLevel level, string id, SourceText source,
+        SourceLocation location, SourceRange[] ranges, string message)
+    {
+        return Emit(new Diagnostic(level, id, source, location, ranges, new MarkupLiteral(message)));
     }
 
     public Diagnostic Emit(DiagnosticLevel level, string id, SourceText source,

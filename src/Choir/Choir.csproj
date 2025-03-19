@@ -1,21 +1,52 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
-        <LangVersion>12.0</LangVersion>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <PublishAot>true</PublishAot>
-        <IsAotCompatible>true</IsAotCompatible>
+		<OutputType>Exe</OutputType>
+		<AssemblyName>choir</AssemblyName>
+		<TargetFramework>net9.0</TargetFramework>
+		<LangVersion>12.0</LangVersion>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<PublishAot>true</PublishAot>
+		<IsAotCompatible>true</IsAotCompatible>
     </PropertyGroup>
 
-    <ItemGroup>
-        <Folder Include="Instructions\" />
-        <Folder Include="Declarations\" />
-    </ItemGroup>
+	<!-- Use this proerty group to get a smaller executable -->
+	<PropertyGroup Condition="$(Configuration)=='Release'">
+		<DebugType>none</DebugType>
+		<GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+		<IlcDisableReflection>true</IlcDisableReflection>
+		<IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+		<IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+		<IlcOptimizationPreference>Size</IlcOptimizationPreference>
+		<InvariantGlobalization>true</InvariantGlobalization>
+		<SelfContained>true</SelfContained>
+	</PropertyGroup>
 
+	<!--
     <ItemGroup>
         <ProjectReference Include="..\Choir.LLVM\Choir.LLVM.csproj" />
     </ItemGroup>
+	
+	<ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux'))">
+		<DirectPInvoke Include="LLVMCore" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMCore.a" />
+
+		<DirectPInvoke Include="LLVMSupport" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMSupport.a" />
+
+		<DirectPInvoke Include="LLVMBinaryFormat" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMBinaryFormat.a" />
+
+		<DirectPInvoke Include="LLVMTarget" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMTarget.a" />
+
+		<DirectPInvoke Include="LLVMTargetParser" />
+		<NativeLibrary Include="$(ProjectDir)../Choir.LLVM/vendor/llvm/linux/libLLVMTargetParser.a" />
+
+		<LinkerArg Include="-lstdc++'" />
+		<LinkerArg Include="-Wl,-rpath,'/bin/'" />
+	</ItemGroup>
+	-->
 
 </Project>

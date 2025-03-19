@@ -6,7 +6,7 @@ using LLVMBool = int;
 
 namespace Choir.LibLLVM.Interop;
 
-public static partial class LLVM_Test
+public static partial class LLVM
 {
     private const string LLVMCore = "LLVMCore";
 
