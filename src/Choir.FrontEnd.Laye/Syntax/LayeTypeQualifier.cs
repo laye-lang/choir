@@ -1,4 +1,4 @@
-﻿namespace Choir.FrontEnd.Laye.Semantics;
+﻿namespace Choir.FrontEnd.Score.Syntax;
 
 [Flags]
 public enum LayeTypeQualifier

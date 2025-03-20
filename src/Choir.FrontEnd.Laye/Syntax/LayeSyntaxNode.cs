@@ -1,14 +1,12 @@
-﻿using Choir.Source;
+﻿namespace Choir.FrontEnd.Score.Syntax;
 
-namespace Choir.FrontEnd.Laye.Semantics;
-
-public abstract class LayeSemaNode
+public abstract class LayeSyntaxNode
 {
     private static long _counter = 0;
 
     public long Id { get; }
 
-    protected LayeSemaNode()
+    protected LayeSyntaxNode()
     {
         Id = Interlocked.Increment(ref _counter);
     }

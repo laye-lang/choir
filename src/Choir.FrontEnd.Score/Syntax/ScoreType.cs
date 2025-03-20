@@ -1,18 +1,18 @@
 ﻿using Choir.Formatting;
 using Choir.Source;
 
-namespace Choir.FrontEnd.Laye.Semantics;
+namespace Choir.FrontEnd.Score.Syntax;
 
-public abstract class LayeType
-    : LayeSemaNode, IMarkupFormattable
+public abstract class ScoreType
+    : ScoreSyntaxNode, IMarkupFormattable
 {
-    public virtual LayeType Canonical => this;
+    public virtual ScoreType Canonical => this;
 
-    protected LayeType()
+    protected ScoreType()
     {
     }
 
-    public LayeTypeQual Qualified(SourceRange range, LayeTypeQualifier qualifiers = LayeTypeQualifier.None)
+    public ScoreTypeQual Qualified(SourceRange range, ScoreTypeQualifier qualifiers = ScoreTypeQualifier.None)
     {
         return new(range, this, qualifiers);
     }

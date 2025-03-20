@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Choir.FrontEnd.Score": {
+      "commandName": "Project",
+      "commandLineArgs": "C:\\Users\\Nashiora\\dev\\choir\\test\\score\\simple.score"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-﻿namespace Choir.FrontEnd.Laye.Diagnostics;
+﻿namespace Choir.FrontEnd.Score.Diagnostics;
 
 public enum LayeDiagnosticSemantic
 {

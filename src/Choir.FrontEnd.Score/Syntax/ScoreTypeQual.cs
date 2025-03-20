@@ -1,18 +1,18 @@
 ﻿using Choir.Formatting;
 using Choir.Source;
 
-namespace Choir.FrontEnd.Laye.Semantics;
+namespace Choir.FrontEnd.Score.Syntax;
 
-public sealed class LayeTypeQual
-    : LayeExpr, IMarkupFormattable
+public sealed class ScoreTypeQual
+    : ScoreExpr, IMarkupFormattable
 {
-    public LayeType Unqualified { get; }
-    public LayeTypeQual Canonical => Unqualified.Canonical.Qualified(Range, Qualifiers);
+    public ScoreType Unqualified { get; set;  }
+    public ScoreTypeQual Canonical => Unqualified.Canonical.Qualified(Range, Qualifiers);
 
-    public LayeTypeQualifier Qualifiers { get; }
+    public ScoreTypeQualifier Qualifiers { get; set; }
 
-    public LayeTypeQual(SourceRange range, LayeType type, LayeTypeQualifier qualifiers)
-        : base(range, LayeTypeTypeInfo.Instance.Qualified(range))
+    public ScoreTypeQual(SourceRange range, ScoreType type, ScoreTypeQualifier qualifiers)
+        : base(range, ScoreTypeTypeInfo.Instance.Qualified(range))
     {
         Unqualified = type;
         Qualifiers = qualifiers;
@@ -22,10 +22,9 @@ public sealed class LayeTypeQual
     {
         Unqualified.BuildSpelling(builder);
 
-        if (Qualifiers.HasFlag(LayeTypeQualifier.Mutable))
+        if (Qualifiers != ScoreTypeQualifier.None)
         {
-            builder.Append(" ");
-            builder.Append(MarkupColor.Blue, "mut");
+            throw new NotImplementedException("Need to implement spelling for qualified types in Score.");
         }
     }
 

@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Choir.FrontEnd.Laye", "Choi
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Choir.FrontEnd.Score", "Choir.FrontEnd.Score\Choir.FrontEnd.Score.csproj", "{50635998-5CD2-4AB1-B001-249B9489A03F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Choir.Tests", "Choir.Tests\Choir.Tests.csproj", "{B8992722-D53E-4475-BE47-71493C250C91}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{50635998-5CD2-4AB1-B001-249B9489A03F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{50635998-5CD2-4AB1-B001-249B9489A03F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{50635998-5CD2-4AB1-B001-249B9489A03F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8992722-D53E-4475-BE47-71493C250C91}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8992722-D53E-4475-BE47-71493C250C91}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8992722-D53E-4475-BE47-71493C250C91}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8992722-D53E-4475-BE47-71493C250C91}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

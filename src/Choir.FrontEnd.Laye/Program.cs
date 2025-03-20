@@ -1,6 +1,6 @@
-﻿using Choir.FrontEnd.Laye.Driver;
+﻿using Choir.FrontEnd.Score.Driver;
 
-namespace Choir.FrontEnd.Laye;
+namespace Choir.FrontEnd.Score;
 
 public static class Program
 {

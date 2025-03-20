@@ -5,17 +5,15 @@ using Choir.Source;
 
 namespace Choir.Diagnostics;
 
-public sealed class DiagnosticEngine
+public sealed class DiagnosticEngine(IDiagnosticConsumer consumer)
     : IDisposable
 {
-    public IDiagnosticConsumer Consumer { get; }
+    public IDiagnosticConsumer Consumer { get; } = consumer;
 
     private bool _ignoreFollowingNotes = false;
 
-    public DiagnosticEngine(IDiagnosticConsumer consumer)
-    {
-        Consumer = consumer;
-    }
+    public int ErrorCount { get; private set; } = 0;
+    public bool HasEmittedErrors => ErrorCount > 0;
 
     private void OnDiagnosticIgnore()
     {
@@ -40,7 +38,7 @@ public sealed class DiagnosticEngine
 
     public Diagnostic Emit(Diagnostic diagnostic)
     {
-        if (diagnostic.Level == DiagnosticLevel.Error && Consumer.ErrorCount > 10)
+        if (diagnostic.Level == DiagnosticLevel.Error && ErrorCount > 10)
         {
             OnDiagnosticIgnore();
             return diagnostic;
@@ -55,6 +53,9 @@ public sealed class DiagnosticEngine
         if (diagnostic.Level == DiagnosticLevel.Note && _ignoreFollowingNotes)
             return diagnostic;
 
+        if (diagnostic.Level >= DiagnosticLevel.Error)
+            ErrorCount++;
+
         OnDiagnosticEmit();
         Consumer.Consume(diagnostic);
 
@@ -67,16 +68,31 @@ public sealed class DiagnosticEngine
         return diagnostic;
     }
 
+    public Diagnostic Emit(DiagnosticLevel level, string message)
+    {
+        return Emit(new Diagnostic(level, new MarkupLiteral(message)));
+    }
+
     public Diagnostic Emit(DiagnosticLevel level, string id, SourceText source,
         SourceLocation location, SourceRange[] ranges, string message)
     {
         return Emit(new Diagnostic(level, id, source, location, ranges, new MarkupLiteral(message)));
     }
 
+    public Diagnostic Emit(DiagnosticLevel level, Markup message)
+    {
+        return Emit(new Diagnostic(level, message));
+    }
+
     public Diagnostic Emit(DiagnosticLevel level, string id, SourceText source,
         SourceLocation location, SourceRange[] ranges, Markup message)
     {
         return Emit(new Diagnostic(level, id, source, location, ranges, message));
+    }
+
+    public Diagnostic Emit(DiagnosticLevel level, MarkupInterpolatedStringHandler message)
+    {
+        return Emit(new Diagnostic(level, message.Markup));
     }
 
     public Diagnostic Emit(DiagnosticLevel level, string id, SourceText source,

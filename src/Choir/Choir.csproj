@@ -9,6 +9,7 @@
 		<Nullable>enable</Nullable>
 		<PublishAot>true</PublishAot>
 		<IsAotCompatible>true</IsAotCompatible>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
 	<!-- Use this proerty group to get a smaller executable -->

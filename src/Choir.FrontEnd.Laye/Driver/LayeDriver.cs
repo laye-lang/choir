@@ -1,6 +1,6 @@
 ﻿using Choir.Driver;
 
-namespace Choir.FrontEnd.Laye.Driver;
+namespace Choir.FrontEnd.Score.Driver;
 
 public sealed class LayeDriver
     : ICompilerDriver

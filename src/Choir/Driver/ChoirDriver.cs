@@ -17,7 +17,7 @@ public sealed class ChoirDriver
 
     public int Execute()
     {
-        var writer = new FormattedDiagnosticWriter(Console.Error);
+        var writer = new FormattedDiagnosticWriter(Console.Error, true);
         using var diag = new DiagnosticEngine(writer);
 
         var source = new SourceText("foo.laye", "foo bar");

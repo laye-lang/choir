@@ -1,6 +1,6 @@
 ﻿using Choir.Formatting;
 
-namespace Choir.FrontEnd.Laye.Semantics;
+namespace Choir.FrontEnd.Score.Syntax;
 
 public sealed class LayeTypeTypeInfo
     : LayeType

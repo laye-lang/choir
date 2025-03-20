@@ -17,6 +17,7 @@ public sealed class MarkupStringRenderer
         {
             default: throw new InvalidOperationException($"Unhandled {nameof(Markup)} node in {nameof(MarkupStringRenderer)}: {markup.GetType().FullName}.");
 
+            case MarkupLineBreak: builder.AppendLine(); break;
             case MarkupLiteral literal: builder.Append(literal.Literal); break;
             case MarkupScopedColor colored: RenderImpl(builder, colored.Contents); break;
             case MarkupScopedStyle styled: RenderImpl(builder, styled.Contents); break;
