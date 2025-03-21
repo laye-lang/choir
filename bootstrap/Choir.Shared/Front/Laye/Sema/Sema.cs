@@ -1151,6 +1151,67 @@ public partial class Sema
         }
     }
 
+    private BaseSemaNode AnalyseIndexRanged(SyntaxIndex index, SemaExpr operand, TypeOrExpr which)
+    {
+        Context.Assert(index.Indices is [SyntaxExprBinary { TokenOperator.Kind: TokenKind.DotDot or TokenKind.DotDotEqual }], "A ranged index must have exactly one index expression which must be a binary expression with '..' or '..=' as its operator.");
+
+        var rangeIndexBinary = (SyntaxExprBinary)index.Indices[0];
+        var operandTypeCanon = operand.Type.CanonicalType.Type;
+
+        if (operandTypeCanon is SemaTypeBuffer typeBuffer)
+        {
+            operand = LValueToRValue(operand);
+
+            var range = new SemaExprRange(rangeIndexBinary.TokenOperator, );
+            return new SemaExprSlice(index.Location, operand, range, Context.Types.LayeTypeSlice(typeBuffer.ElementType))
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+        else if (operandTypeCanon is SemaTypeArray typeArray)
+        {
+            if (indices.Length == 1 && indices[0].Type.IsRange)
+                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeArray.ElementType));
+
+            for (int i = 0; i < indices.Length; i++)
+                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
+
+            if (indices.Length != typeArray.Arity)
+                Context.Diag.Error(index.Location, $"Expected {typeArray.Arity} indices, but got {indices.Length}.");
+
+            var operandElementType = typeArray.ElementType;
+            return new SemaExprIndexArray(operandElementType, operand, indices)
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+        else if (operandTypeCanon is SemaTypeSlice typeSlice)
+        {
+            if (indices.Length == 1 && indices[0].Type.IsRange)
+                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeSlice.ElementType));
+
+            for (int i = 0; i < indices.Length; i++)
+                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
+
+            if (indices.Length != 1)
+                Context.Diag.Error(index.Location, $"Expected exactly one index to a slice, but got {indices.Length}.");
+
+            var operandElementType = typeSlice.ElementType;
+            return new SemaExprIndexSlice(operandElementType, operand, indices[0])
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+        else
+        {
+            Context.Diag.Error(index.Location, $"Cannot index value of type {operand.Type.ToDebugString(Colors)}.");
+            return new SemaExprIndexInvalid(operand, indices)
+            {
+                ValueCategory = ValueCategory.LValue
+            };
+        }
+    }
+
     private BaseSemaNode AnalyseIndex(SyntaxIndex index, TypeOrExpr which)
     {
         var baseOperand = AnalyseTypeOrExpr(index.Operand, null, which);
@@ -1195,21 +1256,21 @@ public partial class Sema
 
             return new SemaTypeArray(Context, elementType, lengthExprs).Qualified(elementType.Location);
         }
+        
+        var operand = (SemaExpr)baseOperand;
+        if (index.Indices is [SyntaxExprBinary { TokenOperator.Kind: TokenKind.DotDot or TokenKind.DotDotEqual }])
+            return AnalyseIndexRanged(index, operand, which);
 
+        var operandTypeCanon = operand.Type.CanonicalType.Type;
         indices = index.Indices.Select(expr => AnalyseExpr(expr, Context.Types.LayeTypeInt.Qualified(index.Location))).ToArray();
-
+        
+        Context.Assert(indices is not [SemaExprRange], $"Should have deferred to the range-specific implementation of {nameof(AnalyseIndex)}: {nameof(AnalyseIndexRanged)}.");
         Context.Assert(baseOperand is SemaExpr, index.Location, "Somehow we did not get an expression when the operand was not a type.");
         Context.Assert(which.HasFlag(TypeOrExpr.Expr), "Somehow we got an expr back for the operand of an index syntax, but we didn't expect an expr here.");
-
-        var operand = (SemaExpr)baseOperand;
-        var operandTypeCanon = operand.Type.CanonicalType.Type;
 
         if (operandTypeCanon is SemaTypeBuffer typeBuffer)
         {
             operand = LValueToRValue(operand);
-
-            if (indices.Length == 1 && indices[0].Type.IsRange)
-                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeBuffer.ElementType));
 
             for (int i = 0; i < indices.Length; i++)
                 indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
@@ -1225,9 +1286,6 @@ public partial class Sema
         }
         else if (operandTypeCanon is SemaTypeArray typeArray)
         {
-            if (indices.Length == 1 && indices[0].Type.IsRange)
-                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeArray.ElementType));
-
             for (int i = 0; i < indices.Length; i++)
                 indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
 
@@ -1242,9 +1300,6 @@ public partial class Sema
         }
         else if (operandTypeCanon is SemaTypeSlice typeSlice)
         {
-            if (indices.Length == 1 && indices[0].Type.IsRange)
-                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeSlice.ElementType));
-
             for (int i = 0; i < indices.Length; i++)
                 indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
 
