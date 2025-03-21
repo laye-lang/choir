@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 
 using Choir.Diagnostics;
 using Choir.Formatting;
+using Choir.Source;
 
 namespace Choir;
 
@@ -24,11 +25,27 @@ public class ChoirContext
         throw new UnreachableException();
     }
 
+    public void Assert([DoesNotReturnIf(false)] bool condition, SourceText source, SourceLocation location, string message,
+        [CallerArgumentExpression(nameof(condition))] string conditionExpressionText = "")
+    {
+        if (condition) return;
+        Diag.Emit(DiagnosticLevel.Fatal, source, location, $"Assertion failed: {message}\nCondition: {conditionExpressionText}");
+        throw new UnreachableException();
+    }
+
     public void Assert([DoesNotReturnIf(false)] bool condition, Markup message,
         [CallerArgumentExpression(nameof(condition))] string conditionExpressionText = "")
     {
         if (condition) return;
         Diag.Emit(DiagnosticLevel.Fatal, new MarkupSequence(["Assertion failed: ", message, $"\nCondition: {conditionExpressionText}"]));
+        throw new UnreachableException();
+    }
+
+    public void Assert([DoesNotReturnIf(false)] bool condition, SourceText source, SourceLocation location, Markup message,
+        [CallerArgumentExpression(nameof(condition))] string conditionExpressionText = "")
+    {
+        if (condition) return;
+        Diag.Emit(DiagnosticLevel.Fatal, source, location, new MarkupSequence(["Assertion failed: ", message, $"\nCondition: {conditionExpressionText}"]));
         throw new UnreachableException();
     }
 
@@ -40,10 +57,25 @@ public class ChoirContext
         throw new UnreachableException();
     }
 
+    public void Assert([DoesNotReturnIf(false)] bool condition, SourceText source, SourceLocation location, MarkupInterpolatedStringHandler message,
+        [CallerArgumentExpression(nameof(condition))] string conditionExpressionText = "")
+    {
+        if (condition) return;
+        Diag.Emit(DiagnosticLevel.Fatal, source, location, new MarkupSequence(["Assertion failed: ", message.Markup, $"\nCondition: {conditionExpressionText}"]));
+        throw new UnreachableException();
+    }
+
     [DoesNotReturn]
     public void Todo(string message)
     {
         Diag.Emit(DiagnosticLevel.Fatal, $"TODO: {message}");
+        throw new UnreachableException();
+    }
+
+    [DoesNotReturn]
+    public void Todo(SourceText source, SourceLocation location, string message)
+    {
+        Diag.Emit(DiagnosticLevel.Fatal, source, location, $"TODO: {message}");
         throw new UnreachableException();
     }
 
@@ -55,9 +87,23 @@ public class ChoirContext
     }
 
     [DoesNotReturn]
+    public void Todo(SourceText source, SourceLocation location, Markup message)
+    {
+        Diag.Emit(DiagnosticLevel.Fatal, source, location, new MarkupSequence(["TODO: ", message]));
+        throw new UnreachableException();
+    }
+
+    [DoesNotReturn]
     public void Todo(MarkupInterpolatedStringHandler message)
     {
         Diag.Emit(DiagnosticLevel.Fatal, new MarkupSequence(["TODO: ", message.Markup]));
+        throw new UnreachableException();
+    }
+
+    [DoesNotReturn]
+    public void Todo(SourceText source, SourceLocation location, MarkupInterpolatedStringHandler message)
+    {
+        Diag.Emit(DiagnosticLevel.Fatal, source, location, new MarkupSequence(["TODO: ", message.Markup]));
         throw new UnreachableException();
     }
 

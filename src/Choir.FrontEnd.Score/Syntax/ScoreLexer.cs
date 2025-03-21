@@ -19,6 +19,7 @@ public sealed class ScoreLexer
                 break;
         }
 
+        context.Diag.Flush();
         return tokens;
     }
 
@@ -219,7 +220,7 @@ public sealed class ScoreLexer
                 default: return new(trivia, isLeading);
             }
 
-            _context.Assert(_readPosition > beginLocation.Offset, $"{nameof(ScoreLexer)}::{nameof(ReadToken)} failed to consume any non-trivia characters from the source text and did not return the current list of trivia if required.");
+            _context.Assert(_readPosition > beginLocation.Offset, _source, beginLocation, $"{nameof(ScoreLexer)}::{nameof(ReadToken)} failed to consume any non-trivia characters from the source text and did not return the current list of trivia if required.");
         }
 
         // end of file broke us out of the loop; simply return what we read.
@@ -370,9 +371,9 @@ public sealed class ScoreLexer
         }
 
         var tokenRange = GetRange(beginLocation);
-        _context.Assert(_readPosition > beginLocation.Offset, $"{nameof(ScoreLexer)}::{nameof(ReadToken)} failed to consume any non-trivia characters from the source text and did not return an EOF token.");
-        _context.Assert(tokenKind != ScoreTokenKind.Invalid, $"{nameof(ScoreLexer)}::{nameof(ReadToken)} failed to assign a non-invalid kind to the read token.");
-        _context.Assert(tokenKind == ScoreTokenKind.Identifier == tokenStringValue is not null, $"If the token is an identifier, it requires a string value. If it is not, it requires a null string value.");
+        _context.Assert(_readPosition > beginLocation.Offset, _source, beginLocation, $"{nameof(ScoreLexer)}::{nameof(ReadToken)} failed to consume any non-trivia characters from the source text and did not return an EOF token.");
+        _context.Assert(tokenKind != ScoreTokenKind.Invalid, _source, beginLocation, $"{nameof(ScoreLexer)}::{nameof(ReadToken)} failed to assign a non-invalid kind to the read token.");
+        _context.Assert(tokenKind == ScoreTokenKind.Identifier == tokenStringValue is not null, _source, beginLocation, $"If the token is an identifier, it requires a string value. If it is not, it requires a null string value.");
 
         var trailingTrivia = ReadTrivia(isLeading: false);
         return new(tokenKind, tokenRange, leadingTrivia, trailingTrivia)

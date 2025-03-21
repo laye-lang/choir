@@ -12,6 +12,13 @@ public sealed class ScoreSyntaxPrinter(SourceText source, bool useColor)
         PrintChildren(tokens);
     }
 
+    public void PrintSyntaxUnit(ScoreSyntaxUnit unit)
+    {
+        SetColor(ColorMisc);
+        Console.WriteLine($"// Score Syntax Unit \"{unit.Source.Name}\"");
+        Print(unit);
+    }
+
     protected override void Print(ScoreSyntaxNode node)
     {
         Console.Write($"{node.GetType().Name} ");

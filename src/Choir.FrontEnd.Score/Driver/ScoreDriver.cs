@@ -59,12 +59,13 @@ public sealed class ScoreDriver
         foreach (var (fileName, file) in Options.InputFiles)
         {
             var source = new SourceText(fileName, File.ReadAllText(file.FullName));
-            var tokens = ScoreLexer.ReadTokens(Context, source);
-            
-            Context.Diag.Flush();
-
             var printer = new ScoreSyntaxPrinter(source, Options.OutputColoring);
-            printer.PrintTokens(tokens);
+
+            //var tokens = ScoreLexer.ReadTokens(Context, source);
+            //printer.PrintTokens(tokens);
+
+            var syntaxUnit = ScoreParser.ParseSyntaxUnit(Context, source);
+            printer.PrintSyntaxUnit(syntaxUnit);
         }
 
         return 0;

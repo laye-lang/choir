@@ -75,6 +75,16 @@ public sealed class DiagnosticEngine(IDiagnosticConsumer consumer)
         return Emit(new Diagnostic(level, new MarkupLiteral(message)));
     }
 
+    public Diagnostic Emit(DiagnosticLevel level, SourceText source, SourceLocation location, string message)
+    {
+        return Emit(new Diagnostic(level, null, source, location, [], new MarkupLiteral(message)));
+    }
+
+    public Diagnostic Emit(DiagnosticLevel level, SourceText source, SourceLocation location, SourceRange[] ranges, string message)
+    {
+        return Emit(new Diagnostic(level, null, source, location, ranges, new MarkupLiteral(message)));
+    }
+
     public Diagnostic Emit(DiagnosticLevel level, string id, SourceText source,
         SourceLocation location, SourceRange[] ranges, string message)
     {
@@ -86,6 +96,17 @@ public sealed class DiagnosticEngine(IDiagnosticConsumer consumer)
         return Emit(new Diagnostic(level, message));
     }
 
+    public Diagnostic Emit(DiagnosticLevel level, SourceText source, SourceLocation location, Markup message)
+    {
+        return Emit(new Diagnostic(level, null, source, location, [], message));
+    }
+
+    public Diagnostic Emit(DiagnosticLevel level, SourceText source,
+        SourceLocation location, SourceRange[] ranges, Markup message)
+    {
+        return Emit(new Diagnostic(level, null, source, location, ranges, message));
+    }
+
     public Diagnostic Emit(DiagnosticLevel level, string id, SourceText source,
         SourceLocation location, SourceRange[] ranges, Markup message)
     {
@@ -95,6 +116,17 @@ public sealed class DiagnosticEngine(IDiagnosticConsumer consumer)
     public Diagnostic Emit(DiagnosticLevel level, MarkupInterpolatedStringHandler message)
     {
         return Emit(new Diagnostic(level, message.Markup));
+    }
+
+    public Diagnostic Emit(DiagnosticLevel level, SourceText source, SourceLocation location, MarkupInterpolatedStringHandler message)
+    {
+        return Emit(new Diagnostic(level, null, source, location, [], message.Markup));
+    }
+
+    public Diagnostic Emit(DiagnosticLevel level, SourceText source,
+        SourceLocation location, SourceRange[] ranges, MarkupInterpolatedStringHandler message)
+    {
+        return Emit(new Diagnostic(level, null, source, location, ranges, message.Markup));
     }
 
     public Diagnostic Emit(DiagnosticLevel level, string id, SourceText source,

@@ -58,6 +58,8 @@ public enum ScoreTokenKind
     GreaterEqual,
     GreaterGreater,
     GreaterGreaterEqual,
+    GreaterGreaterGreater,
+    GreaterGreaterGreaterEqual,
     PipeEqual,
     TildeEqual,
 

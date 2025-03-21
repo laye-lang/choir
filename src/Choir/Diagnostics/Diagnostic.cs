@@ -19,7 +19,7 @@ public readonly struct Diagnostic
         Message = message;
     }
 
-    public Diagnostic(DiagnosticLevel level, string id, SourceText source, SourceLocation location, SourceRange[] ranges, Markup message)
+    public Diagnostic(DiagnosticLevel level, string? id, SourceText source, SourceLocation location, SourceRange[] ranges, Markup message)
     {
         Level = level;
         Id = id;
