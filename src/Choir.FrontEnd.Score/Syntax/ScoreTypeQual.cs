@@ -4,7 +4,7 @@ using Choir.Source;
 namespace Choir.FrontEnd.Score.Syntax;
 
 public sealed class ScoreTypeQual
-    : ScoreExpr, IMarkupFormattable
+    : ScoreSyntaxExpr, IMarkupFormattable
 {
     public ScoreType Unqualified { get; set;  }
     public ScoreTypeQual Canonical => Unqualified.Canonical.Qualified(Range, Qualifiers);

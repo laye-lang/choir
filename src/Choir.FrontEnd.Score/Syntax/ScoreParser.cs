@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 using Choir.Source;
@@ -53,23 +54,21 @@ public sealed class ScoreParser
         _tokens = tokens;
     }
 
-    private void Advance(int amount = 1)
+    private ScoreToken Consume()
     {
-        _context.Assert(amount >= 1, $"Parameter {nameof(amount)} to function {nameof(ScoreParser)}::{nameof(Advance)} must be positive; advancing the parser must always move forward at least one token if possible.");
-        if (IsAtEnd) return;
-        _readPosition = Math.Min(_readPosition + amount, _tokens.Count - 1);
+        if (IsAtEnd) return _tokens[^1];
+        var result = _tokens[_readPosition];
+        _readPosition++;
+        return result;
     }
 
-    private bool TryAdvance(ScoreTokenKind kind, [NotNullWhen(true)] out ScoreToken? token)
+    private bool TryConsume(ScoreTokenKind kind, [NotNullWhen(true)] out ScoreToken? token)
     {
         token = null;
-
-        var currentToken = CurrentToken;
-        if (currentToken.Kind != kind)
+        if (CurrentToken.Kind != kind)
             return false;
 
-        token = currentToken;
-        Advance();
+        token = Consume();
         return true;
     }
 
@@ -86,6 +85,11 @@ public sealed class ScoreParser
         }
 
         return _tokens[peekIndex];
+    }
+
+    private bool At(ScoreTokenKind kind)
+    {
+        return CurrentToken.Kind == kind;
     }
 
     private ScoreSyntaxNode ParseTopLevel()
@@ -110,9 +114,14 @@ public sealed class ScoreParser
 
     #region Declarations
 
-    private ScoreDeclFunc ParseDeclFunc()
+    private ScoreSyntaxDeclFunc ParseDeclFunc()
     {
-        _context.Todo(_source, CurrentLocation, "Parse a function declaration, starting at the 'func' keyword.");
+        _context.Assert(At(ScoreTokenKind.Func), "Parser should be at the 'func' token to parse a func declaration.");
+
+        var funcKeywordToken = Consume();
+        var nameToken = ExpectIdentifier();
+
+        _context.Todo(_source, CurrentLocation, "Parse a function declaration.");
         throw new UnreachableException();
     }
 

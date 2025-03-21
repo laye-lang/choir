@@ -11,8 +11,6 @@ public sealed class ScoreToken(ScoreTokenKind kind, SourceRange range, ScoreTriv
     public ScoreTriviaList LeadingTrivia { get; set; } = leadingTrivia;
     public ScoreTriviaList TrailingTrivia { get; set; } = trailingTrivia;
 
-    public string? StringValue { get; set; }
-
     public override IEnumerable<ScoreSyntaxNode> Children
     {
         get

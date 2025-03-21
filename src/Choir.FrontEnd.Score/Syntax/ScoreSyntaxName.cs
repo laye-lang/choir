@@ -40,11 +40,11 @@ public abstract class ScoreSyntaxName(SourceRange range)
     public abstract override int GetHashCode();
 }
 
-public sealed class ScoreSyntaxNameIdentifier(ScoreToken identifierToken)
+public sealed class ScoreSyntaxNameIdentifier(ScoreToken identifierToken, string spelling)
     : ScoreSyntaxName(identifierToken.Range)
 {
     public ScoreToken IdentifierToken { get; } = identifierToken;
-    public string Spelling { get; } = identifierToken.StringValue ?? throw new ArgumentException($"{nameof(ScoreSyntaxNameIdentifier)} requires an identifier token with a string value, but the string value was null.");
+    public string Spelling { get; } = spelling;
     public override IEnumerable<ScoreSyntaxNode> Children { get; } = [identifierToken];
     public override int GetHashCode() => Spelling.GetHashCode();
 }

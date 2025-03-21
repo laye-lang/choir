@@ -2,21 +2,21 @@
 
 namespace Choir.FrontEnd.Score.Syntax;
 
-public abstract class ScoreDecl
+public abstract class ScoreSyntaxDecl
     : ScoreSyntaxNode
 {
     public abstract SourceRange Range { get; }
 }
 
-public abstract class ScoreDeclNamed(ScoreSyntaxName name)
-    : ScoreDecl
+public abstract class ScoreSyntaxDeclNamed(ScoreSyntaxName name)
+    : ScoreSyntaxDecl
 {
     public ScoreSyntaxName Name { get; set; } = name;
     public override SourceRange Range { get; } = name.Range;
 }
 
-public sealed class ScoreDeclFunc(ScoreToken funcKeywordToken, ScoreToken funcNameToken, ScoreToken openParenToken, ScoreToken closeParenToken)
-    : ScoreDeclNamed(new ScoreSyntaxNameIdentifier(funcNameToken))
+public sealed class ScoreSyntaxDeclFunc(ScoreToken funcKeywordToken, ScoreSyntaxName funcName, ScoreToken openParenToken, ScoreToken closeParenToken)
+    : ScoreSyntaxDeclNamed(funcName)
 {
     public ScoreToken FuncKeywordToken { get; set; } = funcKeywordToken;
     public ScoreToken OpenParenToken { get; set; } = openParenToken;
@@ -34,8 +34,8 @@ public sealed class ScoreDeclFunc(ScoreToken funcKeywordToken, ScoreToken funcNa
     }
 }
 
-public class ScoreDeclFuncParam(ScoreToken paramNameToken, ScoreToken colonToken, ScoreTypeQual paramType)
-    : ScoreDeclNamed(new ScoreSyntaxNameIdentifier(paramNameToken))
+public class ScoreSyntaxDeclFuncParam(ScoreSyntaxName paramName, ScoreToken colonToken, ScoreTypeQual paramType)
+    : ScoreSyntaxDeclNamed(paramName)
 {
     public ScoreToken ColonToken { get; set; } = colonToken;
     public ScoreTypeQual ParamType { get; set; } = paramType;

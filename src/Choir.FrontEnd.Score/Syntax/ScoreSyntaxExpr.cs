@@ -2,7 +2,7 @@
 
 namespace Choir.FrontEnd.Score.Syntax;
 
-public abstract class ScoreExpr
+public abstract class ScoreSyntaxExpr
     : ScoreSyntaxNode
 {
     public SourceRange Range { get; set; }
@@ -10,7 +10,7 @@ public abstract class ScoreExpr
 
     public ScoreTypeQual Type { get; set; }
 
-    protected ScoreExpr(SourceRange range, ScoreTypeQual type)
+    protected ScoreSyntaxExpr(SourceRange range, ScoreTypeQual type)
     {
         Range = range;
         Type = type;

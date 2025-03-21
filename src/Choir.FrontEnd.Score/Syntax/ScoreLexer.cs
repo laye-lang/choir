@@ -236,8 +236,6 @@ public sealed class ScoreLexer
             return new(ScoreTokenKind.EndOfFile, GetRange(beginLocation), leadingTrivia, new([], false));
 
         var tokenKind = ScoreTokenKind.Invalid;
-        string? tokenStringValue = null;
-
         switch (CurrentCharacter)
         {
             case '(': tokenKind = ScoreTokenKind.OpenParen; Advance(); break;
@@ -298,22 +296,13 @@ public sealed class ScoreLexer
                 }
                 else
                 {
-                    tokenStringValue = _source.GetTextInRange(GetRange(beginLocation));
+                    string tokenStringValue = _source.GetTextInRange(GetRange(beginLocation));
                     if (_keywords.TryGetValue(tokenStringValue, out var keywordKind))
-                    {
                         tokenKind = keywordKind;
-                        tokenStringValue = null;
-                    }
                     else if (tokenStringValue.StartsWith("int") && IsSubstringOnlyDigits(tokenStringValue.AsSpan(3)))
-                    {
                         tokenKind = ScoreTokenKind.IntSized;
-                        tokenStringValue = null;
-                    }
                     else if (tokenStringValue.StartsWith("float") && IsSubstringOnlyDigits(tokenStringValue.AsSpan(5)))
-                    {
                         tokenKind = ScoreTokenKind.FloatSized;
-                        tokenStringValue = null;
-                    }
 
                     bool IsSubstringOnlyDigits(ReadOnlySpan<char> s)
                     {
@@ -364,7 +353,6 @@ public sealed class ScoreLexer
                 Advance();
 
             tokenKind = ScoreTokenKind.Identifier;
-            tokenStringValue = _source.GetTextInRange(GetRange(identifierBeginLocation));
 
             // the slow path will never produce a language keyword, so we don't check.
             // all language keywords use characters found exclusively in the fast path.
@@ -373,12 +361,8 @@ public sealed class ScoreLexer
         var tokenRange = GetRange(beginLocation);
         _context.Assert(_readPosition > beginLocation.Offset, _source, beginLocation, $"{nameof(ScoreLexer)}::{nameof(ReadToken)} failed to consume any non-trivia characters from the source text and did not return an EOF token.");
         _context.Assert(tokenKind != ScoreTokenKind.Invalid, _source, beginLocation, $"{nameof(ScoreLexer)}::{nameof(ReadToken)} failed to assign a non-invalid kind to the read token.");
-        _context.Assert(tokenKind == ScoreTokenKind.Identifier == tokenStringValue is not null, _source, beginLocation, $"If the token is an identifier, it requires a string value. If it is not, it requires a null string value.");
 
         var trailingTrivia = ReadTrivia(isLeading: false);
-        return new(tokenKind, tokenRange, leadingTrivia, trailingTrivia)
-        {
-            StringValue = tokenStringValue,
-        };
+        return new(tokenKind, tokenRange, leadingTrivia, trailingTrivia);
     }
 }
