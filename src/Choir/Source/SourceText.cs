@@ -14,4 +14,9 @@ public sealed class SourceText(string name, string text)
     public override int GetHashCode() => HashCode.Combine(Id);
     public override bool Equals(object? obj) => Equals(obj as SourceText);
     public bool Equals(SourceText? other) => other is not null && Id == other.Id;
+
+    public string GetTextInRange(SourceRange range)
+    {
+        return Text[range.Begin.Offset..range.End.Offset];
+    }
 }

@@ -61,6 +61,8 @@ public sealed class DiagnosticEngine(IDiagnosticConsumer consumer)
 
         if (diagnostic.Level == DiagnosticLevel.Fatal)
         {
+            Flush();
+
             Environment.Exit(1);
             throw new UnreachableException();
         }

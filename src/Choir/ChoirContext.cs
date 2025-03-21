@@ -20,7 +20,7 @@ public class ChoirContext
         [CallerArgumentExpression(nameof(condition))] string conditionExpressionText = "")
     {
         if (condition) return;
-        Diag.Emit(DiagnosticLevel.Fatal, $"Assertion failed: {message}\n  Condition: {conditionExpressionText}");
+        Diag.Emit(DiagnosticLevel.Fatal, $"Assertion failed: {message}\nCondition: {conditionExpressionText}");
         throw new UnreachableException();
     }
 
@@ -28,7 +28,7 @@ public class ChoirContext
         [CallerArgumentExpression(nameof(condition))] string conditionExpressionText = "")
     {
         if (condition) return;
-        Diag.Emit(DiagnosticLevel.Fatal, new MarkupSequence(["Assertion failed: ", message, $"\n  Condition: {conditionExpressionText}"]));
+        Diag.Emit(DiagnosticLevel.Fatal, new MarkupSequence(["Assertion failed: ", message, $"\nCondition: {conditionExpressionText}"]));
         throw new UnreachableException();
     }
 
@@ -36,7 +36,7 @@ public class ChoirContext
         [CallerArgumentExpression(nameof(condition))] string conditionExpressionText = "")
     {
         if (condition) return;
-        Diag.Emit(DiagnosticLevel.Fatal, new MarkupSequence(["Assertion failed: ", message.Markup, $"\n  Condition: {conditionExpressionText}"]));
+        Diag.Emit(DiagnosticLevel.Fatal, new MarkupSequence(["Assertion failed: ", message.Markup, $"\nCondition: {conditionExpressionText}"]));
         throw new UnreachableException();
     }
 

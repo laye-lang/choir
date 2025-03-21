@@ -10,8 +10,8 @@ public enum ScoreTokenKind
     Dollar = '$',
     Percent = '%',
     Ampersand = '&',
-    LeftParen = '(',
-    RightParen = ')',
+    OpenParen = '(',
+    CloseParen = ')',
     Star = '*',
     Plus = '+',
     Comma = ',',
@@ -46,6 +46,7 @@ public enum ScoreTokenKind
     StarEqual,
     PlusEqual,
     MinusEqual,
+    MinusGreater,
     DotDot,
     SlashEqual,
     ColonColon,
@@ -61,15 +62,36 @@ public enum ScoreTokenKind
     TildeEqual,
 
     Identifier,
+    LiteralInteger,
+
+    #region Reserved Keywords
+
+    Internal,
+    Private,
+    Protected,
+    Public,
+
+    Abstract,
+    Const,
+    Extern,
+    Override,
+    Readonly,
+    Writeonly,
+    Sealed,
+    Static,
+    Virtual,
 
     Func,
+    Operator,
     Let,
-    Const,
     Struct,
     Variant,
     Union,
     Enum,
     Alias,
+    Trait,
+    Ref,
+    Varargs,
 
     Module,
     Export,
@@ -79,6 +101,16 @@ public enum ScoreTokenKind
     False,
     Nil,
     This,
+    Base,
+    New,
+    Delete,
+
+    Sizeof,
+    Alignof,
+    Offsetof,
+    Countof,
+    Rankof,
+    Typeof,
 
     If,
     Else,
@@ -88,10 +120,29 @@ public enum ScoreTokenKind
     Switch,
     Case,
     Default,
+    Defer,
 
     Return,
     Break,
     Continue,
     Goto,
     Yield,
+
+    Void,
+    Noreturn,
+    Bool,
+    Int,
+    IntSized,
+    FloatSized,
+
+    Is,
+    Not,
+    And,
+    Or,
+
+    #endregion
+
+    #region Contextual Keywords
+
+    #endregion
 }

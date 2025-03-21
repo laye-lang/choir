@@ -7,15 +7,22 @@ public sealed class MarkupBuilder
 
     public Markup Markup => new MarkupSequence(_markupNodes);
 
-    public void AppendLine() => Append("\n");
+    public void AppendLine() => _markupNodes.Add(MarkupLineBreak.Instance);
     public void Append(string s)
     {
-        _markupNodes.Add(new MarkupLiteral(s));
+        string[] pieces = s.Split('\n');
+        for (int i = 0; i < pieces.Length; i++)
+        {
+            if (i > 0) _markupNodes.Add(MarkupLineBreak.Instance);
+            _markupNodes.Add(new MarkupLiteral(pieces[i].Trim('\r')));
+        }
     }
 
     public void Append(Markup markup)
     {
-        _markupNodes.Add(markup);
+        if (markup is MarkupLiteral literal)
+            Append(literal.Literal);
+        else _markupNodes.Add(markup);
     }
 
     public void Append(IMarkupFormattable formattable)

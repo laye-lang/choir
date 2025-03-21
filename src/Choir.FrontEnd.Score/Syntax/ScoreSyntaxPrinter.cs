@@ -1,6 +1,8 @@
-﻿namespace Choir.FrontEnd.Score.Syntax;
+﻿using Choir.Source;
 
-public sealed class ScoreSyntaxPrinter(bool useColor)
+namespace Choir.FrontEnd.Score.Syntax;
+
+public sealed class ScoreSyntaxPrinter(SourceText source, bool useColor)
     : BaseTreePrinter<ScoreSyntaxNode>(useColor)
 {
     public void PrintTokens(IEnumerable<ScoreToken> tokens)
@@ -18,6 +20,8 @@ public sealed class ScoreSyntaxPrinter(bool useColor)
             PrintToken(token);
         else if (node is ScoreTriviaList triviaList)
             PrintTriviaList(triviaList);
+        else if (node is ScoreTrivia trivia)
+            PrintTrivia(trivia);
 
         Console.ResetColor();
         Console.WriteLine();
@@ -29,6 +33,32 @@ public sealed class ScoreSyntaxPrinter(bool useColor)
     {
         SetColor(ColorProperty);
         Console.Write(token.Kind);
+
+        if (token.Range.Length <= 64)
+        {
+            string image = source.GetTextInRange(token.Range);
+            if (!image.Contains('\r') && !image.Contains('\n'))
+            {
+                SetColor(ColorMisc);
+                Console.Write(' ');
+                Console.Write(image);
+            }
+        }
+    }
+
+    private void PrintTrivia(ScoreTrivia trivia)
+    {
+        if (trivia.Range.Length <= 64)
+        {
+            string image = source.GetTextInRange(trivia.Range);
+            if (!image.Contains('\r') && !image.Contains('\n'))
+            {
+                SetColor(ColorMisc);
+                if (string.IsNullOrWhiteSpace(image))
+                    Console.Write($"'{image}'");
+                else Console.Write(image);
+            }
+        }
     }
 
     private void PrintTriviaList(ScoreTriviaList triviaList)
