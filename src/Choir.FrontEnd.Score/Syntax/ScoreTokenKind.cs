@@ -38,6 +38,7 @@ public enum ScoreTokenKind
 
     EndOfFile = 256,
     UnexpectedCharacter,
+    Missing,
 
     BangEqual,
     PercentEqual,

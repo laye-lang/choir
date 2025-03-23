@@ -50,7 +50,7 @@ public sealed class ScoreDriver
     private ScoreDriver(string programName, IDiagnosticConsumer diagConsumer, ScoreDriverOptions options)
     {
         ProgramName = programName;
-        Context = new ScoreContext(diagConsumer);
+        Context = new ScoreContext(diagConsumer, Target.X86_64);
         Options = options;
     }
 

@@ -1,18 +1,19 @@
 ﻿using Choir.Formatting;
+using Choir.FrontEnd.Score.Types;
 using Choir.Source;
 
 namespace Choir.FrontEnd.Score.Syntax;
 
-public sealed class ScoreTypeQual
+public sealed class ScoreSyntaxTypeQual
     : ScoreSyntaxExpr, IMarkupFormattable
 {
     public ScoreType Unqualified { get; set;  }
-    public ScoreTypeQual Canonical => Unqualified.Canonical.Qualified(Range, Qualifiers);
+    public ScoreSyntaxTypeQual Canonical => Unqualified.Canonical.Qualified(Range, Qualifiers);
 
     public ScoreTypeQualifier Qualifiers { get; set; }
 
-    public ScoreTypeQual(SourceRange range, ScoreType type, ScoreTypeQualifier qualifiers)
-        : base(range, ScoreTypeTypeInfo.Instance.Qualified(range))
+    public ScoreSyntaxTypeQual(SourceRange range, ScoreType type, ScoreTypeQualifier qualifiers)
+        : base(range, ScoreSyntaxTypeTypeInfo.Instance.Qualified(range))
     {
         Unqualified = type;
         Qualifiers = qualifiers;

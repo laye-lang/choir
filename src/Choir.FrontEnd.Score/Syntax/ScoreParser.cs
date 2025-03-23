@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
+using Choir.FrontEnd.Score.Diagnostics;
 using Choir.Source;
 
 namespace Choir.FrontEnd.Score.Syntax;
@@ -54,6 +55,13 @@ public sealed class ScoreParser
         _tokens = tokens;
     }
 
+    #region Token Stream Access/Manipulation
+
+    private bool At(ScoreTokenKind kind)
+    {
+        return CurrentToken.Kind == kind;
+    }
+
     private ScoreToken Consume()
     {
         if (IsAtEnd) return _tokens[^1];
@@ -87,10 +95,29 @@ public sealed class ScoreParser
         return _tokens[peekIndex];
     }
 
-    private bool At(ScoreTokenKind kind)
+    private ScoreToken ExpectIdentifier()
     {
-        return CurrentToken.Kind == kind;
+        if (TryConsume(ScoreTokenKind.Identifier, out var expectedToken))
+            return expectedToken;
+
+        _context.ErrorIdentifierExpected(_source, CurrentLocation);
+
+        var missingToken = new ScoreToken(ScoreTokenKind.Missing, new(CurrentLocation, CurrentLocation), new([], true), new([], false));
+        return missingToken;
     }
+
+    private ScoreToken ExpectToken(ScoreTokenKind kind, string tokenSpelling)
+    {
+        if (TryConsume(kind, out var expectedToken))
+            return expectedToken;
+
+        _context.ErrorTokenExpected(_source, CurrentLocation, tokenSpelling);
+
+        var missingToken = new ScoreToken(ScoreTokenKind.Missing, new(CurrentLocation, CurrentLocation), new([], true), new([], false));
+        return missingToken;
+    }
+
+    #endregion
 
     private ScoreSyntaxNode ParseTopLevel()
     {
@@ -112,6 +139,53 @@ public sealed class ScoreParser
         }
     }
 
+    private (List<TSyntaxNode> Nodes, List<ScoreToken> Delimiters) ParseDelimited<TSyntaxNode>(ScoreTokenKind delimiterKind, Func<TSyntaxNode> parserCallback,
+        bool allowTrailingDelimiter = false, ScoreTokenKind closingTokenKind = ScoreTokenKind.Invalid)
+        where TSyntaxNode : ScoreSyntaxNode
+    {
+        List<TSyntaxNode> nodes = [];
+        List<ScoreToken> delimiterTokens = [];
+
+        if (IsAtEnd || At(closingTokenKind))
+            return (nodes, delimiterTokens);
+
+        nodes.Add(parserCallback());
+        while (TryConsume(delimiterKind, out var delimiterToken))
+        {
+            delimiterTokens.Add(delimiterToken);
+            if (allowTrailingDelimiter && At(closingTokenKind))
+                break;
+
+            nodes.Add(parserCallback());
+        }
+
+        return (nodes, delimiterTokens);
+    }
+
+    #region Types
+
+    private ScoreSyntaxTypeQual ParseType()
+    {
+        switch (CurrentToken.Kind)
+        {
+            case ScoreTokenKind.IntSized:
+            {
+                string keywordText = _source.GetTextInRange(CurrentRange);
+                _context.Assert(keywordText.StartsWith("int"), _source, CurrentLocation, "Expected sized integer type keyword to start with the string 'int'.");
+
+                bool isBitWidthValidInteger = int.TryParse(keywordText[3..], out int bitWidth);
+                _context.Assert(isBitWidthValidInteger, _source, CurrentLocation + 3, "Expected sized integer type keyword to contain only digits for its bit width component.");
+
+                if (bitWidth is < ScoreSyntaxFacts.PrimitiveTypeKeywordLowerBoundInclusive or >= ScoreSyntaxFacts.PrimitiveTypeKeywordUpperBoundExclusive)
+                    _context.ErrorPrimitiveTypeSizeOutOfRange(_source, CurrentLocation + 3);
+
+                var keywordToken = Consume();
+            }
+        }
+    }
+
+    #endregion
+
     #region Declarations
 
     private ScoreSyntaxDeclFunc ParseDeclFunc()
@@ -119,10 +193,26 @@ public sealed class ScoreParser
         _context.Assert(At(ScoreTokenKind.Func), "Parser should be at the 'func' token to parse a func declaration.");
 
         var funcKeywordToken = Consume();
-        var nameToken = ExpectIdentifier();
+        var funcNameToken = ExpectIdentifier();
+
+        var openParenToken = ExpectToken(ScoreTokenKind.OpenParen, "(");
+        var declParams = ParseDeclFuncParams();
+        var closeParenToken = ExpectToken(ScoreTokenKind.CloseParen, ")");
 
         _context.Todo(_source, CurrentLocation, "Parse a function declaration.");
         throw new UnreachableException();
+    }
+
+    private ScoreSyntaxDeclFuncParams ParseDeclFuncParams()
+    {
+        var (declParams, commaTokens) = ParseDelimited(ScoreTokenKind.Comma, ParseDeclFuncParam, false, ScoreTokenKind.CloseParen);
+        return new ScoreSyntaxDeclFuncParams(declParams, commaTokens);
+    }
+
+    private ScoreSyntaxDeclFuncParam ParseDeclFuncParam()
+    {
+        var paramNameToken = ExpectIdentifier();
+        var colonToken = ExpectIdentifier();
     }
 
     #endregion

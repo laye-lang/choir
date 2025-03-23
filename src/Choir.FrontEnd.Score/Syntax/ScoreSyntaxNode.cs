@@ -17,5 +17,5 @@ public abstract class ScoreSyntaxNode
     public override int GetHashCode() => HashCode.Combine(Id);
 
     public override bool Equals(object? obj) => obj is ScoreSyntaxNode other && Equals(other);
-    public bool Equals(ScoreSyntaxNode? other) => other is not null && Id == other.Id;
+    public virtual bool Equals(ScoreSyntaxNode? other) => other is not null && Id == other.Id;
 }

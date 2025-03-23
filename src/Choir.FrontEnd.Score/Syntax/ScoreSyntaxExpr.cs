@@ -8,9 +8,9 @@ public abstract class ScoreSyntaxExpr
     public SourceRange Range { get; set; }
     public SourceLocation Location => Range.Begin;
 
-    public ScoreTypeQual Type { get; set; }
+    public ScoreSyntaxTypeQual Type { get; set; }
 
-    protected ScoreSyntaxExpr(SourceRange range, ScoreTypeQual type)
+    protected ScoreSyntaxExpr(SourceRange range, ScoreSyntaxTypeQual type)
     {
         Range = range;
         Type = type;

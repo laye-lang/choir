@@ -11,10 +11,12 @@ namespace Choir;
 public class ChoirContext
 {
     public DiagnosticEngine Diag { get; }
+    public Target Target { get; }
 
-    public ChoirContext(IDiagnosticConsumer diagConsumer)
+    public ChoirContext(IDiagnosticConsumer diagConsumer, Target target)
     {
         Diag = new(diagConsumer);
+        Target = target;
     }
 
     public void Assert([DoesNotReturnIf(false)] bool condition, string message,

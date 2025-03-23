@@ -15,11 +15,13 @@ public abstract class ScoreSyntaxDeclNamed(ScoreSyntaxName name)
     public override SourceRange Range { get; } = name.Range;
 }
 
-public sealed class ScoreSyntaxDeclFunc(ScoreToken funcKeywordToken, ScoreSyntaxName funcName, ScoreToken openParenToken, ScoreToken closeParenToken)
+public sealed class ScoreSyntaxDeclFunc(ScoreToken funcKeywordToken, ScoreSyntaxName funcName,
+    ScoreToken openParenToken, ScoreSyntaxDeclFuncParams declParams, ScoreToken closeParenToken)
     : ScoreSyntaxDeclNamed(funcName)
 {
     public ScoreToken FuncKeywordToken { get; set; } = funcKeywordToken;
     public ScoreToken OpenParenToken { get; set; } = openParenToken;
+    public ScoreSyntaxDeclFuncParams DeclParams { get; set; } = declParams;
     public ScoreToken CloseParenToken { get; set; } = closeParenToken;
 
     public override IEnumerable<ScoreSyntaxNode> Children
@@ -29,16 +31,30 @@ public sealed class ScoreSyntaxDeclFunc(ScoreToken funcKeywordToken, ScoreSyntax
             yield return FuncKeywordToken;
             yield return Name;
             yield return OpenParenToken;
+            yield return DeclParams;
             yield return CloseParenToken;
         }
     }
 }
 
-public class ScoreSyntaxDeclFuncParam(ScoreSyntaxName paramName, ScoreToken colonToken, ScoreTypeQual paramType)
+public class ScoreSyntaxDeclFuncParams(List<ScoreSyntaxDeclFuncParam> declParams, List<ScoreToken> commaTokens)
+    : ScoreSyntaxNode
+{
+    public List<ScoreSyntaxDeclFuncParam> DeclParams { get; set; } = declParams;
+    public List<ScoreToken> CommaTokens { get; set; } = commaTokens;
+
+    public override IEnumerable<ScoreSyntaxNode> Children => DeclParams
+        .Select(p => (p.Range, Node: (ScoreSyntaxNode)p))
+        .Concat(CommaTokens.Select(p => (p.Range, Node: (ScoreSyntaxNode)p)))
+        .OrderBy(pair => pair.Range)
+        .Select(pair => pair.Node);
+}
+
+public class ScoreSyntaxDeclFuncParam(ScoreSyntaxName paramName, ScoreToken colonToken, ScoreSyntaxTypeQual paramType)
     : ScoreSyntaxDeclNamed(paramName)
 {
     public ScoreToken ColonToken { get; set; } = colonToken;
-    public ScoreTypeQual ParamType { get; set; } = paramType;
+    public ScoreSyntaxTypeQual ParamType { get; set; } = paramType;
 
     public override IEnumerable<ScoreSyntaxNode> Children
     {

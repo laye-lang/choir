@@ -58,12 +58,12 @@ public sealed class ScoreSyntaxNameOperator(OverloadableOperator @operator, IRea
     public override int GetHashCode() => HashCode.Combine(Operator);
 }
 
-public sealed class ScoreSyntaxNameOperatorCast(ScoreToken castKeywordToken, ScoreToken openParenToken, ScoreTypeQual castType, ScoreToken closeParenToken)
+public sealed class ScoreSyntaxNameOperatorCast(ScoreToken castKeywordToken, ScoreToken openParenToken, ScoreSyntaxTypeQual castType, ScoreToken closeParenToken)
     : ScoreSyntaxName(new(castKeywordToken.Range.Begin, closeParenToken.Range.End))
 {
     public ScoreToken CastKeywordToken { get; } = castKeywordToken;
     public ScoreToken OpenParenToken { get; } = openParenToken;
-    public ScoreTypeQual CastType { get; } = castType;
+    public ScoreSyntaxTypeQual CastType { get; } = castType;
     public ScoreToken CloseParenToken { get; } = closeParenToken;
     public override IEnumerable<ScoreSyntaxNode> Children { get; } = [castKeywordToken, openParenToken, castType, closeParenToken];
     public override int GetHashCode() => HashCode.Combine(7, CastType);

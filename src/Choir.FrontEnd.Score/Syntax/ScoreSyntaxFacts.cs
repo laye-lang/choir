@@ -4,6 +4,9 @@ namespace Choir.FrontEnd.Score.Syntax;
 
 public static class ScoreSyntaxFacts
 {
+    public const int PrimitiveTypeKeywordLowerBoundInclusive = 1;
+    public const int PrimitiveTypeKeywordUpperBoundExclusive = 65536;
+
     public static bool CanStartIdentifier(char c)
     {
         if (c is '_' or (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'))
