@@ -56,16 +56,29 @@ public sealed class ScoreDriver
 
     public int Execute()
     {
+        if (Options.Command == ScoreCompilerCommand.Format)
+            return CommandFormat();
+
         foreach (var (fileName, file) in Options.InputFiles)
         {
             var source = new SourceText(fileName, File.ReadAllText(file.FullName));
-            var printer = new ScoreSyntaxPrinter(source, Options.OutputColoring);
-
-            //var tokens = ScoreLexer.ReadTokens(Context, source);
-            //printer.PrintTokens(tokens);
+            var printer = new ScoreSyntaxDebugVisualizer(source, Options.OutputColoring);
 
             var syntaxUnit = ScoreParser.ParseSyntaxUnit(Context, source);
             printer.PrintSyntaxUnit(syntaxUnit);
+        }
+
+        return 0;
+    }
+
+    private int CommandFormat()
+    {
+        foreach (var (fileName, file) in Options.InputFiles)
+        {
+            var source = new SourceText(fileName, File.ReadAllText(file.FullName));
+            var syntaxUnit = ScoreParser.ParseSyntaxUnit(Context, source);
+            string unitFormattedText = ScoreSyntaxPrinter.PrintToString(ScoreSyntaxFormatter.Format(syntaxUnit));
+            Console.WriteLine(unitFormattedText);
         }
 
         return 0;

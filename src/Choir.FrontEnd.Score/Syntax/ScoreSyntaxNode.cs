@@ -1,4 +1,5 @@
-﻿using Choir.Source;
+﻿using Choir.FrontEnd.Score.Semantics;
+using Choir.Source;
 
 namespace Choir.FrontEnd.Score.Syntax;
 
@@ -13,6 +14,8 @@ public abstract class ScoreSyntaxNode(SourceRange range)
     public SourceLocation Location { get; } = range.Begin;
 
     public abstract IEnumerable<ScoreSyntaxNode> Children { get; }
+
+    public ScoreSemaNode? SemaNode { get; set; }
 
     public override int GetHashCode() => HashCode.Combine(Id);
 

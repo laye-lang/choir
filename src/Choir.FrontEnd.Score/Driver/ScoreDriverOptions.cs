@@ -3,10 +3,17 @@ using Choir.Driver;
 
 namespace Choir.FrontEnd.Score.Driver;
 
+public enum ScoreCompilerCommand
+{
+    Compile,
+    Run,
+    Format,
+}
+
 public sealed class ScoreDriverOptions
     : BaseCompilerDriverOptions<ScoreDriverOptions, ScoreContext, BaseCompilerDriverParseState>
 {
-    public bool Run { get; set; } = false;
+    public ScoreCompilerCommand Command { get; set; } = ScoreCompilerCommand.Compile;
 
     public List<(string Name, FileInfo File)> InputFiles { get; set; } = [];
 
@@ -25,7 +32,8 @@ public sealed class ScoreDriverOptions
         {
             default: base.HandleArgument(arg, diag, args, state); break;
 
-            case "--run": Run = true; break;
+            case "--run": Command = ScoreCompilerCommand.Run; break;
+            case "--format": Command = ScoreCompilerCommand.Format; break;
         }
     }
 }

@@ -1,77 +1,52 @@
-﻿using Choir.Source;
+﻿using System.Text;
 
 namespace Choir.FrontEnd.Score.Syntax;
 
-public sealed class ScoreSyntaxPrinter(SourceText source, bool useColor)
-    : BaseTreePrinter<ScoreSyntaxNode>(useColor)
+public sealed class ScoreSyntaxPrinter
 {
-    public void PrintTokens(IEnumerable<ScoreToken> tokens)
+    public static string PrintToString(ScoreSyntaxUnit unit)
     {
-        SetColor(ColorBase);
-        Console.WriteLine("Tokens");
-        PrintChildren(tokens);
+        var printer = new ScoreSyntaxPrinter(unit);
+        return printer.PrintToString();
     }
 
-    public void PrintSyntaxUnit(ScoreSyntaxUnit unit)
+    private readonly StringBuilder _builder = new();
+    private readonly ScoreSyntaxUnit _unit;
+
+    private ScoreSyntaxPrinter(ScoreSyntaxUnit unit)
     {
-        SetColor(ColorMisc);
-        Console.WriteLine($"// Score Syntax Unit \"{unit.Source.Name}\"");
-        Print(unit);
+        _unit = unit;
     }
 
-    protected override void Print(ScoreSyntaxNode node)
+    private string PrintToString()
     {
-        SetColor(ColorBase);
-        Console.Write($"{node.GetType().Name} ");
+        _builder.Clear();
+        foreach (var node in _unit.TopLevelNodes)
+            PrintNode(node);
 
-        if (node is ScoreToken token)
-            PrintToken(token);
-        else if (node is ScoreTriviaList triviaList)
-            PrintTriviaList(triviaList);
-        else if (node is ScoreTrivia trivia)
-            PrintTrivia(trivia);
+        return _builder.ToString();
+    }
 
-        Console.ResetColor();
-        Console.WriteLine();
-
-        PrintChildren(node.Children);
+    private void PrintNode(ScoreSyntaxNode node)
+    {
+        foreach (var child in node.Children)
+        {
+            if (child is ScoreToken token)
+                PrintToken(token);
+            else PrintNode(child);
+        }
     }
 
     private void PrintToken(ScoreToken token)
     {
-        SetColor(ColorProperty);
-        Console.Write(token.Kind);
-
-        if (token.Range.Length <= 64)
-        {
-            string image = source.GetTextInRange(token.Range);
-            if (!image.Contains('\r') && !image.Contains('\n'))
-            {
-                SetColor(ColorMisc);
-                Console.Write(' ');
-                Console.Write(image);
-            }
-        }
+        PrintTrivia(token.LeadingTrivia);
+        _builder.Append(_unit.Source.GetTextInRange(token.Range));
+        PrintTrivia(token.TrailingTrivia);
     }
 
-    private void PrintTrivia(ScoreTrivia trivia)
+    private void PrintTrivia(ScoreTriviaList leadingTrivia)
     {
-        if (trivia.Range.Length <= 64)
-        {
-            string image = source.GetTextInRange(trivia.Range);
-            if (!image.Contains('\r') && !image.Contains('\n'))
-            {
-                SetColor(ColorMisc);
-                if (string.IsNullOrWhiteSpace(image))
-                    Console.Write($"'{image}'");
-                else Console.Write(image);
-            }
-        }
-    }
-
-    private void PrintTriviaList(ScoreTriviaList triviaList)
-    {
-        SetColor(ColorProperty);
-        Console.Write(triviaList.IsLeading ? "Leading" : "Trailing");
+        foreach (var trivia in leadingTrivia.Trivia)
+            _builder.Append(_unit.Source.GetTextInRange(trivia.Range));
     }
 }

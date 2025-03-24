@@ -2,7 +2,7 @@
 
 namespace Choir;
 
-public abstract class BaseTreePrinter<TNode>(bool useColor)
+public abstract class BaseTreeDebugVisualizer<TNode>(bool useColor)
 {
     protected readonly StringBuilder _leadingText = new(128);
 
