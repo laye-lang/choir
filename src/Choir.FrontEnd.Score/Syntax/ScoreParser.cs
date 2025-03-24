@@ -66,6 +66,11 @@ public sealed class ScoreParser
         return CurrentToken.Kind == kind;
     }
 
+    private bool PeekAt(int ahead, ScoreTokenKind kind)
+    {
+        return PeekToken(ahead).Kind == kind;
+    }
+
     private ScoreToken Consume()
     {
         if (IsAtEnd) return _tokens[^1];
@@ -196,6 +201,16 @@ public sealed class ScoreParser
 
                 var keywordToken = Consume();
                 var syntaxType = new ScoreSyntaxTypeBuiltin(keywordToken);
+                return CreateResult(syntaxType);
+            }
+
+            case ScoreTokenKind.OpenSquare when PeekAt(1, ScoreTokenKind.Star) && PeekAt(2, ScoreTokenKind.CloseSquare):
+            {
+                var openSquareToken = Consume();
+                var starToken = Consume();
+                var closeSquareToken = Consume();
+                var elementType = ParseType();
+                var syntaxType = new ScoreSyntaxTypeBuffer(openSquareToken, starToken, closeSquareToken, elementType);
                 return CreateResult(syntaxType);
             }
         }
