@@ -1,18 +1,18 @@
-﻿namespace Choir.FrontEnd.Score.Syntax;
+﻿using Choir.Source;
 
-public abstract class ScoreSyntaxNode
+namespace Choir.FrontEnd.Score.Syntax;
+
+public abstract class ScoreSyntaxNode(SourceRange range)
     : IEquatable<ScoreSyntaxNode>
 {
     private static long _counter = 0;
 
-    public long Id { get; }
+    public long Id { get; } = Interlocked.Increment(ref _counter);
+
+    public SourceRange Range { get; } = range;
+    public SourceLocation Location { get; } = range.Begin;
 
     public virtual IEnumerable<ScoreSyntaxNode> Children { get; } = [];
-
-    protected ScoreSyntaxNode()
-    {
-        Id = Interlocked.Increment(ref _counter);
-    }
 
     public override int GetHashCode() => HashCode.Combine(Id);
 

@@ -3,17 +3,16 @@
 namespace Choir.FrontEnd.Score.Syntax;
 
 public abstract class ScoreTrivia(SourceRange range)
-    : ScoreSyntaxNode
+    : ScoreSyntaxNode(range)
 {
-    public SourceRange Range { get; set; } = range;
 }
 
-public sealed class ScoreTriviaList(List<ScoreTrivia> trivia, bool isLeading)
-    : ScoreSyntaxNode
+public sealed class ScoreTriviaList(IReadOnlyList<ScoreTrivia> trivia, bool isLeading)
+    : ScoreSyntaxNode(trivia.Count == 0 ? new() : new(trivia[0].Range.Begin, trivia[^1].Range.End))
 {
-    public List<ScoreTrivia> Trivia { get; set; } = trivia;
+    public IReadOnlyList<ScoreTrivia> Trivia { get; } = trivia;
     public bool IsLeading { get; set; } = isLeading;
-    public override IEnumerable<ScoreSyntaxNode> Children => Trivia;
+    public override IEnumerable<ScoreSyntaxNode> Children { get; } = trivia;
 }
 
 public sealed class ScoreTriviaWhiteSpace(SourceRange range) : ScoreTrivia(range);

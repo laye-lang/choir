@@ -17,12 +17,12 @@ public sealed class ScoreContext
         { ScoreDiagnosticSemantic.Error, DiagnosticLevel.Error },
     };
 
-    private readonly TypeStore _typeStore;
+    public TypeStore Types;
 
     public ScoreContext(IDiagnosticConsumer diagConsumer, Target target)
         : base(diagConsumer, target)
     {
-        _typeStore = new(this, target);
+        Types = new(this, target);
     }
 
     public Diagnostic EmitDiagnostic(ScoreDiagnosticSemantic semantic, string id, SourceText source,
@@ -43,14 +43,23 @@ public sealed class ScoreContext
         return Diag.Emit(_semanticLevels[semantic], id, source, location, ranges, message.Markup);
     }
 
-    private sealed class TypeStore(ScoreContext context, Target target)
+    public sealed class TypeStore(ScoreContext context, Target target)
     {
-        private readonly ScoreTypeBuiltin _builtinVoid = new(ScoreBuiltinTypeKind.Void, Size.Zero, Align.ByteAligned);
-        private readonly ScoreTypeBuiltin _builtinNoreturn = new(ScoreBuiltinTypeKind.Noreturn, Size.Zero, Align.ByteAligned);
-        private readonly ScoreTypeBuiltin _builtinBool = new(ScoreBuiltinTypeKind.Bool, Size.FromBytes(1), Align.ByteAligned);
-        private readonly ScoreTypeBuiltin _builtinInt = new(ScoreBuiltinTypeKind.Bool, target.SizeOfPointer, target.AlignOfPointer);
         private readonly Dictionary<int, ScoreTypeBuiltin> _builtinSizedIntegers = [];
-        private readonly ScoreTypeBuiltin _builtinFloat32 = new(ScoreBuiltinTypeKind.FloatSized, Size.FromBytes(4), Align.ForBytes(4));
-        private readonly ScoreTypeBuiltin _builtinFloat64 = new(ScoreBuiltinTypeKind.FloatSized, Size.FromBytes(8), Align.ForBytes(8));
+
+        public ScoreTypePoison Poison { get; } = ScoreTypePoison.Instance;
+        public ScoreTypeBuiltin Void { get; } = ScoreTypeBuiltin.Void;
+        public ScoreTypeBuiltin Noreturn { get; } = ScoreTypeBuiltin.Noreturn;
+        public ScoreTypeBuiltin Bool { get; } = ScoreTypeBuiltin.Bool;
+        public ScoreTypeBuiltin Float32 { get; } = ScoreTypeBuiltin.Float32;
+        public ScoreTypeBuiltin Float64 { get; } = ScoreTypeBuiltin.Float64;
+        public ScoreTypeBuiltin Int { get; } = new(ScoreBuiltinTypeKind.Bool, target.SizeOfPointer, target.AlignOfPointer);
+
+        public ScoreTypeBuiltin BuiltinSizedInteger(int bitWidth)
+        {
+            if (!_builtinSizedIntegers.TryGetValue(bitWidth, out var builtinType))
+                _builtinSizedIntegers[bitWidth] = builtinType = new(ScoreBuiltinTypeKind.IntSized, Size.FromBits(bitWidth), Align.ForBits(bitWidth));
+            return builtinType;
+        }
     }
 }

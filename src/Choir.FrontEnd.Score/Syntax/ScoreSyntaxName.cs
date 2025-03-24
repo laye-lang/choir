@@ -30,14 +30,8 @@ public enum OverloadableOperator
 }
 
 public abstract class ScoreSyntaxName(SourceRange range)
-    : ScoreSyntaxNode
+    : ScoreSyntaxNode(range)
 {
-    public SourceRange Range { get; } = range;
-
-    // The name types *must* be hashable so we can look them up during semantic analysis at least somewhat efficiently.
-    // Making GetHashCode abstract ensures every leaf type must implement it somewhere.
-    // Note that this will be more complicated for some names, such as `operator cast(mut int)` since this will place a similar constraint on the type hierarchy as a whole.
-    public abstract override int GetHashCode();
 }
 
 public sealed class ScoreSyntaxNameIdentifier(ScoreToken identifierToken, string spelling)
@@ -46,7 +40,6 @@ public sealed class ScoreSyntaxNameIdentifier(ScoreToken identifierToken, string
     public ScoreToken IdentifierToken { get; } = identifierToken;
     public string Spelling { get; } = spelling;
     public override IEnumerable<ScoreSyntaxNode> Children { get; } = [identifierToken];
-    public override int GetHashCode() => Spelling.GetHashCode();
 }
 
 public sealed class ScoreSyntaxNameOperator(OverloadableOperator @operator, IReadOnlyList<ScoreToken> operatorTokens)
@@ -55,7 +48,6 @@ public sealed class ScoreSyntaxNameOperator(OverloadableOperator @operator, IRea
     public OverloadableOperator Operator { get; } = @operator;
     public IReadOnlyList<ScoreToken> OperatorTokens { get; } = operatorTokens;
     public override IEnumerable<ScoreSyntaxNode> Children { get; } = operatorTokens;
-    public override int GetHashCode() => HashCode.Combine(Operator);
 }
 
 public sealed class ScoreSyntaxNameOperatorCast(ScoreToken castKeywordToken, ScoreToken openParenToken, ScoreSyntaxTypeQual castType, ScoreToken closeParenToken)
@@ -66,5 +58,4 @@ public sealed class ScoreSyntaxNameOperatorCast(ScoreToken castKeywordToken, Sco
     public ScoreSyntaxTypeQual CastType { get; } = castType;
     public ScoreToken CloseParenToken { get; } = closeParenToken;
     public override IEnumerable<ScoreSyntaxNode> Children { get; } = [castKeywordToken, openParenToken, castType, closeParenToken];
-    public override int GetHashCode() => HashCode.Combine(7, CastType);
 }

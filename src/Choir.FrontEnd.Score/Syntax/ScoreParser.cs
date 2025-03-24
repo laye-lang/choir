@@ -1,8 +1,8 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 using Choir.FrontEnd.Score.Diagnostics;
+using Choir.FrontEnd.Score.Types;
 using Choir.Source;
 
 namespace Choir.FrontEnd.Score.Syntax;
@@ -12,20 +12,20 @@ public sealed class ScoreParser
     public static ScoreSyntaxUnit ParseSyntaxUnit(ScoreContext context, SourceText source)
     {
         var tokens = ScoreLexer.ReadTokens(context, source);
-        var unit = new ScoreSyntaxUnit(source, tokens);
 
         if (tokens.Count == 0)
-            return unit;
+            return new ScoreSyntaxUnit(source, tokens, []);
 
         context.Assert(tokens[^1].Kind == ScoreTokenKind.EndOfFile, $"The end of the token list was not an EOF token.");
         var parser = new ScoreParser(context, source, tokens);
 
+        var topLevelNodes = new List<ScoreSyntaxNode>();
         while (true)
         {
             var beginLocation = parser.CurrentLocation;
 
             var node = parser.ParseTopLevel();
-            unit.TopLevelNodes.Add(node);
+            topLevelNodes.Add(node);
 
             if (parser.IsAtEnd)
                 break;
@@ -34,7 +34,12 @@ public sealed class ScoreParser
         }
         
         context.Diag.Flush();
-        return unit;
+        return new ScoreSyntaxUnit(source, tokens, topLevelNodes);
+    }
+
+    private static ScoreToken CreateMissingToken(SourceLocation location)
+    {
+        return new ScoreToken(ScoreTokenKind.Missing, new(location, location), new([], true), new([], false));
     }
 
     private readonly ScoreContext _context;
@@ -112,9 +117,7 @@ public sealed class ScoreParser
             return expectedToken;
 
         _context.ErrorTokenExpected(_source, CurrentLocation, tokenSpelling);
-
-        var missingToken = new ScoreToken(ScoreTokenKind.Missing, new(CurrentLocation, CurrentLocation), new([], true), new([], false));
-        return missingToken;
+        return CreateMissingToken(CurrentLocation);
     }
 
     #endregion
@@ -166,6 +169,8 @@ public sealed class ScoreParser
 
     private ScoreSyntaxTypeQual ParseType()
     {
+        ScoreToken? readAccessKeywordToken = null;
+
         switch (CurrentToken.Kind)
         {
             case ScoreTokenKind.IntSized:
@@ -180,7 +185,22 @@ public sealed class ScoreParser
                     _context.ErrorPrimitiveTypeSizeOutOfRange(_source, CurrentLocation + 3);
 
                 var keywordToken = Consume();
+                var syntaxType = new ScoreSyntaxTypeBuiltin(keywordToken);
+                return CreateResult(syntaxType);
             }
+        }
+
+        _context.ErrorTypeExpected(_source, CurrentLocation);
+        return CreateResult(null);
+
+        ScoreSyntaxTypeQual CreateResult(ScoreSyntaxType? syntaxType)
+        {
+            // pass the current location as the source range just in case syntaxType is null.
+            // if it is, the constructor uses this instead.
+            return new ScoreSyntaxTypeQual(syntaxType, new(CurrentLocation, CurrentLocation))
+            {
+                ReadAccessKeywordToken = readAccessKeywordToken,
+            };
         }
     }
 
@@ -199,6 +219,15 @@ public sealed class ScoreParser
         var declParams = ParseDeclFuncParams();
         var closeParenToken = ExpectToken(ScoreTokenKind.CloseParen, ")");
 
+        ScoreSyntaxTypeQual? returnType = null;
+        if (TryConsume(ScoreTokenKind.MinusGreater, out var minusGreaterToken))
+            returnType = ParseType();
+
+        var funcBody = ParseExpr();
+
+        var funcName = new ScoreSyntaxNameIdentifier(funcNameToken, _source.GetTextInRange(funcNameToken.Range));
+        new ScoreSyntaxDeclFunc(funcKeywordToken, funcName, openParenToken, declParams, closeParenToken, minusGreaterToken, returnType, funcBody);
+
         _context.Todo(_source, CurrentLocation, "Parse a function declaration.");
         throw new UnreachableException();
     }
@@ -213,6 +242,50 @@ public sealed class ScoreParser
     {
         var paramNameToken = ExpectIdentifier();
         var colonToken = ExpectIdentifier();
+    }
+
+    #endregion
+
+    #region Statements (Expressions in a Statement context)
+
+    public ScoreSyntaxExpr ParseStmt()
+    {
+        switch (CurrentToken.Kind)
+        {
+            default:
+            {
+                var expr = ParseExpr();
+                if (expr is not (ScoreSyntaxExprGrouped))
+            }
+        }
+    }
+
+    #endregion
+
+    #region Expressions
+
+    public ScoreSyntaxExpr ParseExpr()
+    {
+        var exprPrimary = ParseExprPrimary();
+        return exprPrimary;
+    }
+
+    public ScoreSyntaxExpr ParseExprPrimary()
+    {
+        switch (CurrentToken.Kind)
+        {
+            case ScoreTokenKind.OpenCurly:
+            {
+                var openCurlyToken = Consume();
+                while (!IsAtEnd && !At(ScoreTokenKind.CloseCurly))
+                {
+                    var statement = ParseStmt();
+                }
+
+                var closeCurlyToken = ExpectToken(ScoreTokenKind.CloseCurly, "}");
+
+            }
+        }
     }
 
     #endregion

@@ -3,13 +3,12 @@
 namespace Choir.FrontEnd.Score.Syntax;
 
 public sealed class ScoreToken(ScoreTokenKind kind, SourceRange range, ScoreTriviaList leadingTrivia, ScoreTriviaList trailingTrivia)
-        : ScoreSyntaxNode
+    : ScoreSyntaxNode(range)
 {
-    public ScoreTokenKind Kind { get; set; } = kind;
-    public SourceRange Range { get; set; } = range;
+    public ScoreTokenKind Kind { get; } = kind;
 
-    public ScoreTriviaList LeadingTrivia { get; set; } = leadingTrivia;
-    public ScoreTriviaList TrailingTrivia { get; set; } = trailingTrivia;
+    public ScoreTriviaList LeadingTrivia { get; } = leadingTrivia;
+    public ScoreTriviaList TrailingTrivia { get; } = trailingTrivia;
 
     public override IEnumerable<ScoreSyntaxNode> Children
     {
