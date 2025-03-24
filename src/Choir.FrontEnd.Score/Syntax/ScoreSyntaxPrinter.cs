@@ -21,6 +21,7 @@ public sealed class ScoreSyntaxPrinter(SourceText source, bool useColor)
 
     protected override void Print(ScoreSyntaxNode node)
     {
+        SetColor(ColorBase);
         Console.Write($"{node.GetType().Name} ");
 
         if (node is ScoreToken token)

@@ -15,6 +15,7 @@ public sealed class ScoreSyntaxExprStmt(ScoreSyntaxExpr expr, ScoreToken semiCol
 {
     public ScoreSyntaxExpr Expr { get; } = expr;
     public ScoreToken SemiColonToken { get; } = semiColonToken;
+    public override IEnumerable<ScoreSyntaxNode> Children { get; } = [expr, semiColonToken];
 }
 
 #region Statements
@@ -22,9 +23,10 @@ public sealed class ScoreSyntaxExprStmt(ScoreSyntaxExpr expr, ScoreToken semiCol
 public sealed class ScoreSyntaxExprReturn(ScoreToken returnKeywordToken, ScoreSyntaxExpr? returnValue, ScoreToken semiColonToken)
     : ScoreSyntaxExpr(returnKeywordToken.Range)
 {
-    public ScoreToken ReturnKeywordToken { get; set; } = returnKeywordToken;
-    public ScoreSyntaxExpr? ReturnValue { get; set; } = returnValue;
-    public ScoreToken SemiColonToken { get; set; } = semiColonToken;
+    public ScoreToken ReturnKeywordToken { get; } = returnKeywordToken;
+    public ScoreSyntaxExpr? ReturnValue { get; } = returnValue;
+    public ScoreToken SemiColonToken { get; } = semiColonToken;
+    public override IEnumerable<ScoreSyntaxNode> Children { get; } = returnValue is null ? [returnKeywordToken, semiColonToken] : [returnKeywordToken, returnValue, semiColonToken];
 }
 
 #endregion
@@ -34,25 +36,17 @@ public sealed class ScoreSyntaxExprReturn(ScoreToken returnKeywordToken, ScoreSy
 public sealed class ScoreSyntaxExprLiteral(ScoreToken literalToken)
     : ScoreSyntaxExpr(literalToken.Range)
 {
-    public ScoreToken LiteralToken { get; set; } = literalToken;
+    public ScoreToken LiteralToken { get; } = literalToken;
+    public override IEnumerable<ScoreSyntaxNode> Children { get; } = [literalToken];
 }
 
-public sealed class ScoreSyntaxExprGrouped(ScoreToken openCurlyToken, List<ScoreSyntaxExpr> exprs, ScoreToken closeCurlyToken)
+public sealed class ScoreSyntaxExprCompound(ScoreToken openCurlyToken, IReadOnlyList<ScoreSyntaxNode> childNodes, ScoreToken closeCurlyToken)
     : ScoreSyntaxExpr(openCurlyToken.Range)
 {
-    public ScoreToken OpenCurlyToken { get; set; } = openCurlyToken;
-    public List<ScoreSyntaxExpr> Exprs { get; set; } = exprs;
-    public ScoreToken CloseCurlyToken { get; set; } = closeCurlyToken;
-    public override IEnumerable<ScoreSyntaxNode> Children
-    {
-        get
-        {
-            yield return OpenCurlyToken;
-            foreach (var expr in Exprs)
-                yield return expr;
-            yield return CloseCurlyToken;
-        }
-    }
+    public ScoreToken OpenCurlyToken { get; } = openCurlyToken;
+    public IReadOnlyList<ScoreSyntaxNode> ChildNodes { get; } = childNodes;
+    public ScoreToken CloseCurlyToken { get; } = closeCurlyToken;
+    public override IEnumerable<ScoreSyntaxNode> Children { get; } = [openCurlyToken, .. childNodes, closeCurlyToken];
 }
 
 #endregion

@@ -17,7 +17,7 @@ public sealed class LayeContext
     };
 
     public LayeContext(IDiagnosticConsumer diagConsumer)
-        : base(diagConsumer)
+        : base(diagConsumer, Target.X86_64)
     {
     }
 

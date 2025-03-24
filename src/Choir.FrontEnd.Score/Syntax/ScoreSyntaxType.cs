@@ -12,10 +12,12 @@ public sealed class ScoreSyntaxTypeQual(ScoreSyntaxType? underlyingSyntaxType, S
 {
     public ScoreSyntaxType? UnderlyingSyntaxType { get; set; } = underlyingSyntaxType;
     public ScoreToken? ReadAccessKeywordToken { get; set; }
+    public override IEnumerable<ScoreSyntaxNode> Children { get; } = underlyingSyntaxType is null ? [] : [underlyingSyntaxType];
 }
 
 public sealed class ScoreSyntaxTypeBuiltin(ScoreToken typeKeywordToken)
     : ScoreSyntaxType(typeKeywordToken.Range)
 {
     public ScoreToken TypeKeywordToken { get; set; } = typeKeywordToken;
+    public override IEnumerable<ScoreSyntaxNode> Children { get; } = [typeKeywordToken];
 }

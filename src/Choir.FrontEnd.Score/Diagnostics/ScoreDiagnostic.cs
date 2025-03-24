@@ -24,14 +24,17 @@ public static class ScoreDiagnostic
 
     #region SC2XXX - Syntactic Diagnostics
 
-    public static void ErrorIdentifierExpected(this ScoreContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(ScoreDiagnosticSemantic.Error, "SC2001", source, location, [], "Expected an identifier.");
-
     public static void ErrorTokenExpected(this ScoreContext context, SourceText source, SourceLocation location, string tokenSpelling) =>
-        context.EmitDiagnostic(ScoreDiagnosticSemantic.Error, "SC2002", source, location, [], $"Expected '{tokenSpelling}'.");
+        context.EmitDiagnostic(ScoreDiagnosticSemantic.Error, "SC2001", source, location, [], $"Expected '{tokenSpelling}'.");
+
+    public static void ErrorIdentifierExpected(this ScoreContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(ScoreDiagnosticSemantic.Error, "SC2002", source, location, [], "Expected an identifier.");
+
+    public static void ErrorSemiColonExpected(this ScoreContext context, SourceText source, SourceLocation location) =>
+        context.EmitDiagnostic(ScoreDiagnosticSemantic.Error, "SC2003", source, location, [], "Expected ';'.");
 
     public static void ErrorPrimitiveTypeSizeOutOfRange(this ScoreContext context, SourceText source, SourceLocation location) =>
-        context.EmitDiagnostic(ScoreDiagnosticSemantic.Error, "SC2002", source, location, [], $"Type width must be in the range [{ScoreSyntaxFacts.PrimitiveTypeKeywordLowerBoundInclusive}, {ScoreSyntaxFacts.PrimitiveTypeKeywordUpperBoundExclusive}).");
+        context.EmitDiagnostic(ScoreDiagnosticSemantic.Error, "SC2010", source, location, [], $"Type width must be in the range [{ScoreSyntaxFacts.PrimitiveTypeKeywordLowerBoundInclusive}, {ScoreSyntaxFacts.PrimitiveTypeKeywordUpperBoundExclusive}).");
 
     #endregion
 

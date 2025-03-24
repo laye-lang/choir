@@ -2,7 +2,6 @@
 using System.Diagnostics.CodeAnalysis;
 
 using Choir.FrontEnd.Score.Diagnostics;
-using Choir.FrontEnd.Score.Types;
 using Choir.Source;
 
 namespace Choir.FrontEnd.Score.Syntax;
@@ -27,7 +26,7 @@ public sealed class ScoreParser
             var node = parser.ParseTopLevel();
             topLevelNodes.Add(node);
 
-            if (parser.IsAtEnd)
+            if (node is ScoreSyntaxEndOfUnit)
                 break;
 
             context.Assert(parser.CurrentLocation > beginLocation, "Parser did not consume any tokens and the end of file was not reached.");
@@ -100,6 +99,15 @@ public sealed class ScoreParser
         return _tokens[peekIndex];
     }
 
+    private ScoreToken ExpectToken(ScoreTokenKind kind, string tokenSpelling)
+    {
+        if (TryConsume(kind, out var expectedToken))
+            return expectedToken;
+
+        _context.ErrorTokenExpected(_source, CurrentLocation, tokenSpelling);
+        return CreateMissingToken(CurrentLocation);
+    }
+
     private ScoreToken ExpectIdentifier()
     {
         if (TryConsume(ScoreTokenKind.Identifier, out var expectedToken))
@@ -111,13 +119,15 @@ public sealed class ScoreParser
         return missingToken;
     }
 
-    private ScoreToken ExpectToken(ScoreTokenKind kind, string tokenSpelling)
+    private ScoreToken ExpectSemiColon()
     {
-        if (TryConsume(kind, out var expectedToken))
+        if (TryConsume(ScoreTokenKind.SemiColon, out var expectedToken))
             return expectedToken;
 
-        _context.ErrorTokenExpected(_source, CurrentLocation, tokenSpelling);
-        return CreateMissingToken(CurrentLocation);
+        _context.ErrorSemiColonExpected(_source, CurrentLocation);
+
+        var missingToken = new ScoreToken(ScoreTokenKind.Missing, new(CurrentLocation, CurrentLocation), new([], true), new([], false));
+        return missingToken;
     }
 
     #endregion
@@ -190,7 +200,8 @@ public sealed class ScoreParser
             }
         }
 
-        _context.ErrorTypeExpected(_source, CurrentLocation);
+        //_context.ErrorTypeExpected(_source, CurrentLocation);
+        _context.ErrorIdentifierExpected(_source, CurrentLocation);
         return CreateResult(null);
 
         ScoreSyntaxTypeQual CreateResult(ScoreSyntaxType? syntaxType)
@@ -216,23 +227,20 @@ public sealed class ScoreParser
         var funcNameToken = ExpectIdentifier();
 
         var openParenToken = ExpectToken(ScoreTokenKind.OpenParen, "(");
-        var declParams = ParseDeclFuncParams();
+        var declParams = ParseFuncParams();
         var closeParenToken = ExpectToken(ScoreTokenKind.CloseParen, ")");
 
         ScoreSyntaxTypeQual? returnType = null;
         if (TryConsume(ScoreTokenKind.MinusGreater, out var minusGreaterToken))
             returnType = ParseType();
 
-        var funcBody = ParseExpr();
+        var funcBody = ParseFuncBody();
 
         var funcName = new ScoreSyntaxNameIdentifier(funcNameToken, _source.GetTextInRange(funcNameToken.Range));
-        new ScoreSyntaxDeclFunc(funcKeywordToken, funcName, openParenToken, declParams, closeParenToken, minusGreaterToken, returnType, funcBody);
-
-        _context.Todo(_source, CurrentLocation, "Parse a function declaration.");
-        throw new UnreachableException();
+        return new ScoreSyntaxDeclFunc(funcKeywordToken, funcName, openParenToken, declParams, closeParenToken, minusGreaterToken, returnType, funcBody);
     }
 
-    private ScoreSyntaxDeclFuncParams ParseDeclFuncParams()
+    private ScoreSyntaxDeclFuncParams ParseFuncParams()
     {
         var (declParams, commaTokens) = ParseDelimited(ScoreTokenKind.Comma, ParseDeclFuncParam, false, ScoreTokenKind.CloseParen);
         return new ScoreSyntaxDeclFuncParams(declParams, commaTokens);
@@ -241,7 +249,31 @@ public sealed class ScoreParser
     private ScoreSyntaxDeclFuncParam ParseDeclFuncParam()
     {
         var paramNameToken = ExpectIdentifier();
-        var colonToken = ExpectIdentifier();
+        var colonToken = ExpectToken(ScoreTokenKind.Colon, ":");
+        var paramType = ParseType();
+        var paramName = new ScoreSyntaxNameIdentifier(paramNameToken, _source.GetTextInRange(paramNameToken.Range));
+        return new ScoreSyntaxDeclFuncParam(paramName, colonToken, paramType);
+    }
+
+    private ScoreSyntaxFuncBody ParseFuncBody()
+    {
+        if (TryConsume(ScoreTokenKind.SemiColon, out var semiColonToken))
+            return new ScoreSyntaxFuncBodyEmpty(semiColonToken);
+        else if (TryConsume(ScoreTokenKind.Equal, out var equalToken))
+        {
+            var returnValue = ParseExpr();
+            return new ScoreSyntaxFuncBodyImplicitReturn(equalToken, returnValue);
+        }
+        else if (At(ScoreTokenKind.OpenCurly))
+        {
+            var compound = ParseExprCompound();
+            return new ScoreSyntaxFuncBodyCompound(compound);
+        }
+        else
+        {
+            semiColonToken = ExpectSemiColon();
+            return new ScoreSyntaxFuncBodyEmpty(semiColonToken);
+        }
     }
 
     #endregion
@@ -252,10 +284,27 @@ public sealed class ScoreParser
     {
         switch (CurrentToken.Kind)
         {
+            case ScoreTokenKind.Return:
+            {
+                var returnKeywordToken = Consume();
+                if (TryConsume(ScoreTokenKind.SemiColon, out var semiColonToken))
+                    return new ScoreSyntaxExprReturn(returnKeywordToken, null, semiColonToken);
+
+                var returnValue = ParseExpr();
+                semiColonToken = ExpectSemiColon();
+                return new ScoreSyntaxExprReturn(returnKeywordToken, returnValue, semiColonToken);
+            }
+
             default:
             {
                 var expr = ParseExpr();
-                if (expr is not (ScoreSyntaxExprGrouped))
+                if (expr is not (ScoreSyntaxExprCompound))
+                {
+                    var semiColonToken = ExpectSemiColon();
+                    expr = new ScoreSyntaxExprStmt(expr, semiColonToken);
+                }
+
+                return expr;
             }
         }
     }
@@ -264,26 +313,47 @@ public sealed class ScoreParser
 
     #region Expressions
 
-    public ScoreSyntaxExpr ParseExpr()
+    private ScoreSyntaxExpr ParseExpr()
     {
         var exprPrimary = ParseExprPrimary();
         return exprPrimary;
     }
 
-    public ScoreSyntaxExpr ParseExprPrimary()
+    private ScoreSyntaxExprCompound ParseExprCompound()
+    {
+        var childNodes = new List<ScoreSyntaxNode>();
+
+        var openCurlyToken = Consume();
+        while (!IsAtEnd && !At(ScoreTokenKind.CloseCurly))
+        {
+            var statement = ParseStmt();
+            childNodes.Add(statement);
+        }
+
+        var closeCurlyToken = ExpectToken(ScoreTokenKind.CloseCurly, "}");
+        return new ScoreSyntaxExprCompound(openCurlyToken, childNodes, closeCurlyToken);
+    }
+
+    private ScoreSyntaxExpr ParseExprPrimary()
     {
         switch (CurrentToken.Kind)
         {
+            default:
+            {
+                _context.Todo(_source, CurrentLocation, $"Implement a default case for {nameof(ScoreParser)}::{nameof(ParseExprPrimary)}.");
+                throw new UnreachableException();
+            }
+
+            case ScoreTokenKind.LiteralInteger:
+            {
+                var literalToken = Consume();
+                return new ScoreSyntaxExprLiteral(literalToken);
+            }
+
             case ScoreTokenKind.OpenCurly:
             {
-                var openCurlyToken = Consume();
-                while (!IsAtEnd && !At(ScoreTokenKind.CloseCurly))
-                {
-                    var statement = ParseStmt();
-                }
-
-                var closeCurlyToken = ExpectToken(ScoreTokenKind.CloseCurly, "}");
-
+                var compound = ParseExprCompound();
+                return compound;
             }
         }
     }

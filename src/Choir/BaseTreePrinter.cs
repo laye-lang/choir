@@ -6,10 +6,10 @@ public abstract class BaseTreePrinter<TNode>(bool useColor)
 {
     protected readonly StringBuilder _leadingText = new(128);
 
-    protected ConsoleColor ColorBase = ConsoleColor.Green;
+    protected ConsoleColor ColorBase = ConsoleColor.White;
     protected ConsoleColor ColorMisc = ConsoleColor.Gray;
     protected ConsoleColor ColorLocation = ConsoleColor.Magenta;
-    protected ConsoleColor ColorName = ConsoleColor.White;
+    protected ConsoleColor ColorName = ConsoleColor.Red;
     protected ConsoleColor ColorProperty = ConsoleColor.Blue;
     protected ConsoleColor ColorValue = ConsoleColor.Yellow;
     protected ConsoleColor ColorKeyword = ConsoleColor.Cyan;

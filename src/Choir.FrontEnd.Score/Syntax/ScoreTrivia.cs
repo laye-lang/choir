@@ -5,6 +5,7 @@ namespace Choir.FrontEnd.Score.Syntax;
 public abstract class ScoreTrivia(SourceRange range)
     : ScoreSyntaxNode(range)
 {
+    public override IEnumerable<ScoreSyntaxNode> Children { get; } = [];
 }
 
 public sealed class ScoreTriviaList(IReadOnlyList<ScoreTrivia> trivia, bool isLeading)

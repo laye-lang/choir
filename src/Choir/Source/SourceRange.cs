@@ -1,6 +1,7 @@
 ﻿namespace Choir.Source;
 
 public readonly struct SourceRange
+    : IComparable<SourceRange>
 {
     public readonly SourceLocation Begin;
     public readonly SourceLocation End;
@@ -22,4 +23,6 @@ public readonly struct SourceRange
 
     public override string ToString() => $"{nameof(SourceRange)}({Begin.Offset}, {End.Offset})";
     public override int GetHashCode() => HashCode.Combine(Begin.Offset, End.Offset);
+
+    public int CompareTo(SourceRange other) => Begin.Offset.CompareTo(other.Begin.Offset);
 }

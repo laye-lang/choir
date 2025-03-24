@@ -12,7 +12,7 @@ public abstract class ScoreSyntaxNode(SourceRange range)
     public SourceRange Range { get; } = range;
     public SourceLocation Location { get; } = range.Begin;
 
-    public virtual IEnumerable<ScoreSyntaxNode> Children { get; } = [];
+    public abstract IEnumerable<ScoreSyntaxNode> Children { get; }
 
     public override int GetHashCode() => HashCode.Combine(Id);
 
