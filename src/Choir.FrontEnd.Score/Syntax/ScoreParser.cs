@@ -190,7 +190,7 @@ public sealed class ScoreParser
         {
             case ScoreTokenKind.IntSized:
             {
-                string keywordText = _source.GetTextInRange(CurrentRange);
+                string keywordText = _source.Substring(CurrentRange);
                 _context.Assert(keywordText.StartsWith("int"), _source, CurrentLocation, "Expected sized integer type keyword to start with the string 'int'.");
 
                 bool isBitWidthValidInteger = int.TryParse(keywordText[3..], out int bitWidth);
@@ -251,7 +251,7 @@ public sealed class ScoreParser
 
         var funcBody = ParseFuncBody();
 
-        var funcName = new ScoreSyntaxNameIdentifier(funcNameToken, _source.GetTextInRange(funcNameToken.Range));
+        var funcName = new ScoreSyntaxNameIdentifier(funcNameToken);
         return new ScoreSyntaxDeclFunc(funcKeywordToken, funcName, openParenToken, declParams, closeParenToken, minusGreaterToken, returnType, funcBody);
     }
 
@@ -266,7 +266,7 @@ public sealed class ScoreParser
         var paramNameToken = ExpectIdentifier();
         var colonToken = ExpectToken(ScoreTokenKind.Colon, ":");
         var paramType = ParseType();
-        var paramName = new ScoreSyntaxNameIdentifier(paramNameToken, _source.GetTextInRange(paramNameToken.Range));
+        var paramName = new ScoreSyntaxNameIdentifier(paramNameToken);
         return new ScoreSyntaxDeclFuncParam(paramName, colonToken, paramType);
     }
 

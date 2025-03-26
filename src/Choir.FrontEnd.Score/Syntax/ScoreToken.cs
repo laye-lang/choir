@@ -1,4 +1,6 @@
-﻿using Choir.Source;
+﻿using System.Numerics;
+
+using Choir.Source;
 
 namespace Choir.FrontEnd.Score.Syntax;
 
@@ -6,6 +8,10 @@ public sealed class ScoreToken(ScoreTokenKind kind, SourceRange range, ScoreTriv
     : ScoreSyntaxNode(range)
 {
     public ScoreTokenKind Kind { get; } = kind;
+
+    public ReadOnlyMemory<char> StringValue { get; init; }
+    public BigInteger IntegerValue { get; init; }
+    public double FloatValue { get; init; }
 
     public ScoreTriviaList LeadingTrivia { get; } = leadingTrivia;
     public ScoreTriviaList TrailingTrivia { get; } = trailingTrivia;

@@ -5,7 +5,8 @@ using System.Numerics;
 namespace Choir;
 
 public readonly struct Align
-    : IEquatable<Align>, IComparable<Align>
+    : IEquatable<Align>
+    , IComparable<Align>
 {
     public static readonly Align ByteAligned = new();
 
@@ -77,7 +78,8 @@ public readonly struct Align
 }
 
 public readonly struct Size
-    : IEquatable<Size>, IComparable<Size>
+    : IEquatable<Size>
+    , IComparable<Size>
 {
     public static readonly Size Zero = new(0);
 

@@ -2,7 +2,7 @@
   "profiles": {
     "Choir.FrontEnd.Score": {
       "commandName": "Project",
-      "commandLineArgs": "--format C:\\Users\\Nashiora\\dev\\choir\\test\\score\\simple.score"
+      "commandLineArgs": "C:\\Users\\Nashiora\\dev\\choir\\test\\score\\simple.score"
     }
   }
 }

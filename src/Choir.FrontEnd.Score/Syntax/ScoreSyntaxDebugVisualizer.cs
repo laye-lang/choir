@@ -1,5 +1,7 @@
 ﻿using Choir.Source;
 
+using static System.Net.Mime.MediaTypeNames;
+
 namespace Choir.FrontEnd.Score.Syntax;
 
 public sealed class ScoreSyntaxDebugVisualizer(SourceText source, bool useColor)
@@ -42,9 +44,21 @@ public sealed class ScoreSyntaxDebugVisualizer(SourceText source, bool useColor)
         SetColor(ColorProperty);
         Console.Write(token.Kind);
 
-        if (token.Range.Length <= 64)
+        if (token.Kind is ScoreTokenKind.Identifier)
         {
-            string image = source.GetTextInRange(token.Range);
+            SetColor(ColorName);
+            Console.Write(' ');
+            Console.Write(token.StringValue);
+        }
+        else if (token.Kind is ScoreTokenKind.LiteralInteger or ScoreTokenKind.LiteralFloat or ScoreTokenKind.LiteralString)
+        {
+            SetColor(ColorValue);
+            Console.Write(' ');
+            Console.Write(token.GetSourceSlice(source));
+        }
+        else if (token.Range.Length <= 64)
+        {
+            string image = source.Substring(token.Range);
             if (!image.Contains('\r') && !image.Contains('\n'))
             {
                 SetColor(ColorMisc);
@@ -58,7 +72,7 @@ public sealed class ScoreSyntaxDebugVisualizer(SourceText source, bool useColor)
     {
         if (trivia.Range.Length <= 64)
         {
-            string image = source.GetTextInRange(trivia.Range);
+            string image = source.Substring(trivia.Range);
             if (!image.Contains('\r') && !image.Contains('\n'))
             {
                 SetColor(ColorMisc);

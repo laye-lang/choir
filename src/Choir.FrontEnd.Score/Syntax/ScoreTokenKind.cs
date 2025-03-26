@@ -66,6 +66,8 @@ public enum ScoreTokenKind
 
     Identifier,
     LiteralInteger,
+    LiteralFloat,
+    LiteralString,
 
     #region Reserved Keywords
 

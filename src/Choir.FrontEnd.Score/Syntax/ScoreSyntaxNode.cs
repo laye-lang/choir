@@ -17,6 +17,9 @@ public abstract class ScoreSyntaxNode(SourceRange range)
 
     public ScoreSemaNode? SemaNode { get; set; }
 
+    public ReadOnlyMemory<char> GetSourceSlice(SourceText source) => source.Slice(Range);
+    public string GetSourceSubstring(SourceText source) => source.Substring(Range);
+
     public override int GetHashCode() => HashCode.Combine(Id);
 
     public override bool Equals(object? obj) => obj is ScoreSyntaxNode other && Equals(other);

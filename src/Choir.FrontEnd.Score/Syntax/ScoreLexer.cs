@@ -1,4 +1,6 @@
-﻿using Choir.FrontEnd.Score.Diagnostics;
+﻿using System.Numerics;
+
+using Choir.FrontEnd.Score.Diagnostics;
 using Choir.Source;
 
 namespace Choir.FrontEnd.Score.Syntax;
@@ -23,7 +25,7 @@ public sealed class ScoreLexer
         return tokens;
     }
 
-    private static readonly Dictionary<string, ScoreTokenKind> _keywords = new()
+    private static readonly Dictionary<StringView, ScoreTokenKind> _keywords = new()
     {
         { "abstract", ScoreTokenKind.Abstract },
         { "alias", ScoreTokenKind.Alias },
@@ -235,6 +237,10 @@ public sealed class ScoreLexer
         if (IsAtEnd)
             return new(ScoreTokenKind.EndOfFile, GetRange(beginLocation), leadingTrivia, new([], false));
 
+        ReadOnlyMemory<char> stringValue = default;
+        BigInteger integerValue = default;
+        double floatValue = 0;
+
         var tokenKind = ScoreTokenKind.Invalid;
         switch (CurrentCharacter)
         {
@@ -296,13 +302,14 @@ public sealed class ScoreLexer
                 }
                 else
                 {
-                    string tokenStringValue = _source.GetTextInRange(GetRange(beginLocation));
+                    var tokenStringValue = _source.Slice(beginLocation, CurrentLocation);
                     if (_keywords.TryGetValue(tokenStringValue, out var keywordKind))
                         tokenKind = keywordKind;
-                    else if (tokenStringValue.StartsWith("int") && IsSubstringOnlyDigits(tokenStringValue.AsSpan(3)))
+                    else if (tokenStringValue.StartsWith("int") && IsSubstringOnlyDigits(tokenStringValue[3..]))
                         tokenKind = ScoreTokenKind.IntSized;
-                    else if (tokenStringValue.StartsWith("float") && IsSubstringOnlyDigits(tokenStringValue.AsSpan(5)))
+                    else if (tokenStringValue.StartsWith("float") && IsSubstringOnlyDigits(tokenStringValue[5..]))
                         tokenKind = ScoreTokenKind.FloatSized;
+                    else stringValue = tokenStringValue;
 
                     bool IsSubstringOnlyDigits(ReadOnlySpan<char> s)
                     {
@@ -329,6 +336,7 @@ public sealed class ScoreLexer
                     while (ScoreSyntaxFacts.CanContinueIdentifier(CurrentCharacter))
                         Advance();
                 }
+                else integerValue = BigInteger.Parse(_source.Slice(beginLocation, CurrentLocation).Span);
             } break;
 
             default:
@@ -353,6 +361,7 @@ public sealed class ScoreLexer
                 Advance();
 
             tokenKind = ScoreTokenKind.Identifier;
+            stringValue = _source.Slice(beginLocation, CurrentLocation);
 
             // the slow path will never produce a language keyword, so we don't check.
             // all language keywords use characters found exclusively in the fast path.
@@ -363,6 +372,11 @@ public sealed class ScoreLexer
         _context.Assert(tokenKind != ScoreTokenKind.Invalid, _source, beginLocation, $"{nameof(ScoreLexer)}::{nameof(ReadToken)} failed to assign a non-invalid kind to the read token.");
 
         var trailingTrivia = ReadTrivia(isLeading: false);
-        return new(tokenKind, tokenRange, leadingTrivia, trailingTrivia);
+        return new(tokenKind, tokenRange, leadingTrivia, trailingTrivia)
+        {
+            StringValue = stringValue,
+            IntegerValue = integerValue,
+            FloatValue = floatValue,
+        };
     }
 }

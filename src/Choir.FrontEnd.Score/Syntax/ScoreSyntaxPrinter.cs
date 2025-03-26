@@ -40,13 +40,13 @@ public sealed class ScoreSyntaxPrinter
     private void PrintToken(ScoreToken token)
     {
         PrintTrivia(token.LeadingTrivia);
-        _builder.Append(_unit.Source.GetTextInRange(token.Range));
+        _builder.Append(_unit.Source.Substring(token.Range));
         PrintTrivia(token.TrailingTrivia);
     }
 
     private void PrintTrivia(ScoreTriviaList leadingTrivia)
     {
         foreach (var trivia in leadingTrivia.Trivia)
-            _builder.Append(_unit.Source.GetTextInRange(trivia.Range));
+            _builder.Append(_unit.Source.Substring(trivia.Range));
     }
 }

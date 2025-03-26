@@ -13,6 +13,8 @@ public sealed class ScoreSyntaxFormatter
     private readonly StringBuilder _builder;
     private readonly ScoreSyntaxUnit _unit;
 
+    private int _indentLevel = 0;
+
     private ScoreSyntaxFormatter(ScoreSyntaxUnit unit)
     {
         _builder = new(unit.Source.Text.Length);
@@ -41,11 +43,5 @@ public sealed class ScoreSyntaxFormatter
     private ScoreSyntaxNode FormatSyntax(ScoreSyntaxNode syntax, ScoreSyntaxNode parent, ScoreSyntaxNode? previous, ScoreSyntaxNode? next)
     {
         return syntax;
-        switch (syntax)
-        {
-            case ScoreSyntaxDeclFunc declFunc:
-            {
-            } break;
-        }
     }
 }

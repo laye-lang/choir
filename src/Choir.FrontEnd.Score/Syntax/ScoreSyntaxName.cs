@@ -34,11 +34,11 @@ public abstract class ScoreSyntaxName(SourceRange range)
 {
 }
 
-public sealed class ScoreSyntaxNameIdentifier(ScoreToken identifierToken, string spelling)
+public sealed class ScoreSyntaxNameIdentifier(ScoreToken identifierToken)
     : ScoreSyntaxName(identifierToken.Range)
 {
     public ScoreToken IdentifierToken { get; } = identifierToken;
-    public string Spelling { get; } = spelling;
+    public ReadOnlyMemory<char> Spelling => IdentifierToken.StringValue;
     public override IEnumerable<ScoreSyntaxNode> Children { get; } = [identifierToken];
 }
 

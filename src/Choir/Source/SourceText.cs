@@ -15,8 +15,9 @@ public sealed class SourceText(string name, string text)
     public override bool Equals(object? obj) => Equals(obj as SourceText);
     public bool Equals(SourceText? other) => other is not null && Id == other.Id;
 
-    public string GetTextInRange(SourceRange range)
-    {
-        return Text[range.Begin.Offset..range.End.Offset];
-    }
+    public StringView Slice(SourceLocation begin, SourceLocation end) => Text.AsMemory(begin.Offset..end.Offset);
+    public StringView Slice(SourceRange range) => Text.AsMemory(range.Begin.Offset..range.End.Offset);
+
+    public string Substring(SourceLocation begin, SourceLocation end) => Slice(begin, end).ToString();
+    public string Substring(SourceRange range) => Slice(range).ToString();
 }
