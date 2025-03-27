@@ -262,21 +262,21 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
         }
     }
 
-    private LLVMTypeRef GenerateType(SemaTypeQual typeQual) => GenerateType(typeQual.Type);
-    private LLVMTypeRef GenerateType(SemaType type)
+    private LLVMTypeRef GenerateType(SemaTypeQual typeQual) => GenerateType(typeQual.Type, typeQual.Location);
+    private LLVMTypeRef GenerateType(SemaType type, Location location = default)
     {
         type = type.CanonicalType;
         switch (type)
         {
             default:
             {
-                Context.Diag.ICE($"Unimplemented Laye type in Choir codegen: {type.GetType().FullName}");
+                Context.Diag.ICE(location, $"Unimplemented Laye type in Choir codegen: {type.GetType().FullName}");
                 throw new UnreachableException();
             }
 
             case SemaTypeNil:
             {
-                Context.Diag.ICE("The 'nil' type should not make it to code generation, it should always be converted to a proper type.");
+                Context.Diag.ICE(location, "The 'nil' type should not make it to code generation, it should always be converted to a proper type.");
                 throw new UnreachableException();
             }
 
@@ -286,7 +286,7 @@ public sealed class LayeCodegen(LayeModule module, LLVMModuleRef llvmModule)
                 {
                     default:
                     {
-                        Context.Diag.ICE($"Unimplemented Laye built in type kind in Choir codegen: {builtIn.Kind}");
+                        Context.Diag.ICE(location, $"Unimplemented Laye built in type kind in Choir codegen: {builtIn.Kind}");
                         throw new UnreachableException();
                     }
 

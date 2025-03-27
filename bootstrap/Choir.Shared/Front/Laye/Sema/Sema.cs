@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
@@ -1162,53 +1163,92 @@ public partial class Sema
         {
             operand = LValueToRValue(operand);
 
-            var range = new SemaExprRange(rangeIndexBinary.TokenOperator, );
-            return new SemaExprSlice(index.Location, operand, range, Context.Types.LayeTypeSlice(typeBuffer.ElementType))
+            SemaExpr rangeRightExpr;
+            if (rangeIndexBinary.Right is SyntaxExprEmpty)
             {
-                ValueCategory = ValueCategory.LValue
-            };
+                Context.Diag.Error(rangeIndexBinary.Right.Location, "Slicing a buffer requires an explicit range end value.");
+                rangeRightExpr = new SemaExprLiteralInteger(rangeIndexBinary.Right.Location, 0, SemaTypePoison.Instance.Qualified(rangeIndexBinary.Right.Location));
+            }
+            else rangeRightExpr = AnalyseExpr(rangeIndexBinary.Right);
+
+            SemaExpr rangeLeftExpr;
+            if (rangeIndexBinary.Left is SyntaxExprEmpty)
+                rangeLeftExpr = new SemaExprLiteralInteger(rangeIndexBinary.Left.Location, 0, Context.Types.LayeTypeInt.Qualified(rangeIndexBinary.Left.Location));
+            else rangeLeftExpr = AnalyseExpr(rangeIndexBinary.Left);
+
+            var range = new SemaExprRange(rangeIndexBinary.TokenOperator, CreateRangeType(ref rangeLeftExpr, ref rangeRightExpr), rangeLeftExpr, rangeRightExpr);
+            return new SemaExprSlice(index.Location, operand, range, Context.Types.LayeTypeSlice(typeBuffer.ElementType));
         }
         else if (operandTypeCanon is SemaTypeArray typeArray)
         {
-            if (indices.Length == 1 && indices[0].Type.IsRange)
-                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeArray.ElementType));
+            // operand = LValueToRValue(operand);
 
-            for (int i = 0; i < indices.Length; i++)
-                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
+            long arrayLength = 0;
+            if (typeArray.Lengths.Count == 1)
+                arrayLength = typeArray.Lengths[0];
+            else Context.Diag.Error(index.Operand.Location, "Can only slice an array with a single dimension.");
 
-            if (indices.Length != typeArray.Arity)
-                Context.Diag.Error(index.Location, $"Expected {typeArray.Arity} indices, but got {indices.Length}.");
+            SemaExpr rangeLeftExpr;
+            if (rangeIndexBinary.Left is SyntaxExprEmpty)
+                rangeLeftExpr = new SemaExprLiteralInteger(rangeIndexBinary.Left.Location, 0, Context.Types.LayeTypeInt.Qualified(rangeIndexBinary.Left.Location));
+            else rangeLeftExpr = AnalyseExpr(rangeIndexBinary.Left);
 
-            var operandElementType = typeArray.ElementType;
-            return new SemaExprIndexArray(operandElementType, operand, indices)
-            {
-                ValueCategory = ValueCategory.LValue
-            };
+            SemaExpr rangeRightExpr;
+            if (rangeIndexBinary.Right is SyntaxExprEmpty)
+                rangeRightExpr = new SemaExprLiteralInteger(rangeIndexBinary.Right.Location, arrayLength, Context.Types.LayeTypeInt.Qualified(rangeIndexBinary.Right.Location));
+            else rangeRightExpr = AnalyseExpr(rangeIndexBinary.Right);
+
+            var range = new SemaExprRange(rangeIndexBinary.TokenOperator, CreateRangeType(ref rangeLeftExpr, ref rangeRightExpr), rangeLeftExpr, rangeRightExpr);
+            return new SemaExprSlice(index.Location, operand, range, Context.Types.LayeTypeSlice(typeArray.ElementType));
         }
         else if (operandTypeCanon is SemaTypeSlice typeSlice)
         {
-            if (indices.Length == 1 && indices[0].Type.IsRange)
-                return new SemaExprSlice(index.Location, operand, indices[0], Context.Types.LayeTypeSlice(typeSlice.ElementType));
+            operand = LValueToRValue(operand);
 
-            for (int i = 0; i < indices.Length; i++)
-                indices[i] = ConvertOrError(indices[i], Context.Types.LayeTypeInt.Qualified(index.Location));
+            SemaExpr rangeLeftExpr;
+            if (rangeIndexBinary.Left is SyntaxExprEmpty)
+                rangeLeftExpr = new SemaExprLiteralInteger(rangeIndexBinary.Left.Location, 0, Context.Types.LayeTypeInt.Qualified(rangeIndexBinary.Left.Location));
+            else rangeLeftExpr = AnalyseExpr(rangeIndexBinary.Left);
 
-            if (indices.Length != 1)
-                Context.Diag.Error(index.Location, $"Expected exactly one index to a slice, but got {indices.Length}.");
+            SemaExpr rangeRightExpr;
+            if (rangeIndexBinary.Right is SyntaxExprEmpty)
+                rangeRightExpr = new SemaExprCountof(rangeIndexBinary.Right.Location, operand, Context.Types.LayeTypeInt.Qualified(rangeIndexBinary.Right.Location));
+            else rangeRightExpr = AnalyseExpr(rangeIndexBinary.Right);
 
-            var operandElementType = typeSlice.ElementType;
-            return new SemaExprIndexSlice(operandElementType, operand, indices[0])
-            {
-                ValueCategory = ValueCategory.LValue
-            };
+            var range = new SemaExprRange(rangeIndexBinary.TokenOperator, CreateRangeType(ref rangeLeftExpr, ref rangeRightExpr), rangeLeftExpr, rangeRightExpr);
+            return new SemaExprSlice(index.Location, operand, range, Context.Types.LayeTypeSlice(typeSlice.ElementType));
         }
         else
         {
             Context.Diag.Error(index.Location, $"Cannot index value of type {operand.Type.ToDebugString(Colors)}.");
-            return new SemaExprIndexInvalid(operand, indices)
+            return new SemaExprIndexInvalid(operand, [])
             {
                 ValueCategory = ValueCategory.LValue
             };
+        }
+
+        SemaTypeQual CreateRangeType(ref SemaExpr rangeLeftExpr, ref SemaExpr rangeRightExpr)
+        {
+            if (rangeLeftExpr.Type.IsPoison || rangeRightExpr.Type.IsPoison)
+                return SemaTypePoison.Instance.Qualified(rangeIndexBinary.Location);
+            else if (!rangeRightExpr.Type.IsInteger || !rangeLeftExpr.Type.IsInteger)
+            {
+                if (!rangeLeftExpr.Type.IsInteger)
+                    Context.Diag.Error(rangeLeftExpr.Location, "Operand to range expression must evaluate to an integer.");
+                if (!rangeRightExpr.Type.IsInteger)
+                    Context.Diag.Error(rangeRightExpr.Location, "Operand to range expression must evaluate to an integer.");
+                return SemaTypePoison.Instance.Qualified(rangeIndexBinary.Location);
+            }
+            else
+            {
+                if (ConvertToCommonTypeOrError(ref rangeLeftExpr, ref rangeRightExpr, Context.Types.LayeTypeInt.Qualified(rangeIndexBinary.Location)))
+                {
+                    Context.Assert(rangeLeftExpr.Type.IsInteger, rangeLeftExpr.Location, "Left side of range operator must have evaluated to integer type.");
+                    Context.Assert(rangeRightExpr.Type.IsInteger, rangeRightExpr.Location, "Right side of range operator must have evaluated to integer type.");
+                    return new SemaTypeRange(rangeLeftExpr.Type).Qualified(rangeIndexBinary.Location);
+                }
+                else return SemaTypePoison.Instance.Qualified(rangeIndexBinary.Location);
+            }
         }
     }
 
